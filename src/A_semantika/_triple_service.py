@@ -219,6 +219,12 @@ class TripleService:
     def export_turtle(self, base_uri: str = "https://example.org/") -> str:
         """Export all triples to Turtle (.ttl) format.
 
+        Triples are grouped by subject, with predicates formatted as:
+          subject
+              predicate1 object1 ;
+              predicate2 object2 ;
+              predicate3 object3 .
+
         Args:
             base_uri: Base URI for node references.
 
@@ -242,6 +248,8 @@ class TripleService:
         )
 
         current_subject = None
+        subject_lines = []
+
         for t in triples:
             subj_uri = f":{t['subject_uuid']}"
             pred_uri = f":{t['predicate_id']}"
@@ -259,16 +267,22 @@ class TripleService:
                 escaped_val = t["object_value"].replace("\\", "\\\\").replace('"', '\\"')
                 obj = f'"{escaped_val}"'
 
+            # Subject changed: flush previous subject's triples
             if t["subject_uuid"] != current_subject:
-                lines.append(f"{subj_uri}")
-                current_subject = t["subject_uuid"]
-                lines.append(f"    {pred_uri} {obj} ;")
-            else:
-                lines.append(f"    {pred_uri} {obj} ;")
+                if subject_lines:
+                    # Replace last semicolon with period on the last predicate
+                    subject_lines[-1] = subject_lines[-1].rstrip(";") + " ."
+                    lines.extend(subject_lines)
+                    lines.append("")  # Blank line between subjects
 
-        # Replace trailing ' ;' with ' .' on last predicate of each subject
-        result = "\n".join(lines)
-        # Simple fix: append a final '.'
-        if lines and lines[-1].endswith(";"):
-            result = result.rstrip(";") + "."
-        return result
+                current_subject = t["subject_uuid"]
+                subject_lines = [f"{subj_uri}"]
+
+            subject_lines.append(f"    {pred_uri} {obj} ;")
+
+        # Flush last subject
+        if subject_lines:
+            subject_lines[-1] = subject_lines[-1].rstrip(";") + " ."
+            lines.extend(subject_lines)
+
+        return "\n".join(lines)

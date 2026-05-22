@@ -10,6 +10,7 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi
+from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import confirm_node_with_arcs, resolve_node_label
 from A_semantika.service import get_node_service, get_predicate_service, get_triple_service
 
@@ -57,7 +58,11 @@ def vidi(
 ) -> None:
     """Vidi detalojn de nodo."""
     node_svc = get_node_service()
-    node = node_svc.resolve_uuid_prefix(uuid)
+    try:
+        node = node_svc.resolve_uuid_prefix(uuid)
+    except AmbiguousUUIDError as e:
+        error(tr_multi("Ambigua prefikso: {e}", "Ambiguous prefix: {e}", "Préfixe ambigu : {e}").format(e=str(e)))
+        raise typer.Exit(1)
     if not node:
         error(tr_multi("Nodo ne trovita: {u}", "Node not found: {u}", "Nœud non trouvé : {u}").format(u=uuid))
         raise typer.Exit(1)
@@ -130,33 +135,49 @@ def aldoni(
     _ensure_predicate(pred_svc, "owl:inverseOf", "inverseOf")
 
     for t in (tipo or []):
-        target = node_svc.resolve_uuid_prefix(t)
-        if target:
-            arcs.append({
-                "subject": node_uuid, "predicate": "rdf:type",
-                "object": target["uuid"], "object_type": "uri",
-            })
+        try:
+            target = node_svc.resolve_uuid_prefix(t)
+            if target:
+                arcs.append({
+                    "subject": node_uuid, "predicate": "rdf:type",
+                    "object": target["uuid"], "object_type": "uri",
+                })
+        except AmbiguousUUIDError as e:
+            error(tr_multi("Ambigua tipo-prefikso: {e}", "Ambiguous type prefix: {e}", "Préfixe type ambigu : {e}").format(e=str(e)))
+            raise typer.Exit(1)
     for s in (superklaso or []):
-        target = node_svc.resolve_uuid_prefix(s)
-        if target:
-            arcs.append({
-                "subject": node_uuid, "predicate": "rdfs:subClassOf",
-                "object": target["uuid"], "object_type": "uri",
-            })
+        try:
+            target = node_svc.resolve_uuid_prefix(s)
+            if target:
+                arcs.append({
+                    "subject": node_uuid, "predicate": "rdfs:subClassOf",
+                    "object": target["uuid"], "object_type": "uri",
+                })
+        except AmbiguousUUIDError as e:
+            error(tr_multi("Ambigua superklaso-prefikso: {e}", "Ambiguous superclass prefix: {e}", "Préfixe superclasse ambigu : {e}").format(e=str(e)))
+            raise typer.Exit(1)
     for n in (ne or []):
-        target = node_svc.resolve_uuid_prefix(n)
-        if target:
-            arcs.append({
-                "subject": node_uuid, "predicate": "owl:disjointWith",
-                "object": target["uuid"], "object_type": "uri",
-            })
+        try:
+            target = node_svc.resolve_uuid_prefix(n)
+            if target:
+                arcs.append({
+                    "subject": node_uuid, "predicate": "owl:disjointWith",
+                    "object": target["uuid"], "object_type": "uri",
+                })
+        except AmbiguousUUIDError as e:
+            error(tr_multi("Ambigua malakorda-prefikso: {e}", "Ambiguous disjoint prefix: {e}", "Préfixe disjoint ambigu : {e}").format(e=str(e)))
+            raise typer.Exit(1)
     for inv in (invers or []):
-        target = node_svc.resolve_uuid_prefix(inv)
-        if target:
-            arcs.append({
-                "subject": node_uuid, "predicate": "owl:inverseOf",
-                "object": target["uuid"], "object_type": "uri",
-            })
+        try:
+            target = node_svc.resolve_uuid_prefix(inv)
+            if target:
+                arcs.append({
+                    "subject": node_uuid, "predicate": "owl:inverseOf",
+                    "object": target["uuid"], "object_type": "uri",
+                })
+        except AmbiguousUUIDError as e:
+            error(tr_multi("Ambigua inversa-prefikso: {e}", "Ambiguous inverse prefix: {e}", "Préfixe inverse ambigu : {e}").format(e=str(e)))
+            raise typer.Exit(1)
 
     # Show preview and confirm
     if arcs:
@@ -208,7 +229,11 @@ def modifi(
 ) -> None:
     """Modifi nodon."""
     node_svc = get_node_service()
-    node = node_svc.resolve_uuid_prefix(uuid)
+    try:
+        node = node_svc.resolve_uuid_prefix(uuid)
+    except AmbiguousUUIDError as e:
+        error(tr_multi("Ambigua prefikso: {e}", "Ambiguous prefix: {e}", "Préfixe ambigu : {e}").format(e=str(e)))
+        raise typer.Exit(1)
     if not node:
         error(tr_multi("Nodo ne trovita: {u}", "Node not found: {u}", "Nœud non trouvé : {u}").format(u=uuid))
         raise typer.Exit(1)
@@ -258,7 +283,11 @@ def forigi(
 ) -> None:
     """Forigi nodon."""
     node_svc = get_node_service()
-    node = node_svc.resolve_uuid_prefix(uuid)
+    try:
+        node = node_svc.resolve_uuid_prefix(uuid)
+    except AmbiguousUUIDError as e:
+        error(tr_multi("Ambigua prefikso: {e}", "Ambiguous prefix: {e}", "Préfixe ambigu : {e}").format(e=str(e)))
+        raise typer.Exit(1)
     if not node:
         error(tr_multi("Nodo ne trovita: {u}", "Node not found: {u}", "Nœud non trouvé : {u}").format(u=uuid))
         raise typer.Exit(1)
@@ -315,7 +344,11 @@ def serci(
 
 
 def _ensure_predicate(pred_svc, predicate_id: str, label_eo: str) -> None:
-    """Ensure a predicate exists, creating it if needed."""
+    """Ensure a predicate exists, creating it if needed.
+    
+    Safe for concurrent operations: only ignores duplicate key errors,
+    not other errors.
+    """
     existing = pred_svc.get_by_predicate_id(predicate_id)
     if existing:
         return
@@ -325,5 +358,8 @@ def _ensure_predicate(pred_svc, predicate_id: str, label_eo: str) -> None:
             "label_eo": label_eo,
             "source": "rdf",
         })
-    except ValueError:
-        pass  # Race: already created by another command
+    except ValueError as e:
+        # Only ignore duplicate key errors (race condition from concurrent create)
+        if "UNIQUE constraint failed" not in str(e) and "already exists" not in str(e):
+            # Re-raise other errors (validation, FK, etc.)
+            raise

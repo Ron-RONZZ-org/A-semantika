@@ -14,6 +14,11 @@ from A.data.search import FTSConfig
 from A_semantika.data.storage import now
 
 
+class AmbiguousUUIDError(ValueError):
+     """Raised when a UUID prefix matches multiple nodes."""
+     pass
+
+
 def _fts_config() -> FTSConfig:
     """FTS config for nodes: search across label and definition text."""
     return FTSConfig(
@@ -197,31 +202,31 @@ class NodeService(CRUDService):
     # ── UUID prefix resolution ──────────────────────────────────────────
 
     def resolve_uuid_prefix(self, prefix: str) -> dict | None:
-        """Resolve a UUID prefix to a full node.
+         """Resolve a UUID prefix to a full node.
 
-        Returns the node dict if exactly one match, None if no match.
-        Raises ValueError if prefix is ambiguous (multiple matches).
-        """
-        if not prefix:
-            return None
+         Returns the node dict if exactly one match, None if no match.
+         Raises AmbiguousUUIDError if prefix is ambiguous (multiple matches).
+         """
+         if not prefix:
+             return None
 
-        # If prefix looks like a full UUID (36 chars with dashes), try exact match
-        if len(prefix) == 36 and prefix.count("-") == 4:
-            node = self.db.execute_one("SELECT * FROM nodes WHERE uuid = ?", (prefix,))
-            if node:
-                return node
+         # If prefix looks like a full UUID (36 chars with dashes), try exact match
+         if len(prefix) == 36 and prefix.count("-") == 4:
+             node = self.db.execute_one("SELECT * FROM nodes WHERE uuid = ?", (prefix,))
+             if node:
+                 return node
 
-        # Prefix search via LIKE
-        matches = self.db.execute(
-            "SELECT * FROM nodes WHERE uuid LIKE ?",
-            (f"{prefix}%",),
-        )
-        if not matches:
-            return None
-        if len(matches) > 1:
-            msg = f"UUID prefix '{prefix}' is ambiguous ({len(matches)} matches)"
-            raise ValueError(msg)
-        return matches[0]
+         # Prefix search via LIKE
+         matches = self.db.execute(
+             "SELECT * FROM nodes WHERE uuid LIKE ?",
+             (f"{prefix}%",),
+         )
+         if not matches:
+             return None
+         if len(matches) > 1:
+             msg = f"UUID prefix '{prefix}' is ambiguous ({len(matches)} matches)"
+             raise AmbiguousUUIDError(msg)
+         return matches[0]
 
     def get_display_label(self, uuid_or_prefix: str) -> tuple[str, str]:
         """Get (display_label, language_code) for a node.

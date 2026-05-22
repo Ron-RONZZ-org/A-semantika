@@ -9,6 +9,7 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi
+from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import (
     confirm_triple,
     resolve_node_label,
@@ -109,7 +110,11 @@ def aldoni(
     triple_svc = get_triple_service()
 
     # Resolve subject UUID
-    subj_node = node_svc.resolve_uuid_prefix(subject)
+    try:
+        subj_node = node_svc.resolve_uuid_prefix(subject)
+    except AmbiguousUUIDError as e:
+        error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
+        raise typer.Exit(1) from e
     if not subj_node:
         error(tr_multi("Subjekto ne trovita: {s}", "Subject not found: {s}", "Sujet non trouvé : {s}").format(s=subject))
         raise typer.Exit(1)
@@ -118,7 +123,11 @@ def aldoni(
     # Resolve object UUID if URI type
     object_uuid = object
     if object_type == "uri":
-        obj_node = node_svc.resolve_uuid_prefix(object)
+        try:
+            obj_node = node_svc.resolve_uuid_prefix(object)
+        except AmbiguousUUIDError as e:
+            error(tr_multi("Ambigua objekto-prefikso: {e}", "Ambiguous object prefix: {e}", "Préfixe objet ambigu : {e}").format(e=str(e)))
+            raise typer.Exit(1) from e
         if not obj_node:
             error(tr_multi("Objekto ne trovita: {o}", "Object not found: {o}", "Objet non trouvé : {o}").format(o=object))
             raise typer.Exit(1)
@@ -133,6 +142,11 @@ def aldoni(
     ):
         info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
         raise typer.Exit(0)
+
+    # Validate predicate exists
+    if not pred_svc.get_by_predicate_id(predicate):
+        error(tr_multi("Predikato ne trovita: {p}", "Predicate not found: {p}", "Prédicat non trouvé : {p}").format(p=predicate))
+        raise typer.Exit(1)
 
     try:
         result = triple_svc.add(
@@ -174,14 +188,22 @@ def modifi(
     triple_svc = get_triple_service()
 
     # Resolve current triple
-    subj_node = node_svc.resolve_uuid_prefix(subject)
+    try:
+        subj_node = node_svc.resolve_uuid_prefix(subject)
+    except AmbiguousUUIDError as e:
+        error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
+        raise typer.Exit(1) from e
     if not subj_node:
         error(tr_multi("Subjekto ne trovita: {s}", "Subject not found: {s}", "Sujet non trouvé : {s}").format(s=subject))
         raise typer.Exit(1)
     subject_uuid = subj_node["uuid"]
 
     # Current object is always URI for modifi (compound PK requirement)
-    obj_node = node_svc.resolve_uuid_prefix(object)
+    try:
+        obj_node = node_svc.resolve_uuid_prefix(object)
+    except AmbiguousUUIDError as e:
+        error(tr_multi("Ambigua objekto-prefikso: {e}", "Ambiguous object prefix: {e}", "Préfixe objet ambigu : {e}").format(e=str(e)))
+        raise typer.Exit(1) from e
     if not obj_node:
         error(tr_multi("Objekto ne trovita: {o}", "Object not found: {o}", "Objet non trouvé : {o}").format(o=object))
         raise typer.Exit(1)
@@ -198,13 +220,21 @@ def modifi(
     new_obj = new_object_val or object
 
     # Resolve new values
-    new_subj_node = node_svc.resolve_uuid_prefix(new_subj)
+    try:
+        new_subj_node = node_svc.resolve_uuid_prefix(new_subj)
+    except AmbiguousUUIDError as e:
+        error(tr_multi("Ambigua nova subjekto-prefikso: {e}", "Ambiguous new subject prefix: {e}", "Préfixe nouveau sujet ambigu : {e}").format(e=str(e)))
+        raise typer.Exit(1) from e
     if not new_subj_node:
         error(tr_multi("Nova subjekto ne trovita: {s}", "New subject not found: {s}", "Nouveau sujet non trouvé : {s}").format(s=new_subj))
         raise typer.Exit(1)
     new_subj_uuid = new_subj_node["uuid"]
 
-    new_obj_node = node_svc.resolve_uuid_prefix(new_obj)
+    try:
+        new_obj_node = node_svc.resolve_uuid_prefix(new_obj)
+    except AmbiguousUUIDError as e:
+        error(tr_multi("Ambigua nova objekto-prefikso: {e}", "Ambiguous new object prefix: {e}", "Préfixe nouvel objet ambigu : {e}").format(e=str(e)))
+        raise typer.Exit(1) from e
     if not new_obj_node:
         error(tr_multi("Nova objekto ne trovita: {o}", "New object not found: {o}", "Nouvel objet non trouvé : {o}").format(o=new_obj))
         raise typer.Exit(1)
@@ -285,12 +315,20 @@ def forigi(
     node_svc = get_node_service()
     triple_svc = get_triple_service()
 
-    subj_node = node_svc.resolve_uuid_prefix(subject)
+    try:
+        subj_node = node_svc.resolve_uuid_prefix(subject)
+    except AmbiguousUUIDError as e:
+        error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
+        raise typer.Exit(1) from e
     if not subj_node:
         error(tr_multi("Subjekto ne trovita: {s}", "Subject not found: {s}", "Sujet non trouvé : {s}").format(s=subject))
         raise typer.Exit(1)
 
-    obj_node = node_svc.resolve_uuid_prefix(object)
+    try:
+        obj_node = node_svc.resolve_uuid_prefix(object)
+    except AmbiguousUUIDError as e:
+        error(tr_multi("Ambigua objekto-prefikso: {e}", "Ambiguous object prefix: {e}", "Préfixe objet ambigu : {e}").format(e=str(e)))
+        raise typer.Exit(1) from e
     if not obj_node:
         error(tr_multi("Objekto ne trovita: {o}", "Object not found: {o}", "Objet non trouvé : {o}").format(o=object))
         raise typer.Exit(1)
@@ -402,7 +440,11 @@ def vidi(
     pred_svc = get_predicate_service()
     triple_svc = get_triple_service()
 
-    subj_node = node_svc.resolve_uuid_prefix(subject_uuid)
+    try:
+        subj_node = node_svc.resolve_uuid_prefix(subject_uuid)
+    except AmbiguousUUIDError as e:
+        error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
+        raise typer.Exit(1) from e
     if not subj_node:
         error(tr_multi("Nodo ne trovita: {s}", "Node not found: {s}", "Nœud non trouvé : {s}").format(s=subject_uuid))
         raise typer.Exit(1)

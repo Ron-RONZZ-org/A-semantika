@@ -8,12 +8,13 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import typer
 from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import tr_multi
 from A.utils.interactive import confirm_action
-from A_semantika._node_service import NodeService
+from A_semantika._node_service import AmbiguousUUIDError, NodeService
 from A_semantika._predicate_service import PredicateService
 
 
@@ -21,9 +22,14 @@ def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
     """Resolve a node UUID/prefix to a display label.
 
     Returns the label if found, the UUID prefix as fallback.
+
+    Raises:
+        AmbiguousUUIDError: If the prefix matches multiple nodes.
     """
     try:
         node = node_svc.resolve_uuid_prefix(uuid_or_prefix)
+    except AmbiguousUUIDError:
+        raise
     except ValueError:
         return uuid_or_prefix[:8]
     if not node:
@@ -71,6 +77,8 @@ def build_triple_preview_table(
     Returns:
         Tuple of (Table, footnote_string).
     """
+    from A import error
+    
     table = Table(
         show_header=True,
         box=BOX_SIMPLE,
@@ -80,15 +88,27 @@ def build_triple_preview_table(
     table.add_column(tr_multi("Predikato", "Predicate", "Predicat"), no_wrap=True)
     table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=True)
 
-    subj_label = resolve_node_label(node_svc, subject_uuid)
+    try:
+        subj_label = resolve_node_label(node_svc, subject_uuid)
+    except AmbiguousUUIDError as e:
+        error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
+        raise typer.Exit(1) from e
     pred_label = resolve_predicate_label(pred_svc, predicate_id)
 
     if object_type == "uri":
-        obj_label = resolve_node_label(node_svc, object_value)
+        try:
+            obj_label = resolve_node_label(node_svc, object_value)
+        except AmbiguousUUIDError as e:
+            error(tr_multi("Ambigua objekto-prefikso: {e}", "Ambiguous object prefix: {e}", "Préfixe objet ambigu : {e}").format(e=str(e)))
+            raise typer.Exit(1) from e
         # Labels row
         table.add_row(subj_label, pred_label, obj_label)
         # Raw IDs row
-        n = node_svc.resolve_uuid_prefix(subject_uuid)
+        try:
+            n = node_svc.resolve_uuid_prefix(subject_uuid)
+        except AmbiguousUUIDError as e:
+            error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
+            raise typer.Exit(1) from e
         subj_id = n["uuid"][:8] if n else subject_uuid[:8]
         lang_hint = ""
         lang_code = ""
@@ -105,14 +125,22 @@ def build_triple_preview_table(
                 pass
         p = pred_svc.get_by_predicate_id(predicate_id)
         pred_id_display = p["predicate_id"] if p else predicate_id
-        obj_node = node_svc.resolve_uuid_prefix(object_value)
+        try:
+            obj_node = node_svc.resolve_uuid_prefix(object_value)
+        except AmbiguousUUIDError as e:
+            error(tr_multi("Ambigua objekto-prefikso: {e}", "Ambiguous object prefix: {e}", "Préfixe objet ambigu : {e}").format(e=str(e)))
+            raise typer.Exit(1) from e
         obj_id = obj_node["uuid"][:8] if obj_node else object_value[:8]
         table.add_row(f"{subj_id}{lang_hint}", pred_id_display, obj_id)
         footnote = tr_multi("→ URI", "→ URI", "→ URI")
     elif object_type == "literal" and object_datatype:
         # Typed literal
         table.add_row(subj_label, pred_label, "")
-        n = node_svc.resolve_uuid_prefix(subject_uuid)
+        try:
+            n = node_svc.resolve_uuid_prefix(subject_uuid)
+        except AmbiguousUUIDError as e:
+            error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
+            raise typer.Exit(1) from e
         subj_id = n["uuid"][:8] if n else subject_uuid[:8]
         p = pred_svc.get_by_predicate_id(predicate_id)
         pred_id_display = p["predicate_id"] if p else predicate_id
@@ -121,15 +149,27 @@ def build_triple_preview_table(
         dtype = object_datatype.split(":")[-1] if ":" in object_datatype else object_datatype
         parts = [f"→ {dtype}"]
         if object_unit:
-            unit_label = resolve_node_label(node_svc, object_unit)
-            unit_node = node_svc.resolve_uuid_prefix(object_unit)
+            try:
+                unit_label = resolve_node_label(node_svc, object_unit)
+            except AmbiguousUUIDError as e:
+                error(tr_multi("Ambigua unuo-prefikso: {e}", "Ambiguous unit prefix: {e}", "Préfixe unité ambigu : {e}").format(e=str(e)))
+                raise typer.Exit(1) from e
+            try:
+                unit_node = node_svc.resolve_uuid_prefix(object_unit)
+            except AmbiguousUUIDError as e:
+                error(tr_multi("Ambigua unuo-prefikso: {e}", "Ambiguous unit prefix: {e}", "Préfixe unité ambigu : {e}").format(e=str(e)))
+                raise typer.Exit(1) from e
             unit_id = unit_node["uuid"][:8] if unit_node else object_unit[:8]
             parts.append(f"unit: {unit_label} ({unit_id})")
         footnote = ", ".join(parts)
     else:
         # String literal
         table.add_row(subj_label, pred_label, "")
-        n = node_svc.resolve_uuid_prefix(subject_uuid)
+        try:
+            n = node_svc.resolve_uuid_prefix(subject_uuid)
+        except AmbiguousUUIDError as e:
+            error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
+            raise typer.Exit(1) from e
         subj_id = n["uuid"][:8] if n else subject_uuid[:8]
         p = pred_svc.get_by_predicate_id(predicate_id)
         pred_id_display = p["predicate_id"] if p else predicate_id
