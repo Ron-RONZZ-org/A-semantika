@@ -30,18 +30,30 @@ All source code must import from `A`, never duplicate utilities.
 
 ```
 src/A_semantika/
-├── __init__.py        # exports: app
-├── cli.py             # Typer app with 4 subcommand groups
-├── service.py         # NodeService, PredicateService, PredicateGroupService, TripleService
+├── __init__.py            # exports: app
+├── cli.py                 # Typer app with 4 subcommand groups
+├── service.py             # NodeService, PredicateService, PredicateGroupService, TripleService
+├── _wikidata_helper.py    # Wikidata API adapter (validation, search, metadata fetch)
+├── _cli_nodo.py           # Nodo subcommand CLI
+├── _cli_predikato.py      # Predikato subcommand CLI (+ Wikidata flags)
+├── _cli_predikat_grupo.py # Predikat-grupo subcommand CLI
+├── _cli_triples.py        # Root triple command CLI
+├── _node_service.py       # NodeService (CRUDService + FTS5)
+├── _predicate_service.py  # PredicateService (CRUDService + LIKE search)
+├── _predicate_group_service.py  # PredicateGroupService (CRUDService + member mgmt)
+├── _triple_service.py     # TripleService (custom, non-CRUDService)
+├── _preview.py            # Rich table preview helpers
 └── data/
-    └── storage.py     # Schema DDL, get_db(), init_db(), get_service() singletons
+    └── storage.py         # Schema DDL, get_db(), init_db(), get_service() singletons
 tests/
-├── conftest.py        # autouse isolation fixture
+├── conftest.py               # autouse isolation fixture
+├── test_cli.py               # CLI integration (includes Wikidata tests)
 ├── test_nodes.py
 ├── test_predicates.py
 ├── test_predicate_groups.py
 ├── test_triples.py
-└── test_cli.py
+├── test_storage.py
+└── test_wikidata_helper.py   # Wikidata helper unit tests
 ```
 
 ## Final DB Schema
@@ -207,11 +219,11 @@ A semantika predikat-grupo importi <file>
 
 ## Phasing
 
-| Phase | Scope | Deps |
-|-------|-------|------|
-| **P1** | Core triple store (schema, services, CLI, Turtle export, tests) | A-core (stdlib) |
-| **P2** | Wikidata integration (`predikato serci` + `predikato aldoni`) | `A.core.wikidata` extraction |
-| **P3** | OWL/RDFS import (RDFS hierarchy + basic OWL) | None |
+| Phase | Scope | Deps | Status |
+|-------|-------|------|--------|
+| **P1** | Core triple store (schema, services, CLI, Turtle export, tests) | A-core (stdlib) | ✅ Complete |
+| **P2** | Wikidata integration (`predikato serci` + `predikato aldoni`) | `A.core.wikidata` extraction | ✅ Complete |
+| **P3** | OWL/RDFS import (RDFS hierarchy + basic OWL) | None | ⏳ Planned |
 
 ## Code Standards
 
@@ -238,10 +250,6 @@ All tests must have `autouse=True` fixture in `conftest.py` that:
 - resets the `get_db()` singleton
 - uses `typer.testing.CliRunner` for CLI tests
 
-## Branch Convention
-
-Use `main` as the primary branch. All development on `main`.
-
 ## Package Manager
 
 Use `uv` for development. See A-core AGENTS.md for details.
@@ -251,3 +259,7 @@ Use `uv` for development. See A-core AGENTS.md for details.
 - Issue: https://github.com/Ron-RONZZ-org/A-workspace/issues/8
 - Final CLI spec: https://github.com/Ron-RONZZ-org/A-workspace/issues/8#issuecomment-4521473446
 - Schema evaluation: https://github.com/Ron-RONZZ-org/A-workspace/issues/8#issuecomment-4520977949
+- P2 Wikidata integration: https://github.com/Ron-RONZZ-org/A-semantika/issues/2
+- A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
+- A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
+- A-core timeout parameter: https://github.com/Ron-RONZZ-org/A-core/issues/83
