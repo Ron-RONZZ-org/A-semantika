@@ -1,6 +1,73 @@
-"""A-semantika service layer."""
+"""A-semantika service layer — import hub with singleton accessors.
+
+All service singletons are lazily initialized on first access.
+"""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 
-# P1: Implement NodeService, PredicateService, PredicateGroupService (CRUDService subclasses)
-#      and TripleService (custom, compound PK-aware)
+if TYPE_CHECKING:
+    from A_semantika._node_service import NodeService
+    from A_semantika._predicate_group_service import PredicateGroupService
+    from A_semantika._predicate_service import PredicateService
+    from A_semantika._triple_service import TripleService
+
+
+# Singleton holders
+_node_service: NodeService | None = None
+_predicate_service: PredicateService | None = None
+_predicate_group_service: PredicateGroupService | None = None
+_triple_service: TripleService | None = None
+
+
+def get_node_service() -> "NodeService":
+    """Return the singleton NodeService."""
+    global _node_service
+    if _node_service is None:
+        from A_semantika._node_service import NodeService
+        from A_semantika.data.storage import get_db
+
+        _node_service = NodeService(get_db())
+    return _node_service
+
+
+def get_predicate_service() -> "PredicateService":
+    """Return the singleton PredicateService."""
+    global _predicate_service
+    if _predicate_service is None:
+        from A_semantika._predicate_service import PredicateService
+        from A_semantika.data.storage import get_db
+
+        _predicate_service = PredicateService(get_db())
+    return _predicate_service
+
+
+def get_predicate_group_service() -> "PredicateGroupService":
+    """Return the singleton PredicateGroupService."""
+    global _predicate_group_service
+    if _predicate_group_service is None:
+        from A_semantika._predicate_group_service import PredicateGroupService
+        from A_semantika.data.storage import get_db
+
+        _predicate_group_service = PredicateGroupService(get_db())
+    return _predicate_group_service
+
+
+def get_triple_service() -> "TripleService":
+    """Return the singleton TripleService."""
+    global _triple_service
+    if _triple_service is None:
+        from A_semantika._triple_service import TripleService
+        from A_semantika.data.storage import get_db
+
+        _triple_service = TripleService(get_db())
+    return _triple_service
+
+
+def reset_services() -> None:
+    """Reset all service singletons (used in tests)."""
+    global _node_service, _predicate_service, _predicate_group_service, _triple_service
+    _node_service = None
+    _predicate_service = None
+    _predicate_group_service = None
+    _triple_service = None

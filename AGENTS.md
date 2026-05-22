@@ -60,7 +60,7 @@ CREATE TABLE nodes (
 
 -- Predicates: semantic properties (rdf:type, wdt:P1082, custom, etc.)
 CREATE TABLE predicates (
-    row_uuid      TEXT PRIMARY KEY,
+    uuid          TEXT PRIMARY KEY,
     predicate_id  TEXT NOT NULL UNIQUE,
     source        TEXT NOT NULL DEFAULT 'manual',  -- 'wikidata'|'manual'|'owl'|'rdfs'
     label_en      TEXT DEFAULT '',

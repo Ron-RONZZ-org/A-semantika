@@ -12,6 +12,7 @@ authors = [{name = "Rong ZHOU", email = "rong.zhou6@etu.univ-lorraine.fr"}]
 requires-python = ">=3.11"
 dependencies = [
     "A-core>=0.1.0",
+    "typer>=0.12",
 ]
 
 [project.optional-dependencies]
@@ -28,26 +29,6 @@ packages = ["src/A_semantika"]
 
 [tool.uv.sources]
 a-core = { path = "../A-core", editable = true }
-
-[tool.poetry]
-name = "A-semantika"
-version = "0.1.0"
-description = "Semantic triple store for fragmented, machine-inferencable knowledge note-taking"
-authors = ["Rong ZHOU <rong.zhou6@etu.univ-lorraine.fr>"]
-readme = "README.md"
-license = "GPL-3.0-only"
-packages = [{ include = "A_semantika", from = "src" }]
-
-[tool.poetry.dependencies]
-python = ">=3.11,<4.0"
-A-core = { path = "../A-core" }
-
-[tool.poetry.plugins."A.commands"]
-semantika = "A_semantika.cli:app"
-
-[tool.poetry.group.dev.dependencies]
-pytest = ">=8"
-typer = { version = ">=0.12", python = "<4.0" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
