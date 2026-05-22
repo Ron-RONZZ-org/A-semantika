@@ -8,8 +8,14 @@ import typer
 from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
-from A import error, info, tr_multi
+from A import error, info, tr_multi, warning as awarning
 from A_semantika.service import get_predicate_service
+from A_semantika._wikidata_helper import (
+    is_wikidata_id,
+    normalize_predicate_id,
+    search_wikidata,
+    fetch_wikidata_details,
+)
 
 predikato_app = typer.Typer(
     name="predikato",
@@ -81,6 +87,11 @@ def aldoni(
     """Aldoni novan predikaton."""
     pred_svc = get_predicate_service()
 
+    # Auto-detect and normalize Wikidata IDs
+    is_wd = is_wikidata_id(predicate_id)
+    if is_wd:
+        predicate_id = normalize_predicate_id(predicate_id)
+
     existing = pred_svc.get_by_predicate_id(predicate_id)
     if existing:
         error(tr_multi("Predikato jam ekzistas: {p}", "Predicate already exists: {p}", "Prédicat existe déjà : {p}").format(p=predicate_id))
@@ -98,13 +109,40 @@ def aldoni(
                 elif lang == "en" and not en_label:
                     en_label = text
 
-    data = {
-        "predicate_id": predicate_id,
-        "label_eo": eo_label,
-        "label_en": en_label,
-        "priskribo": priskribo or "",
-        "source": fonto,
-    }
+    # Auto-fetch Wikidata details for Wikidata property IDs
+    wd_details: dict | None = None
+    if is_wd:
+        wd_details = fetch_wikidata_details(predicate_id)
+
+    # Build data: auto-fetched values as base, user flags override
+    data: dict = {}
+    if wd_details:
+        data = dict(wd_details)
+        # User-provided flags override auto-fetched values
+        if eo_label:
+            data["label_eo"] = eo_label
+        if en_label:
+            data["label_en"] = en_label
+        if priskribo is not None:
+            data["priskribo"] = priskribo
+        # Force source=wikidata for Wikidata IDs
+        data["source"] = "wikidata"
+    else:
+        # For Wikidata IDs, force source=wikidata even on network failure
+        effective_source = "wikidata" if is_wd else fonto
+        data = {
+            "predicate_id": predicate_id,
+            "label_eo": eo_label,
+            "label_en": en_label,
+            "priskribo": priskribo or "",
+            "source": effective_source,
+        }
+        if is_wd and wd_details is None:
+            awarning(tr_multi(
+                "Ne povis aŭtomate preni etikedojn de Vikidatumoj. Kreante mane.",
+                "Could not auto-fetch labels from Wikidata. Creating manually.",
+                "Impossible de récupérer les étiquettes depuis Wikidata. Création manuelle.",
+            ))
 
     if not yes:
         from A.utils.interactive import confirm_action
@@ -214,22 +252,58 @@ def forigi(
 @predikato_app.command("serci")
 def serci(
     query: str = typer.Argument(..., help=tr_multi("Serĉa teksto", "Search text", "Texte de recherche")),
+    wikidata: bool = typer.Option(False, "--wikidata", "-w", help=tr_multi("Ankaŭ serĉi en Vikidatumoj", "Also search Wikidata", "Chercher aussi dans Wikidata")),
     limit: int = typer.Option(50, "--limit", "-l", help=tr_multi("Maksimume rezultoj", "Max results", "Résultats max")),
 ) -> None:
     """Serĉi predikatojn per teksto."""
     pred_svc = get_predicate_service()
     results = pred_svc.search(query, limit=limit)
 
-    if not results:
-        info(tr_multi("Neniuj predikatoj trovitaj.", "No predicates found.", "Aucun prédicat trouvé."))
+    # Merge Wikidata results if requested
+    wikidata_results: list[dict] = []
+    if wikidata:
+        raw_wd = search_wikidata(query)
+        # Deduplicate by predicate_id (Wikidata wins if both match -- it
+        # provides labels that the local entry may be missing)
+        local_ids = {r["predicate_id"] for r in results}
+        for wd in raw_wd:
+            if wd["predicate_id"] not in local_ids:
+                wikidata_results.append(wd)
+                if len(wikidata_results) >= limit:
+                    break
+
+    # Show hint when local search is empty and --wikidata was not used
+    if not results and not wikidata:
+        info(tr_multi(
+            "Neniuj lokaj rezultoj. Provu: predikato serci -w <query>",
+            "No local results. Try: predikato serci -w <query>",
+            "Aucun résultat local. Essayez : predikato serci -w <query>",
+        ))
+        return
+    if not results and not wikidata_results:
+        info(tr_multi("Neniuj rezultoj.", "No results.", "Aucun résultat."))
         return
 
     table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
     table.add_column(tr_multi("ID", "ID", "ID"), no_wrap=True)
-    table.add_column("label_eo", no_wrap=True)
-    table.add_column("label_en", no_wrap=True)
+    table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
+
+    has_wikidata = bool(wikidata_results)
+    if has_wikidata:
+        table.add_column(tr_multi("Fonto", "Source", "Source"))
 
     for p in results:
-        table.add_row(p["predicate_id"], p.get("label_eo", ""), p.get("label_en", ""))
+        label = p.get("label_eo") or p.get("label_en") or ""
+        row: list[str] = [p["predicate_id"], label]
+        if has_wikidata:
+            row.append(tr_multi("loka", "local", "local"))
+        table.add_row(*row)
+
+    for wd in wikidata_results:
+        table.add_row(
+            wd["predicate_id"],
+            wd.get("label", ""),
+            tr_multi("vikidatumoj", "Wikidata", "Wikidata"),
+        )
 
     info(table)
