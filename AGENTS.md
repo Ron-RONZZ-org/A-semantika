@@ -225,6 +225,35 @@ A semantika predikat-grupo importi <file>
 | **P2** | Wikidata integration (`predikato serci` + `predikato aldoni`) | `A.core.wikidata` extraction | ✅ Complete |
 | **P3** | OWL/RDFS import (RDFS hierarchy + basic OWL) | None | ⏳ Planned |
 
+## Critical Bugs Fixed (May 2026)
+
+### Issue #5: Turtle Export Syntax Error
+**Fixed**: Invalid Turtle syntax (incorrect semicolon/period placement) in `_triple_service.py:export_turtle()`
+- Now properly groups triples by subject
+- Replaces trailing `;` with ` .` only on last predicate per subject
+- Exports valid Turtle parseable by standard RDF parsers
+
+### Issue #6: Missing Predicate Validation
+**Fixed**: `_cli_triples.py:aldoni()` now validates predicate exists before triple creation
+- Was producing cryptic FK constraint errors
+- Now returns user-friendly "Predicate not found" message
+- Added explicit check: `pred_svc.get_by_predicate_id(predicate)` before `triple_svc.create()`
+
+### Issue #7: Race Condition in Predicate Creation
+**Fixed**: `_cli_nodo.py:_ensure_predicate()` now properly handles concurrent operations
+- Was silently ignoring ALL errors with bare `pass`
+- Now only catches UNIQUE constraint violations
+- Re-raises validation/FK/other errors to surface real problems
+- Thread-safe predicate creation via typed shortcuts (--tipo, --superklaso, etc.)
+
+### Issue #8: Ambiguous UUID Prefix Handling
+**Fixed**: All CLI commands now properly report ambiguous UUID prefix matches
+- Created custom `AmbiguousUUIDError` exception in `_node_service.py`
+- Updated `resolve_uuid_prefix()` to raise it instead of generic `ValueError`
+- All callers (_cli_nodo.py, _cli_triples.py, _preview.py) wrapped in try-except
+- User-friendly error: "Ambigua {context}-prefikso: {prefix}"
+- Prevents silent failures and improves debugging
+
 ## Code Standards
 
 1. Use `tr_multi()` for all user-facing strings (eo, en, fr)
@@ -237,6 +266,8 @@ A semantika predikat-grupo importi <file>
 8. Import from `A` — never duplicate utilities
 9. `box=BOX_SIMPLE` on all Rich tables
 10. UUID primary keys on all tables (except triples — compound PK)
+11. **Error Handling**: Never use bare `except: pass` — always catch specific exceptions and re-raise if not expected
+12. **UUID Ambiguity**: Always catch `AmbiguousUUIDError` separately from generic "not found" errors; propagate to user with clear message
 
 ## Testing
 
@@ -256,10 +287,18 @@ Use `uv` for development. See A-core AGENTS.md for details.
 
 ## Reference
 
+### Feature/Planning Issues
 - Issue: https://github.com/Ron-RONZZ-org/A-workspace/issues/8
 - Final CLI spec: https://github.com/Ron-RONZZ-org/A-workspace/issues/8#issuecomment-4521473446
 - Schema evaluation: https://github.com/Ron-RONZZ-org/A-workspace/issues/8#issuecomment-4520977949
 - P2 Wikidata integration: https://github.com/Ron-RONZZ-org/A-semantika/issues/2
+
+### Critical Bugs Fixed (May 2026)
+- Issue #5: CRITICAL: Turtle export produces invalid syntax
+- Issue #6: CRITICAL: Missing predicate validation allows invalid triples
+- Issue #7: CRITICAL: Race condition in predicate creation during concurrent operations
+
+### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
 - A-core timeout parameter: https://github.com/Ron-RONZZ-org/A-core/issues/83
