@@ -356,6 +356,34 @@ Use `uv` for development. See A-core AGENTS.md for details.
   - S1-S4: LIKE COLLATE NOCASE, predicate validation before confirm, consistent DB patterns, `clear_members()` method
   - 40 new edge case tests in `test_edge_cases.py` (195 total)
 
+### Issue #15: Ungraceful Error Handling for UNIQUE Constraints (May 2026)
+
+**Fixed**: Raw `IntegrityError` tracebacks in `nodo aldoni` and `nodo forigi` are now caught and shown as user-friendly messages.
+
+| Before | After |
+|--------|-------|
+| `$ A semantika nodo aldoni SPACO` → raw traceback `IntegrityError: UNIQUE constraint failed: nodes.uuid` | `[✗] Nevalida UUID-formato...` (UUID validated before any DB write) |
+| `$ A semantika nodo aldoni <existing-uuid>` → raw traceback `IntegrityError` | `[✗] Node with UUID '...' already exists. Use 'A semantika nodo modifi ...' to modify it.` |
+| `$ A semantika nodo forigi <uuid>` (corrupted trash) → `Eraro forigante ...: UNIQUE constraint failed: nodes_rubujo.uuid` | `Nodo ... jam estas en la rubujo` (or handled by A-core C4) |
+
+**5 changes across 2 repos:**
+
+| Change | File | What |
+|--------|------|------|
+| **C1** | `_cli_nodo.py:aldoni()` | UUID format validation — rejects non-UUID strings via regex before any DB write |
+| **C2** | `_node_service.py:create()` | Catches `IntegrityError` on INSERT → raises `ValueError` with "already exists" guidance |
+| **C3** | `_cli_nodo.py:aldoni()` | Catches `ValueError` from service → shows `error()` + clean `typer.Exit(1)` |
+| **C4** | `A-core/service.py:_move_to_trash()` | `INSERT` → `INSERT OR REPLACE` — prevents trash-duplicate at source (separate A-core PR) |
+| **C5** | `_cli_nodo.py:forigi()` | Filters raw `"UNIQUE constraint failed"` → friendly "already in trash" message |
+
+**5 new tests** in `test_nodes.py` and `test_edge_cases.py` covering:
+- Invalid UUID format CLI rejection
+- Duplicate UUID with friendly error message
+- Auto-generated UUID still works
+- Double delete is safe
+
+**Upstream dependency:** A-core PR `fix/move-to-trash-insert-or-replace` (C4) — one-word change, fully backward compatible.
+
 ### Issue #13: Multi-Identifier `forigi` (May 2026)
 **Scope:** `nodo forigi`, `predikato forigi`, `predikat-grupo forigi` now accept multiple positional args.
 
