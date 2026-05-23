@@ -80,7 +80,7 @@ CREATE TABLE nodes (
 CREATE TABLE predicates (
     uuid          TEXT PRIMARY KEY,
     predicate_id  TEXT NOT NULL UNIQUE,
-    source        TEXT NOT NULL DEFAULT 'manual',  -- 'wikidata'|'manual'|'owl'|'rdfs'
+    source        TEXT NOT NULL DEFAULT 'manual',  -- 'wikidata' | 'manual' | 'owl' | 'rdfs' | 'rdf'
     etikedoj      TEXT NOT NULL DEFAULT '{}',  -- JSON: {"eo": "...", "en": "...", ...}
     priskriboj    TEXT NOT NULL DEFAULT '{}',  -- JSON: {"eo": "...", "en": "...", ...}
     aliases       TEXT NOT NULL DEFAULT '[]',
@@ -259,6 +259,8 @@ A semantika predikat-grupo importi <file>
 | **I8-R2** | Partial label search for `serci` (Issue #8) | `A_semantika._triple_search` | ✅ Complete |
 | **I8-R3** | Interactive search-then-select picker for `forigi`/`modifi` (Issue #8) | `A.utils.interactive.select_candidate` | ✅ Complete |
 | **I9** | Predicate JSON migration + UX cleanup (Issue #9) | JSON `etikedoj`/`priskriboj`, merge/replace `modifi` | ✅ Complete |
+
+| **I18** | Seed default RDF/OWL predicates at DB creation (Issue #18) | `DEFAULT_PREDICATES` in `data/storage.py` | ✅ Complete |
 
 ## Critical Bugs Fixed (May 2026)
 
