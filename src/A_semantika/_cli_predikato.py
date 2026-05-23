@@ -289,36 +289,86 @@ def modifi(
 
 @predikato_app.command("forigi")
 def forigi(
-    predicate_id: str = typer.Argument(..., help=tr_multi("Predikato ID", "Predicate ID", "ID du prédicat")),
-    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    predicate_ids: list[str] = typer.Argument(
+        ...,
+        help=tr_multi(
+            "Predikato ID-oj (pluraj)",
+            "Predicate IDs (multiple)",
+            "IDs des prédicats (plusieurs)",
+        ),
+    ),
+    yes: bool = typer.Option(
+        False, "-y", "--jes", "--yes",
+        help=tr_multi(
+            "Preterpasi konfirmon",
+            "Skip confirmation",
+            "Ignorer la confirmation",
+        ),
+    ),
 ) -> None:
-    """Forigi predikaton."""
+    """Forigi predikatojn."""
     pred_svc = get_predicate_service()
-    pred = pred_svc.get_by_predicate_id(predicate_id)
-    if not pred:
-        error(tr_multi("Predikato ne trovita: {p}", "Predicate not found: {p}", "Prédicat non trouvé : {p}").format(p=predicate_id))
+
+    # Phase 1: Resolve all identifiers
+    resolved: list[dict] = []
+    errors: list[tuple[str, str]] = []
+
+    for pid in predicate_ids:
+        pred = pred_svc.get_by_predicate_id(pid)
+        if pred:
+            resolved.append(pred)
+        else:
+            errors.append((pid, tr_multi("ne trovita", "not found", "non trouvé")))
+
+    # Report resolution errors
+    for input_val, reason in errors:
+        error(tr_multi(
+            "Forigi {i}: {r}", "Delete {i}: {r}", "Supprimer {i} : {r}",
+        ).format(i=input_val, r=reason))
+
+    if not resolved:
+        error(tr_multi("Nenio forigebla.", "Nothing to delete.", "Rien à supprimer."))
         raise typer.Exit(1)
 
+    # Phase 2: Batch preview and confirmation
     if not yes:
+        table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
+        table.add_column(tr_multi("Predikato ID", "Predicate ID", "ID prédicat"), no_wrap=True)
+        table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
+        for pred in resolved:
+            label = _get_predicate_label(pred)
+            table.add_row(pred["predicate_id"], label)
+        info(table)
+
         from A.utils.interactive import confirm_action
 
         if not confirm_action(
             tr_multi(
-                f"Ĉu forigi predikaton {predicate_id}?",
-                f"Delete predicate {predicate_id}?",
-                f"Supprimer le prédicat {predicate_id}?",
-            ),
+                "Ĉu forigi {n} predikatojn?", "Delete {n} predicates?", "Supprimer {n} prédicats?",
+            ).format(n=len(resolved)),
             default=False,
         ):
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
             raise typer.Exit(0)
 
-    try:
-        pred_svc.delete(pred["uuid"])
-        info(tr_multi("Predikato forigita: {p}", "Predicate deleted: {p}", "Prédicat supprimé : {p}").format(p=predicate_id))
-    except Exception as e:
-        error(tr_multi("Foriga eraro: {e}", "Delete error: {e}", "Erreur de suppression : {e}").format(e=str(e)))
-        raise typer.Exit(1) from e
+    # Phase 3: Delete each
+    deleted = 0
+    for pred in resolved:
+        try:
+            pred_svc.delete(pred["uuid"])
+            deleted += 1
+        except Exception as e:
+            error(tr_multi(
+                "Eraro forigante {p}: {e}",
+                "Error deleting {p}: {e}",
+                "Erreur lors de la suppression de {p} : {e}",
+            ).format(p=pred.get("predicate_id", pred["uuid"][:8]), e=str(e)))
+
+    info(tr_multi(
+        "Forigis {d} el {t} predikatojn.",
+        "Deleted {d} of {t} predicates.",
+        "Supprimé {d} sur {t} prédicats.",
+    ).format(d=deleted, t=len(resolved)))
 
 
 @predikato_app.command("serci")

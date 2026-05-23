@@ -280,41 +280,89 @@ def modifi(
 
 @nodo_app.command("forigi")
 def forigi(
-    uuid: str = typer.Argument(..., help=tr_multi("Nodo UUID-prefikso", "Node UUID prefix", "Préfixe UUID du nœud")),
-    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    uuids: list[str] = typer.Argument(
+        ...,
+        help=tr_multi(
+            "Nodo UUID-prefiksoj (pluraj)",
+            "Node UUID prefixes (multiple)",
+            "Préfixes UUID des nœuds (plusieurs)",
+        ),
+    ),
+    yes: bool = typer.Option(
+        False, "-y", "--jes", "--yes",
+        help=tr_multi(
+            "Preterpasi konfirmon",
+            "Skip confirmation",
+            "Ignorer la confirmation",
+        ),
+    ),
 ) -> None:
-    """Forigi nodon."""
+    """Forigi nodojn."""
     node_svc = get_node_service()
-    try:
-        node = node_svc.resolve_uuid_prefix(uuid)
-    except AmbiguousUUIDError as e:
-        error(tr_multi("Ambigua prefikso: {e}", "Ambiguous prefix: {e}", "Préfixe ambigu : {e}").format(e=str(e)))
-        raise typer.Exit(1)
-    if not node:
-        error(tr_multi("Nodo ne trovita: {u}", "Node not found: {u}", "Nœud non trouvé : {u}").format(u=uuid))
+
+    # Phase 1: Resolve all identifiers
+    resolved: list[dict] = []
+    errors: list[tuple[str, str]] = []
+
+    for uid in uuids:
+        try:
+            node = node_svc.resolve_uuid_prefix(uid)
+            if node:
+                resolved.append(node)
+            else:
+                errors.append((uid, tr_multi("ne trovita", "not found", "non trouvé")))
+        except AmbiguousUUIDError:
+            errors.append((uid, tr_multi("ambigua prefikso", "ambiguous prefix", "préfixe ambigu")))
+
+    # Report resolution errors
+    for input_val, reason in errors:
+        error(tr_multi(
+            "Forigi {i}: {r}", "Delete {i}: {r}", "Supprimer {i} : {r}",
+        ).format(i=input_val, r=reason))
+
+    if not resolved:
+        error(tr_multi("Nenio forigebla.", "Nothing to delete.", "Rien à supprimer."))
         raise typer.Exit(1)
 
+    # Phase 2: Batch preview and confirmation
     if not yes:
-        label = resolve_node_label(node_svc, node["uuid"])
+        table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
+        table.add_column("UUID", no_wrap=True)
+        table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
+        for node in resolved:
+            label = resolve_node_label(node_svc, node["uuid"])
+            table.add_row(node["uuid"][:8], label)
+        info(table)
+
         from A.utils.interactive import confirm_action
 
         if not confirm_action(
             tr_multi(
-                f"Ĉu forigi nodon {label} ({node['uuid'][:8]})?",
-                f"Delete node {label} ({node['uuid'][:8]})?",
-                f"Supprimer le nœud {label} ({node['uuid'][:8]})?",
-            ),
+                "Ĉu forigi {n} nodojn?", "Delete {n} nodes?", "Supprimer {n} nœuds?",
+            ).format(n=len(resolved)),
             default=False,
         ):
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
             raise typer.Exit(0)
 
-    try:
-        node_svc.delete(node["uuid"])
-        info(tr_multi("Nodo forigita.", "Node deleted.", "Nœud supprimé."))
-    except Exception as e:
-        error(tr_multi("Foriga eraro: {e}", "Delete error: {e}", "Erreur de suppression : {e}").format(e=str(e)))
-        raise typer.Exit(1) from e
+    # Phase 3: Delete each resolved node
+    deleted = 0
+    for node in resolved:
+        try:
+            node_svc.delete(node["uuid"])
+            deleted += 1
+        except Exception as e:
+            error(tr_multi(
+                "Eraro forigante {u}: {e}",
+                "Error deleting {u}: {e}",
+                "Erreur lors de la suppression de {u} : {e}",
+            ).format(u=node["uuid"][:8], e=str(e)))
+
+    info(tr_multi(
+        "Forigis {d} el {t} nodoj.",
+        "Deleted {d} of {t} nodes.",
+        "Supprimé {d} sur {t} nœuds.",
+    ).format(d=deleted, t=len(resolved)))
 
 
 @nodo_app.command("serci")

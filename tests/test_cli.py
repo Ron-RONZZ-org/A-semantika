@@ -252,7 +252,41 @@ def test_predikat_grupo_forigi(runner: CliRunner) -> None:
     runner.invoke(app, ["predikat-grupo", "aldoni", "forigota", "-y"])
     result = runner.invoke(app, ["predikat-grupo", "forigi", "forigota", "-y"])
     assert result.exit_code == 0
-    assert "forigita" in result.stdout
+    assert "Forigis" in result.stdout
+
+
+def test_nodo_forigi_multiple(runner: CliRunner) -> None:
+    """Deleting multiple nodes at once should work."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::MultA", "-y"])
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::MultB", "-y"])
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    uuids = []
+    for line in ls_result.stdout.strip().split("\n"):
+        parts = line.strip().split()
+        if len(parts) >= 2 and "Mult" in " ".join(parts[1:]):
+            uuids.append(parts[0])
+    if len(uuids) >= 2:
+        result = runner.invoke(app, ["nodo", "forigi", uuids[0], uuids[1], "-y"])
+        assert result.exit_code == 0
+        assert "Forigis 2 el 2" in result.stdout
+
+
+def test_predikato_forigi_multiple(runner: CliRunner) -> None:
+    """Deleting multiple predicates at once should work."""
+    runner.invoke(app, ["predikato", "aldoni", "wdt:P99", "-e", "eo::test99", "-y"])
+    runner.invoke(app, ["predikato", "aldoni", "wdt:P100", "-e", "eo::test100", "-y"])
+    result = runner.invoke(app, ["predikato", "forigi", "wdt:P99", "wdt:P100", "-y"])
+    assert result.exit_code == 0
+    assert "Forigis 2 el 2" in result.stdout
+
+
+def test_predikat_grupo_forigi_multiple(runner: CliRunner) -> None:
+    """Deleting multiple groups at once should work."""
+    runner.invoke(app, ["predikat-grupo", "aldoni", "group_a", "-y"])
+    runner.invoke(app, ["predikat-grupo", "aldoni", "group_b", "-y"])
+    result = runner.invoke(app, ["predikat-grupo", "forigi", "group_a", "group_b", "-y"])
+    assert result.exit_code == 0
+    assert "Forigis 2 el 2" in result.stdout
 
 
 # ── Wikidata integration tests (mocked) ──────────────────────────────────────

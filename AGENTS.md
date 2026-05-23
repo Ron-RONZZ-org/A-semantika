@@ -356,6 +356,28 @@ Use `uv` for development. See A-core AGENTS.md for details.
   - S1-S4: LIKE COLLATE NOCASE, predicate validation before confirm, consistent DB patterns, `clear_members()` method
   - 40 new edge case tests in `test_edge_cases.py` (195 total)
 
+### Issue #13: Multi-Identifier `forigi` (May 2026)
+**Scope:** `nodo forigi`, `predikato forigi`, `predikat-grupo forigi` now accept multiple positional args.
+
+**Pattern (per A-workspace `forigi` Contract):**
+1. Accept `list[str]` positional args
+2. Resolve each identifier independently — per-item errors don't block others
+3. Show batch preview table of all resolved items
+4. Single confirmation prompt: "Delete these N items?"
+5. Per-item delete with partial success reporting (`"Deleted X of Y items"`)
+6. 3-phase implementation: resolve → confirm → execute
+
+**Commands updated:**
+- `nodo forigi <uuids...>` — accepts multiple UUID prefixes
+- `predikato forigi <predicate_ids...>` — accepts multiple predicate IDs
+- `predikat-grupo forigi <group_names...>` — accepts multiple group names
+- Root triple `forigi` left as-is (SPO-based, different semantics)
+
+**Cross-module audit:**
+- A-agento `stilo forigi`: issue filed (#58)
+- A-organizi `todo forigi`: bug filed — accepts `list[str]` but resolves only first item (#24)
+- A-workspace AGENTS.md: `forigi` Contract expanded with normative section
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
