@@ -4,6 +4,7 @@ Groups are named collections of predicates. No undo/trash needed.
 """
 from __future__ import annotations
 
+import uuid as _uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -92,9 +93,7 @@ class PredicateGroupService(CRUDService):
             msg = f"Predicate '{predicate_id}' is already in group '{group_name}'"
             raise ValueError(msg)
 
-        import uuid
-
-        member_uuid = str(uuid.uuid4())
+        member_uuid = str(_uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         self.db.execute(
             "INSERT INTO predicate_group_members (uuid, group_uuid, predicate_id, kreita_je) "
@@ -128,6 +127,17 @@ class PredicateGroupService(CRUDService):
                 (group["uuid"], predicate_id),
             )
             return cursor.rowcount > 0
+
+    def clear_members(self, group_uuid: str) -> None:
+        """Delete all members of a group.
+
+        Args:
+            group_uuid: UUID of the group whose members to clear.
+        """
+        self.db.execute(
+            "DELETE FROM predicate_group_members WHERE group_uuid = ?",
+            (group_uuid,),
+        )
 
     def list_members(self, group_name: str) -> list[dict]:
         """List all predicates in a group.

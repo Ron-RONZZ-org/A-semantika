@@ -214,6 +214,8 @@ def modifi(
         raise typer.Exit(1)
     new_subj_uuid = new_subj_node["uuid"]
 
+    if new_obj is None:
+        new_obj = object or ""
     try:
         new_obj_node = node_svc.resolve_uuid_prefix(new_obj)
     except AmbiguousUUIDError as e:

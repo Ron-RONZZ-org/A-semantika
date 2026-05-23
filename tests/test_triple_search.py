@@ -8,9 +8,10 @@ import pytest
 @pytest.fixture(autouse=True)
 def _setup_nodes_and_predicates(node_svc, pred_svc) -> None:
     """Create test data: nodes + predicates."""
-    node_svc.create({"uuid": "s" + "0" * 35, "etikedoj": {"eo": "Hundo"}})
-    node_svc.create({"uuid": "c" + "0" * 35, "etikedoj": {"eo": "Kato"}})
-    node_svc.create({"uuid": "o" + "0" * 35, "etikedoj": {"eo": "Mamulo"}})
+    # Use hex-only UUIDs with distinct prefixes to resolve uniquely
+    node_svc.create({"uuid": "a1000000-0000-0000-0000-000000000001", "etikedoj": {"eo": "Hundo"}})
+    node_svc.create({"uuid": "a2000000-0000-0000-0000-000000000002", "etikedoj": {"eo": "Kato"}})
+    node_svc.create({"uuid": "a3000000-0000-0000-0000-000000000003", "etikedoj": {"eo": "Mamulo"}})
     pred_svc.create({"predicate_id": "rdf:type", "etikedoj": {"eo": "tipo", "en": "type"}})
     pred_svc.create({"predicate_id": "wdt:P1082", "etikedoj": {"eo": "logxantaro", "en": "population"}})
 
@@ -19,15 +20,15 @@ def _setup_nodes_and_predicates(node_svc, pred_svc) -> None:
 def _with_triples(triple_svc) -> None:
     """Add some triples for search testing."""
     triple_svc.add(
-        subject_uuid="s" + "0" * 35,
+        subject_uuid="a1000000-0000-0000-0000-000000000001",
         predicate_id="rdf:type",
-        object_value="o" + "0" * 35,
+        object_value="a3000000-0000-0000-0000-000000000003",
         object_type="uri",
     )
     triple_svc.add(
-        subject_uuid="c" + "0" * 35,
+        subject_uuid="a2000000-0000-0000-0000-000000000002",
         predicate_id="rdf:type",
-        object_value="o" + "0" * 35,
+        object_value="a3000000-0000-0000-0000-000000000003",
         object_type="uri",
     )
 
@@ -42,36 +43,28 @@ class TestResolveSubjects:
         """UUID prefix should resolve to the matching node."""
         from A_semantika._triple_search import resolve_subjects
 
-        uuids = resolve_subjects(node_svc, "s0000")
-        assert uuids == ["s" + "0" * 35]
+        uuids = resolve_subjects(node_svc, "a1000000-")
+        assert uuids == ["a1000000-0000-0000-0000-000000000001"]
 
     def test_ambiguous_uuid_prefix_returns_empty(self, node_svc) -> None:
         """Ambiguous UUID prefix should fall through to label search."""
         from A_semantika._triple_search import resolve_subjects
 
-        # Both s0000... and c0000... start with different chars, but let's
-        # use a prefix that matches both to test ambiguity handling
-        # Actually, with the heuristic: "s0000" ≤ 12 chars → try UUID first
-        # "s" prefix should match only s0000...
-        # Let's try with a prefix that has no match
-        uuids = resolve_subjects(node_svc, "xyz")
-        # xyz ≤ 12 chars → try UUID prefix first → no match → label search
-        # "xyz" has no FTS5 matches → []
+        # "a1" matches both a1000000-... and a2000000-... but is too short
+        # (2 chars, min 8). Falls straight to label search which also finds
+        # nothing → empty.
+        uuids = resolve_subjects(node_svc, "a1")
         assert uuids == []
 
     def test_label_search_fallback(self, node_svc) -> None:
         """Non-UUID text should fall back to FTS5 label search."""
         from A_semantika._triple_search import resolve_subjects
 
-        # "Hundo" is a label, > 12 chars check fails for "Hundo" (5 ≤ 12)
-        # but it's not alphanumeric-only with the regex... actually Hundo is.
-        # hmm, "Hundo" ≤ 12 and alphanumeric → heuristic says UUID prefix.
-        # UUID prefix lookup fails → falls to label search.
-        # The issue is that FTS5 needs enough content. Let me check if the
-        # label_text FTS has been indexed.
+        # "Hundo" is 5 chars — too short for UUID prefix (min 8) AND
+        # contains non-hex chars (H, u, n, d, o) — so goes straight to label search
         uuids = resolve_subjects(node_svc, "Hundo")
         assert len(uuids) >= 1
-        assert "s" + "0" * 35 in uuids
+        assert "a1000000-0000-0000-0000-000000000001" in uuids
 
     def test_no_match_returns_empty(self, node_svc) -> None:
         """No matching nodes should return empty list."""
@@ -138,8 +131,8 @@ class TestResolveObjects:
         """UUID prefix should resolve to node UUID."""
         from A_semantika._triple_search import resolve_objects
 
-        values = resolve_objects(node_svc, "o0000")
-        assert values == ["o" + "0" * 35]
+        values = resolve_objects(node_svc, "a3000000-")
+        assert values == ["a3000000-0000-0000-0000-000000000003"]
 
     def test_label_search_fallback(self, node_svc) -> None:
         """Non-UUID text should fall back to FTS5 label search."""
@@ -147,7 +140,7 @@ class TestResolveObjects:
 
         values = resolve_objects(node_svc, "Mamulo")
         assert len(values) >= 1
-        assert "o" + "0" * 35 in values
+        assert "a3000000-0000-0000-0000-000000000003" in values
 
     def test_no_match_returns_raw_text(self, node_svc) -> None:
         """No matches should return the raw text for literal matching."""
@@ -177,10 +170,10 @@ class TestSearchTriplesByLabels:
             triple_svc=triple_svc,
             node_svc=node_svc,
             pred_svc=pred_svc,
-            subject="s0000",
+            subject="a1000000-",
         )
         assert len(results) >= 1
-        assert all(r["subject_uuid"] == "s" + "0" * 35 for r in results)
+        assert all(r["subject_uuid"] == "a1000000-0000-0000-0000-000000000001" for r in results)
 
     def test_search_by_subject_label(self, node_svc, pred_svc, triple_svc, _with_triples) -> None:
         """Search by subject label should find triples."""
@@ -193,7 +186,7 @@ class TestSearchTriplesByLabels:
             subject="Hundo",
         )
         assert len(results) >= 1
-        assert all(r["subject_uuid"] == "s" + "0" * 35 for r in results)
+        assert all(r["subject_uuid"] == "a1000000-0000-0000-0000-000000000001" for r in results)
 
     def test_search_by_predicate_label(self, node_svc, pred_svc, triple_svc, _with_triples) -> None:
         """Search by predicate label should find triples."""
@@ -231,7 +224,7 @@ class TestSearchTriplesByLabels:
             predicate="rdf:type",
         )
         assert len(results) >= 1
-        assert all(r["subject_uuid"] == "c" + "0" * 35 for r in results)
+        assert all(r["subject_uuid"] == "a2000000-0000-0000-0000-000000000002" for r in results)
 
     def test_no_match_returns_empty(self, node_svc, pred_svc, triple_svc) -> None:
         """No matching triples should return empty list."""

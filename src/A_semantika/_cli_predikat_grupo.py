@@ -179,11 +179,8 @@ def forigi(
             raise typer.Exit(0)
 
     try:
-        # Delete members first
-        group_svc.db.execute(
-            "DELETE FROM predicate_group_members WHERE group_uuid = ?",
-            (group["uuid"],),
-        )
+        # Delete members first using service layer
+        group_svc.clear_members(group["uuid"])
         group_svc.delete(group["uuid"])
         info(tr_multi("Grupo forigita: {g}", "Group deleted: {g}", "Groupe supprimé : {g}").format(g=group_name))
     except Exception as e:

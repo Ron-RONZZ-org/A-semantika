@@ -319,9 +319,18 @@ class TripleService:
             if t["object_type"] == "uri":
                 obj = f":{t['object_value']}"
             elif t["object_datatype"]:
-                # Typed literal
+                # Typed literal — handle custom datatypes, not only xsd:
                 escaped_val = t["object_value"].replace("\\", "\\\\").replace('"', '\\"')
-                obj = f'"{escaped_val}"^^xsd:{t["object_datatype"].split(":")[-1]}'
+                dtype = t["object_datatype"]
+                if ":" in dtype:
+                    ns, _, local = dtype.partition(":")
+                    if ns == "xsd":
+                        obj = f'"{escaped_val}"^^xsd:{local}'
+                    else:
+                        # Custom datatype — emit full URI or prefixed form
+                        obj = f'"{escaped_val}"^^<{dtype}>'
+                else:
+                    obj = f'"{escaped_val}"^^<{dtype}>'
             elif t["object_lang"]:
                 escaped_val = t["object_value"].replace("\\", "\\\\").replace('"', '\\"')
                 obj = f'"{escaped_val}"@{t["object_lang"]}'

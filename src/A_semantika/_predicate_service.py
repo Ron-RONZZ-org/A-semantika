@@ -7,6 +7,7 @@ the nodes pattern (etikedoj / priskriboj).
 from __future__ import annotations
 
 import json
+import uuid as _uuid
 from typing import Any
 
 from A.core.service import CRUDService
@@ -67,8 +68,6 @@ class PredicateService(CRUDService):
 
         Accepts etikedoj and priskriboj as dicts or JSON strings.
         """
-        import uuid
-
         predicate_id = data.get("predicate_id", "")
         if not predicate_id:
             msg = "predicate_id is required"
@@ -83,7 +82,7 @@ class PredicateService(CRUDService):
         priskriboj = _ensure_json(data.get("priskriboj", {}))
 
         raw = {
-            "uuid": str(uuid.uuid4()),
+            "uuid": str(_uuid.uuid4()),
             "predicate_id": predicate_id,
             "source": data.get("source", "manual"),
             "etikedoj": etikedoj,

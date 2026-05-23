@@ -7,6 +7,7 @@ UUID override on create for manual assignment.
 from __future__ import annotations
 
 import json
+import uuid as _uuid
 from typing import Any
 
 from A.core.service import CRUDService
@@ -15,8 +16,8 @@ from A_semantika.data.storage import now
 
 
 class AmbiguousUUIDError(ValueError):
-     """Raised when a UUID prefix matches multiple nodes."""
-     pass
+    """Raised when a UUID prefix matches multiple nodes."""
+    pass
 
 
 def _fts_config() -> FTSConfig:
@@ -77,9 +78,7 @@ class NodeService(CRUDService):
 
         If data contains a 'uuid' key, use it instead of generating one.
         """
-        import uuid
-
-        node_uuid = data.pop("uuid", None) or str(uuid.uuid4())
+        node_uuid = data.pop("uuid", None) or str(_uuid.uuid4())
         timestamp = now()
 
         raw = {
@@ -268,7 +267,24 @@ class NodeService(CRUDService):
             return self.list(limit=limit)
 
         # Try FTS first
-        fts_query = " OR ".join(f"{word}*" for word in query.strip().split())
+        # Sanitize FTS5 query: strip special characters that can crash MATCH
+        # FTS5 special chars: " * ^ - + ~ ( ) { } [ ] : < > %
+        # FTS5 reserved keywords: AND, OR, NOT, NEAR, COLUMN
+        # Hyphens are removed entirely (FTS5 treats "-" as a NOT operator)
+        _FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR", "COLUMN"}
+        safe_tokens = []
+        for word in query.strip().split():
+            # Remove all FTS5 special characters including hyphens
+            cleaned = "".join(c for c in word if c.isalnum() or c in ("_", "."))
+            if not cleaned:
+                continue
+            # Skip FTS5 reserved keywords (they'd cause syntax errors as prefix terms)
+            if cleaned.upper() in _FTS5_KEYWORDS:
+                continue
+            safe_tokens.append(f"{cleaned}*")
+        if not safe_tokens:
+            return self.list(limit=limit)
+        fts_query = " OR ".join(safe_tokens)
         fts_sql = """
             SELECT n.* FROM nodes n
             JOIN nodes_fts f ON n.uuid = f.uuid
@@ -279,7 +295,7 @@ class NodeService(CRUDService):
         if results:
             return results
 
-        # Fallback: LIKE on label_text
-        like_sql = "SELECT * FROM nodes WHERE label_text LIKE ? LIMIT ?"
+        # Fallback: LIKE on label_text (case-insensitive)
+        like_sql = "SELECT * FROM nodes WHERE label_text LIKE ? COLLATE NOCASE LIMIT ?"
         pattern = f"%{query}%"
         return self.db.execute(like_sql, (pattern, limit))

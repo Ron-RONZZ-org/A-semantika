@@ -196,8 +196,10 @@ def aldoni(
                     object_value=arc["object"],
                     object_type=arc["object_type"],
                 )
-            except ValueError:
-                pass  # Arc may already exist
+            except ValueError as e:
+                # Only suppress "already exists" — re-raise other errors
+                if "already exists" not in str(e):
+                    raise
     elif not yes:
         from A.utils.interactive import confirm_action
 

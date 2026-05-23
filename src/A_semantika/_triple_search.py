@@ -17,17 +17,21 @@ if TYPE_CHECKING:
 
 # ── Heuristic helpers ──────────────────────────────────────────────────────────
 
-_UUID_PREFIX_RE = re.compile(r"^[a-zA-Z0-9\-]+$")
+_UUID_PREFIX_RE = re.compile(r"^[0-9a-fA-F\-]+$")
 
 
 def _looks_like_uuid_prefix(text: str) -> bool:
-    """Check if text looks like a UUID prefix (short, alphanumeric + hyphens).
+    """Check if text looks like a UUID prefix.
 
-    Returns True if text ≤ 12 chars and contains only ASCII alphanumeric and
-    hyphens — which means it could be a UUID prefix. Longer or non-conforming
-    strings are assumed to be label searches.
+    A text looks like a UUID prefix if it is:
+    - Between 8 and 12 characters long (UUID prefix typical length)
+    - Contains only hex digits [0-9a-fA-F] and hyphens
+
+    Short alphanumeric strings that are not hex (like 'Hundo' at 5 chars,
+    'tipo' at 4 chars) won't match because they're too short or contain
+    non-hex characters, preventing pointless DB lookups.
     """
-    return len(text) <= 12 and bool(_UUID_PREFIX_RE.match(text))
+    return 8 <= len(text) <= 12 and bool(_UUID_PREFIX_RE.match(text))
 
 
 # ── Subject resolution ────────────────────────────────────────────────────────

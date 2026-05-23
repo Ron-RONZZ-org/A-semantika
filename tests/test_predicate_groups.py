@@ -101,3 +101,13 @@ class TestGroupMembers:
         """Adding to a nonexistent group should raise."""
         with pytest.raises(ValueError, match="not found"):
             group_svc.add_member("nonexistent", "wdt:P31")
+
+    def test_clear_members(self, group_svc) -> None:
+        """clear_members should delete all members of a group."""
+        group_svc.add_member("test_group", "wdt:P31")
+        group_svc.add_member("test_group", "wdt:P1082")
+        group = group_svc.get_by_field("group_name", "test_group")
+        assert group is not None
+        group_svc.clear_members(group["uuid"])
+        members = group_svc.list_members("test_group")
+        assert len(members) == 0

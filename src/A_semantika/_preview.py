@@ -12,7 +12,7 @@ import typer
 from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
-from A import tr_multi
+from A import error, info, tr_multi
 from A.utils.interactive import confirm_action
 from A_semantika._node_service import AmbiguousUUIDError, NodeService
 from A_semantika._predicate_service import PredicateService
@@ -90,8 +90,6 @@ def build_triple_preview_table(
     Returns:
         Tuple of (Table, footnote_string).
     """
-    from A import error
-    
     table = Table(
         show_header=True,
         box=BOX_SIMPLE,
@@ -228,11 +226,9 @@ def confirm_triple(
         object_type, object_lang, object_datatype, object_unit,
     )
 
-    from A import info as _info
-
-    _info("")
-    _info(table)
-    _info(footnote)
+    info("")
+    info(table)
+    info(footnote)
 
     return confirm_action(
         tr_multi(
@@ -323,10 +319,8 @@ def confirm_node_with_arcs(
                 "",
             )
 
-    from A import info as _info
-
-    _info("")
-    _info(table)
+    info("")
+    info(table)
 
     arc_count = len(arcs)
     return confirm_action(

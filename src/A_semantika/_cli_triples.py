@@ -157,6 +157,15 @@ def aldoni(
             raise typer.Exit(1)
         object_uuid = obj_node["uuid"]
 
+    # Validate predicate exists (BEFORE confirmation preview)
+    if not pred_svc.get_by_predicate_id(predicate):
+        error(tr_multi(
+            "Predikato ne trovita: {p}",
+            "Predicate not found: {p}",
+            "Prédicat non trouvé : {p}",
+        ).format(p=predicate))
+        raise typer.Exit(1)
+
     # Confirm
     if not confirm_triple(
         node_svc, pred_svc,
@@ -166,9 +175,6 @@ def aldoni(
     ):
         info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
         raise typer.Exit(0)
-
-    # Validate predicate exists
-    if not pred_svc.get_by_predicate_id(predicate):
         error(tr_multi(
             "Predikato ne trovita: {p}",
             "Predicate not found: {p}",
