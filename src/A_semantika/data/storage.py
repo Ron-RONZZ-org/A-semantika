@@ -292,10 +292,16 @@ def _migrate_predicates_uuid_to_predicate_id(db: "SQLiteDB") -> None:
             FROM predicates
         """)
 
-    db.execute("DROP TABLE predicates")
-    db.execute("ALTER TABLE predicates_new RENAME TO predicates")
+    # Step 3: Swap tables — temporarily disable FK enforcement since
+    # triples and predicate_group_members reference predicates(predicate_id).
+    db.execute("PRAGMA foreign_keys = OFF")
+    try:
+        db.execute("DROP TABLE predicates")
+        db.execute("ALTER TABLE predicates_new RENAME TO predicates")
+    finally:
+        db.execute("PRAGMA foreign_keys = ON")
 
-    # ── Step 3: Migrate trash table if it exists ───────────────────
+    # ── Step 4: Migrate trash table if it exists ───────────────────
     try:
         trash_cols = {
             row["name"]
