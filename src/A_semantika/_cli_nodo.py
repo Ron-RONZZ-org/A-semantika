@@ -11,7 +11,7 @@ from rich.table import Table
 
 from A import error, info, tr_multi
 from A_semantika._node_service import AmbiguousUUIDError
-from A_semantika._preview import confirm_node_with_arcs, resolve_node_label
+from A_semantika._preview import confirm_node_with_arcs, resolve_node_label, resolve_predicate_label
 from A_semantika.service import get_node_service, get_predicate_service, get_triple_service
 
 nodo_app = typer.Typer(
@@ -305,6 +305,7 @@ def forigi(
 ) -> None:
     """Forigi nodojn."""
     node_svc = get_node_service()
+    triple_svc = get_triple_service()
 
     # Phase 1: Resolve all identifiers
     resolved: list[dict] = []
@@ -330,9 +331,26 @@ def forigi(
         error(tr_multi("Nenio forigebla.", "Nothing to delete.", "Rien à supprimer."))
         raise typer.Exit(1)
 
-    # Phase 2: Batch preview and confirmation
-    # Single-item deletion skips confirmation (user already specified exact item)
-    if not yes and len(resolved) >= 2:
+    # Collect triples referencing each resolved node
+    pred_svc = get_predicate_service()
+    all_triples: list[dict] = []
+    for node in resolved:
+        triples = triple_svc.get_by_node(node["node_id"])
+        all_triples.extend(triples)
+
+    # Build set of resolved node_ids that have triples
+    nodes_with_triples: set[str] = set()
+    for t in all_triples:
+        nodes_with_triples.add(t["subject_uuid"])
+        if t["object_type"] == "uri":
+            nodes_with_triples.add(t["object_value"])
+    resolved_ids = {n["node_id"] for n in resolved}
+    nodes_with_triples &= resolved_ids
+
+    # Phase 2: Preview and confirmation
+    need_confirm = len(resolved) >= 2 or all_triples
+    if not yes and need_confirm:
+        # Nodes preview table
         table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
         table.add_column("ID", no_wrap=True)
         table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
@@ -342,22 +360,58 @@ def forigi(
             table.add_row(node["node_id"][:8], label)
         info(table)
 
+        # Triples to be deleted
+        if all_triples:
+            ttable = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
+            ttable.add_column(tr_multi("Subjekto", "Subject", "Sujet"))
+            ttable.add_column(tr_multi("Predikato", "Predicate", "Prédicat"))
+            ttable.add_column(tr_multi("Objekto", "Object", "Objet"))
+            for t in all_triples:
+                subj_label = resolve_node_label(node_svc, t["subject_uuid"])
+                pred_label = resolve_predicate_label(pred_svc, t["predicate_id"])
+                if t["object_type"] == "uri":
+                    obj_label = resolve_node_label(node_svc, t["object_value"])
+                else:
+                    obj_label = t["object_value"]
+                    if t.get("object_lang"):
+                        obj_label += f"@{t['object_lang']}"
+                ttable.add_row(subj_label, pred_label, obj_label)
+            info(tr_multi(
+                "Arkoj forigotaj:",
+                "Triples to be deleted:",
+                "Triplets à supprimer :",
+            ))
+            info(ttable)
+
+        # Build confirmation message with triple warning
+        confirm_msg = tr_multi(
+            "Ĉu forigi {n} nodojn?", "Delete {n} nodes?", "Supprimer {n} nœuds?",
+        ).format(n=len(resolved))
+        if all_triples:
+            confirm_msg = (
+                tr_multi(
+                    "Atenton: {t} arkoj estos forigitaj kune kun la nodoj. ",
+                    "Warning: {t} arcs will be deleted together with the nodes. ",
+                    "Attention : {t} arcs seront supprimés avec les nœuds. ",
+                ).format(t=len(all_triples))
+                + confirm_msg
+            )
+
         from A.utils.interactive import confirm_action
 
-        if not confirm_action(
-            tr_multi(
-                "Ĉu forigi {n} nodojn?", "Delete {n} nodes?", "Supprimer {n} nœuds?",
-            ).format(n=len(resolved)),
-            default=False,
-        ):
+        if not confirm_action(confirm_msg, default=False):
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
             raise typer.Exit(0)
 
-    # Phase 3: Delete each resolved node
+    # Phase 3: Delete triples then nodes
     deleted = 0
     for node in resolved:
+        nid = node["node_id"]
         try:
-            node_svc.delete(node["node_id"])
+            # Cascade: delete referencing triples first (FK constraint)
+            if nid in nodes_with_triples:
+                triple_svc.remove_by_node(nid)
+            node_svc.delete(nid)
             deleted += 1
         except Exception as e:
             err_msg = str(e)
@@ -366,12 +420,24 @@ def forigi(
                     "Nodo {u} jam estas en la rubujo.",
                     "Node {u} is already in the trash.",
                     "Le nœud {u} est déjà dans la corbeille.",
-                ).format(u=node["node_id"][:8])
+                ).format(u=nid[:8])
+            elif "FOREIGN KEY constraint failed" in err_msg:
+                err_msg = tr_multi(
+                    "Nodo {u} havas arkojn. Forigu ilin unue aŭ uzu la flagon --jes.",
+                    "Node {u} has arcs. Delete them first or use the --jes flag.",
+                    "Le nœud {u} a des arcs. Supprimez-les d'abord ou utilisez le drapeau --jes.",
+                )
+            elif "malformed" in err_msg:
+                err_msg = tr_multi(
+                    "Datumbazo koruptita. Provu 'VACUUM' aŭ restaŭri de sekurkopio.",
+                    "Database corrupted. Try 'VACUUM' or restore from backup.",
+                    "Base de données corrompue. Essayez 'VACUUM' ou restaurez à partir d'une sauvegarde.",
+                )
             error(tr_multi(
                 "Eraro forigante {u}: {e}",
                 "Error deleting {u}: {e}",
                 "Erreur lors de la suppression de {u} : {e}",
-            ).format(u=node["node_id"][:8], e=err_msg))
+            ).format(u=nid[:8], e=err_msg))
 
     info(tr_multi(
         "Forigis {d} el {t} nodoj.",

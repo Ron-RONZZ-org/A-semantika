@@ -168,6 +168,52 @@ class TestTripleCountAndStats:
         assert stats["unique_predicates"] >= 1
         assert stats["unique_subjects"] >= 1
 
+    def test_get_by_node(self, triple_svc) -> None:
+        """get_by_node should return triples where node is subject or URI object."""
+        subj = "s"+"0"*35
+        obj  = "o"+"0"*35
+        other = "u"+"0"*35
+        triple_svc.add(subject_uuid=subj, predicate_id="rdf:type", object_value=obj, object_type="uri")
+        triple_svc.add(subject_uuid=obj, predicate_id="rdf:type", object_value=other, object_type="uri")
+
+        # As subject
+        r1 = triple_svc.get_by_node(subj)
+        assert len(r1) == 1
+        assert r1[0]["subject_uuid"] == subj
+
+        # As URI object
+        r2 = triple_svc.get_by_node(obj)
+        assert len(r2) == 2  # as subject of 2nd triple, as object of 1st
+
+        # Unrelated
+        r3 = triple_svc.get_by_node("nonexistent")
+        assert len(r3) == 0
+
+    def test_remove_by_node(self, triple_svc) -> None:
+        """remove_by_node should cascade-delete triples referencing a node."""
+        subj = "s"+"0"*35
+        obj  = "o"+"0"*35
+        triple_svc.add(subject_uuid=subj, predicate_id="rdf:type", object_value=obj, object_type="uri")
+        triple_svc.add(subject_uuid=obj, predicate_id="rdf:type", object_value=subj, object_type="uri")
+
+        assert triple_svc.count() == 2
+        removed = triple_svc.remove_by_node(subj)
+        assert removed == 2  # removes both triples (subj as subject, subj as obj)
+        assert triple_svc.count() == 0
+
+    def test_count_by_subject_or_object(self, triple_svc) -> None:
+        """count_by_subject_or_object should match get_by_node count."""
+        subj = "s"+"0"*35
+        obj  = "o"+"0"*35
+        triple_svc.add(subject_uuid=subj, predicate_id="rdf:type", object_value=obj, object_type="uri")
+
+        cnt = triple_svc.count_by_subject_or_object(subj)
+        assert cnt == 1
+        cnt = triple_svc.count_by_subject_or_object(obj)
+        assert cnt == 1
+        cnt = triple_svc.count_by_subject_or_object("nonexistent")
+        assert cnt == 0
+
 
 class TestTripleTurtleExport:
     """Turtle export tests."""

@@ -192,6 +192,59 @@ class TripleService:
             )
             return cursor.rowcount
 
+    def remove_by_node(self, node_id: str) -> int:
+        """Delete all triples referencing a node (as subject or URI object).
+
+        Args:
+            node_id: The node to remove triples for.
+
+        Returns:
+            Number of deleted rows.
+        """
+        with self.db.transaction() as conn:
+            cursor = conn.execute(
+                "DELETE FROM triples WHERE subject_uuid = ? "
+                "OR (object_type = 'uri' AND object_value = ?)",
+                (node_id, node_id),
+            )
+            return cursor.rowcount
+
+    def get_by_node(self, node_id: str) -> list[dict]:
+        """Get all triples referencing a node (as subject or URI object).
+
+        Args:
+            node_id: The node ID to fetch triples for.
+
+        Returns:
+            List of triple dicts, each with optional ``object_node_etikedoj``
+            joined from the object node (if object_type='uri').
+        """
+        return self.db.execute(
+            """SELECT t.*, n.etikedoj AS object_node_etikedoj
+               FROM triples t
+               LEFT JOIN nodes n ON t.object_node_uuid = n.node_id
+               WHERE t.subject_uuid = ?
+                  OR (t.object_type = 'uri' AND t.object_value = ?)
+               ORDER BY t.predicate_id""",
+            (node_id, node_id),
+        )
+
+    def count_by_subject_or_object(self, node_id: str) -> int:
+        """Count triples referencing a node (as subject or URI object).
+
+        Args:
+            node_id: The node ID to check.
+
+        Returns:
+            Number of triples referencing the node.
+        """
+        row = self.db.execute_one(
+            "SELECT COUNT(*) AS cnt FROM triples "
+            "WHERE subject_uuid = ? OR (object_type = 'uri' AND object_value = ?)",
+            (node_id, node_id),
+        )
+        return row["cnt"] if row else 0
+
     # ── Multi-filter search (used by search_triples_by_labels) ──────────
 
     def search_triples(
