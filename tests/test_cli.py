@@ -553,6 +553,70 @@ def test_triple_serci_by_object_label(runner: CliRunner) -> None:
             assert result.exit_code == 0
 
 
+# ── Search-then-Select tests (Issue #8 R3) ─────────────────────────────────────
+
+
+def test_triple_forigi_full_triplet_backward_compat(runner: CliRunner) -> None:
+    """forigi with full SPO triplet should still work (backward compat)."""
+    subj_uuid = "c1111111-1111-1111-1111-111111111111"
+    obj_uuid = "c2222222-2222-2222-2222-222222222222"
+    runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::ForigCompSubj", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", obj_uuid, "-e", "eo::ForigCompObj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    # Add triple
+    result = runner.invoke(app, ["aldoni", subj_uuid[:8], "rdf:type", obj_uuid[:8], "--jes"])
+    assert result.exit_code == 0
+
+    # Delete with full SPO
+    result = runner.invoke(app, ["forigi", subj_uuid[:8], "rdf:type", obj_uuid[:8], "--jes"])
+    assert result.exit_code == 0
+    assert "forigita" in result.stdout or "Arc deleted" in result.stdout
+
+
+def test_triple_forigi_interactive_subject_only(runner: CliRunner) -> None:
+    """forigi with only subject should show interactive picker."""
+    subj_uuid = "a1111111-1111-1111-1111-111111111111"
+    obj_uuid = "a2222222-2222-2222-2222-222222222222"
+    runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::IntSubj", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", obj_uuid, "-e", "eo::IntObj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    # Add triple
+    r = runner.invoke(app, ["aldoni", subj_uuid[:8], "rdf:type", obj_uuid[:8], "--jes"])
+    assert r.exit_code == 0, f"Triple aldoni failed: {r.stdout}"
+
+    # Delete with only subject → interactive picker
+    result = runner.invoke(app, ["forigi", subj_uuid[:8], "--jes"], input="1\n")
+    assert result.exit_code in (0,), f"Interactive forigi failed: {result.stdout}"
+
+
+def test_triple_forigi_interactive_subject_and_predicate(runner: CliRunner) -> None:
+    """forigi with subject+predicate should show filtered picker."""
+    subj_uuid = "b1111111-1111-1111-1111-111111111111"
+    obj_uuid = "b2222222-2222-2222-2222-222222222222"
+    runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::IntSPSubj", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", obj_uuid, "-e", "eo::IntSPObj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    # Add triple
+    r = runner.invoke(app, ["aldoni", subj_uuid[:8], "rdf:type", obj_uuid[:8], "--jes"])
+    assert r.exit_code == 0, f"Triple aldoni failed: {r.stdout}"
+
+    # subject + predicate → filtered picker
+    result = runner.invoke(app, ["forigi", subj_uuid[:8], "rdf:type", "--jes"], input="1\n")
+    assert result.exit_code in (0,), f"Interactive forigi SP failed: {result.stdout}"
+
+
+def test_triple_forigi_interactive_no_match(runner: CliRunner) -> None:
+    """forigi interactive with no matches should show error."""
+    result = runner.invoke(app, [
+        "forigi", "nonexistent", "--jes",
+    ])
+    assert result.exit_code == 1
+    assert "Neniuj" in result.stdout or "No matching" in result.stdout
+
+
 def test_triple_serci_backward_compat_uuid_prefix(runner: CliRunner) -> None:
     """serci --subject should still work with UUID prefixes."""
     runner.invoke(app, ["nodo", "aldoni", "-e", "eo::CompatTest", "--jes"])

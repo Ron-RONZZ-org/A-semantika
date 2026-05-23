@@ -2,13 +2,19 @@
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import typer
+
+if TYPE_CHECKING:
+    from A_semantika._node_service import NodeService
+    from A_semantika._predicate_service import PredicateService
+    from A_semantika._triple_service import TripleService
 from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi
+from A.utils.interactive import select_candidate
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import (
     confirm_triple,
@@ -21,6 +27,67 @@ from A_semantika.service import (
     get_predicate_service,
     get_triple_service,
 )
+
+
+# ── Interactive picker helper ─────────────────────────────────────────────
+
+
+def _pick_triple(
+    triple_svc: TripleService,
+    node_svc: NodeService,
+    pred_svc: PredicateService,
+    subject: str | None = None,
+    predicate: str | None = None,
+    object: str | None = None,  # noqa: A002
+) -> dict | None:
+    """Show an interactive numbered picker for triples matching the given
+    criteria (partial labels are resolved).  Returns the selected triple
+    dict, or ``None`` if the user cancels or no matches exist.
+    """
+    results = search_triples_by_labels(
+        triple_svc=triple_svc,
+        node_svc=node_svc,
+        pred_svc=pred_svc,
+        subject=subject,
+        predicate=predicate,
+        object=object,
+        limit=100,
+    )
+    if not results:
+        error(tr_multi(
+            "Neniuj kongruaj arkoj.",
+            "No matching arcs found.",
+            "Aucun arc correspondant trouvé.",
+        ))
+        return None
+
+    result = select_candidate(
+        results,
+        columns=[
+            {"header": tr_multi("Subjekto", "Subject", "Sujet")},
+            {"header": tr_multi("Predikato", "Predicate", "Predicat")},
+            {"header": tr_multi("Objekto", "Object", "Objet")},
+            {"header": tr_multi("Tipo", "Type", "Type")},
+        ],
+        row_formatter=lambda t, i: [
+            resolve_node_label(node_svc, t["subject_uuid"]),
+            resolve_predicate_label(pred_svc, t["predicate_id"]),
+            (
+                resolve_node_label(node_svc, t["object_value"])
+                if t["object_type"] == "uri"
+                else t["object_value"]
+            ),
+            t["object_type"],
+        ],
+        prompt_text=tr_multi(
+            "Elektu numeron de arko por forigi/modifi (aŭ Enter por nuligi)",
+            "Select arc number to delete/modify (or Enter to cancel)",
+            "Choisissez le numéro de l'arc à supprimer/modifier (ou Entrée pour annuler)",
+        ),
+    )
+    if result is None:
+        return None
+    return result[1]  # The selected triple dict
 
 # Root commands are registered directly on the main app in cli.py.
 # They are defined here as plain functions (no decorator) to keep
@@ -188,9 +255,9 @@ def aldoni(
 
 
 def modifi(
-    subject: str = typer.Argument(..., help=tr_multi("Nuna subjekto UUID-prefikso", "Current subject UUID prefix", "Préfixe UUID du sujet actuel")),
-    predicate: str = typer.Argument(..., help=tr_multi("Nuna predikato ID", "Current predicate ID", "ID du prédicat actuel")),
-    object: str = typer.Argument(..., help=tr_multi("Nuna objekta valoro", "Current object value", "Valeur actuelle de l'objet")),  # noqa: A002
+    subject: str = typer.Argument(..., help=tr_multi("Nuna subjekto UUID-prefikso aŭ etikedo", "Current subject UUID prefix or label", "Préfixe UUID ou étiquette du sujet actuel")),
+    predicate: Optional[str] = typer.Argument(None, help=tr_multi("Nuna predikato ID aŭ parta nomo (malplena = elekti)", "Current predicate ID or partial name (empty = pick)", "ID du prédicat actuel ou nom partiel (vide = choisir)")),
+    object: Optional[str] = typer.Argument(None, help=tr_multi("Nuna objekta valoro (malplena = elekti)", "Current object value (empty = pick)", "Valeur actuelle de l'objet (vide = choisir)")),  # noqa: A002
     new_subject: Optional[str] = typer.Option(None, "--new-subject", "-ns", help=tr_multi("Nova subjekto UUID-prefikso", "New subject UUID prefix", "Nouveau préfixe UUID du sujet")),
     new_predicate: Optional[str] = typer.Option(None, "--new-predicate", "-np", help=tr_multi("Nova predikato ID", "New predicate ID", "Nouvel ID du prédicat")),
     new_object_val: Optional[str] = typer.Option(None, "--new-object", "-no", help=tr_multi("Nova objekta valoro", "New object value", "Nouvelle valeur de l'objet")),
@@ -199,10 +266,34 @@ def modifi(
     """Modifi arkon (forigi + re-aldoni).
 
     Identigu arkon per nunaj valoroj, specifu novajn valorojn per --new-* flagoj.
+    Se oni ne specifas predikaton aŭ objekton, aperas interaktiva listo
+    por elekti la arkon.
     """
     node_svc = get_node_service()
     pred_svc = get_predicate_service()
     triple_svc = get_triple_service()
+
+    # ── Interactive mode: partial args → show picker ───────────────
+    if predicate is None or object is None:
+        triple = _pick_triple(
+            triple_svc, node_svc, pred_svc,
+            subject=subject, predicate=predicate, object=object,
+        )
+        if triple is None:
+            raise typer.Exit(1)
+        # Use picked triple as "old" values
+        subject = triple["subject_uuid"]
+        predicate = triple["predicate_id"]
+        object = triple["object_value"]  # noqa: A002
+        object_type = triple.get("object_type", "uri")
+        # For modifi we only support URI-type modifications (backward compat)
+        if object_type != "uri":
+            error(tr_multi(
+                "Nuntempe modifi nur subtenas URI-objektojn.",
+                "Currently modifi only supports URI objects.",
+                "Actuellement modifi ne supporte que les objets URI.",
+            ))
+            raise typer.Exit(1)
 
     # Resolve current triple
     try:
@@ -276,7 +367,7 @@ def modifi(
         )
         new_subj_label = resolve_node_label(node_svc, new_subj)
         new_pred_label = resolve_predicate_label(pred_svc, new_pred)
-        new_obj_label = resolve_node_label(node_svc, new_obj_val)
+        new_obj_label = resolve_node_label(node_svc, new_object_val)
         table.add_row(
             tr_multi("Nova", "New", "Nouveau"),
             f"{new_subj_label} ({new_subj_uuid[:8]})",
@@ -323,15 +414,64 @@ def modifi(
 
 
 def forigi(
-    subject: str = typer.Argument(..., help=tr_multi("Subjekto UUID-prefikso", "Subject UUID prefix", "Préfixe UUID du sujet")),
-    predicate: str = typer.Argument(..., help=tr_multi("Predikato ID", "Predicate ID", "ID du prédicat")),
-    object: str = typer.Argument(..., help=tr_multi("Objekta valoro", "Object value", "Valeur de l'objet")),  # noqa: A002
+    subject: str = typer.Argument(..., help=tr_multi("Subjekto UUID-prefikso aŭ etikedo", "Subject UUID prefix or label", "Préfixe UUID ou étiquette du sujet")),
+    predicate: Optional[str] = typer.Argument(None, help=tr_multi("Predikato ID aŭ parta nomo (malplena = elekti)", "Predicate ID or partial name (empty = pick)", "ID du prédicat ou nom partiel (vide = choisir)")),
+    object: Optional[str] = typer.Argument(None, help=tr_multi("Objekta valoro (malplena = elekti)", "Object value (empty = pick)", "Valeur de l'objet (vide = choisir)")),  # noqa: A002
     yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
-    """Forigi semantikan arkon."""
+    """Forigi semantikan arkon.
+
+    Se oni ne specifas predikaton aŭ objekton, aperas interaktiva listo
+    por elekti la forigotan arkon.
+    """
     node_svc = get_node_service()
+    pred_svc = get_predicate_service()
     triple_svc = get_triple_service()
 
+    # ── Interactive mode: partial args → show picker ───────────────
+    if predicate is None or object is None:
+        triple = _pick_triple(
+            triple_svc, node_svc, pred_svc,
+            subject=subject, predicate=predicate, object=object,
+        )
+        if triple is None:
+            raise typer.Exit(1)
+
+        if not yes:
+            subj_label = resolve_node_label(node_svc, triple["subject_uuid"])
+            obj_label = (
+                resolve_node_label(node_svc, triple["object_value"])
+                if triple["object_type"] == "uri"
+                else triple["object_value"]
+            )
+            pred_label = resolve_predicate_label(pred_svc, triple["predicate_id"])
+
+            from A.utils.interactive import confirm_action
+
+            if not confirm_action(
+                tr_multi(
+                    f"Ĉu forigi arkon: {subj_label} --{pred_label}--> {obj_label}?",
+                    f"Delete arc: {subj_label} --{pred_label}--> {obj_label}?",
+                    f"Supprimer l'arc : {subj_label} --{pred_label}--> {obj_label}?",
+                ),
+                default=False,
+            ):
+                info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
+                raise typer.Exit(0)
+
+        deleted = triple_svc.remove(
+            subject_uuid=triple["subject_uuid"],
+            predicate_id=triple["predicate_id"],
+            object_value=triple["object_value"],
+            object_type=triple.get("object_type", "uri"),
+        )
+        if deleted:
+            info(tr_multi("Arko forigita.", "Arc deleted.", "Arc supprimé."))
+        else:
+            info(tr_multi("Neniu arko trovita.", "No arc found.", "Aucun arc trouvé."))
+        return
+
+    # ── Direct mode: full triplet provided (backward compat) ──────
     try:
         subj_node = node_svc.resolve_uuid_prefix(subject)
     except AmbiguousUUIDError as e:
