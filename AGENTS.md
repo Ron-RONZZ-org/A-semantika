@@ -378,6 +378,25 @@ Use `uv` for development. See A-core AGENTS.md for details.
 - A-organizi `todo forigi`: bug filed — accepts `list[str]` but resolves only first item (#24)
 - A-workspace AGENTS.md: `forigi` Contract expanded with normative section
 
+### Issue #14: Confirmation Prompt Mismatch (May 2026)
+**Scope:** Fix confirmation prompt abbreviation casing + single-item `forigi` skip.
+
+**Root cause:** A-core `confirm_action()` always showed uppercase first letter in prompt abbreviation (`[J/n]`) regardless of the `default` parameter value, violating terminal convention (uppercase = default option).
+
+**A-core fix (PR #86):**
+- `confirm_action()` now dynamically sets `prompt_abbr` casing based on `default`:
+  - `default=True`: `[J/n]` (eo), `[Y/n]` (en), `[O/n]` (fr)
+  - `default=False`: `[j/N]` (eo), `[y/N]` (en), `[o/N]` (fr)
+- 6 new tests verifying all 3 locales × 2 default values
+
+**A-semantika fix (this PR):**
+- `nodo forigi`, `predikato forigi`, `predikat-grupo forigi`: skip confirmation when `len(resolved) == 1` (user already specified exact item)
+- Multi-item (2+) keeps existing preview table + `[j/N]` prompt
+- Root triple `forigi` unchanged (single-arc deletion is irreversible, no undo)
+- 3 new CLI tests for single-item skip
+
+**Bonus finding:** `A-lien` calls `confirm_action(..., abort=True)` but function has no `abort` param — needs separate issue.
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
