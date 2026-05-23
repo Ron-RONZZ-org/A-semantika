@@ -408,3 +408,70 @@ def test_predikato_aldoni_non_wikidata_unchanged(runner: CliRunner) -> None:
     assert result.exit_code == 0
     assert "tipo" in result.stdout
     assert "manual" in result.stdout or "fonto" in result.stdout
+
+
+# ── --jes flag tests (Issue #8 R1) ──────────────────────────────────────────────
+
+
+def test_nodo_aldoni_jes_flag(runner: CliRunner) -> None:
+    """--jes flag should skip confirmation for nodo aldoni."""
+    result = runner.invoke(app, [
+        "nodo", "aldoni",
+        "-e", "eo::JesTesto",
+        "--jes",
+    ])
+    assert result.exit_code == 0
+    assert "kreita" in result.stdout or "Created" in result.stdout or "créé" in result.stdout
+
+
+def test_nodo_aldoni_yes_backward_compat(runner: CliRunner) -> None:
+    """--yes flag should still work (backward compat)."""
+    result = runner.invoke(app, [
+        "nodo", "aldoni",
+        "-e", "eo::YesTesto",
+        "--yes",
+    ])
+    assert result.exit_code == 0
+    assert "kreita" in result.stdout or "Created" in result.stdout or "créé" in result.stdout
+
+
+def test_triple_aldoni_jes_flag(runner: CliRunner) -> None:
+    """--jes flag should skip confirmation for triple aldoni."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::SubjJes", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::ObjJes", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    lines = [l for l in ls_result.stdout.strip().split("\n") if l and l[0].isalnum()]
+    uuids = [l.split()[0] for l in lines if len(l.split()) >= 1]
+
+    if len(uuids) >= 2:
+        result = runner.invoke(app, [
+            "aldoni", uuids[0], "rdf:type", uuids[1], "--jes",
+        ])
+        assert result.exit_code == 0, f"aldoni --jes failed: {result.stdout}"
+        assert "kreita" in result.stdout or "Arc" in result.stdout or "created" in result.stdout
+
+
+def test_forigi_jes_flag(runner: CliRunner) -> None:
+    """--jes flag should skip confirmation for forigi."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::ForigJes", "--jes"])
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    for line in ls_result.stdout.strip().split("\n"):
+        if "ForigJes" in line and line[0].isalnum():
+            uuid_prefix = line.split()[0]
+            break
+    else:
+        return
+
+    result = runner.invoke(app, ["nodo", "forigi", uuid_prefix, "--jes"])
+    assert result.exit_code == 0
+    assert "forigita" in result.stdout
+
+
+def test_help_shows_jes_not_yes(runner: CliRunner) -> None:
+    """Help text should mention --jes as the canonical flag."""
+    result = runner.invoke(app, ["nodo", "aldoni", "--help"])
+    assert result.exit_code == 0
+    assert "--jes" in result.stdout
+    # --yes may appear as alias in help, but --jes must be shown

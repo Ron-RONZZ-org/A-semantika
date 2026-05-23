@@ -94,7 +94,7 @@ def aldoni(
     superklaso: Optional[list[str]] = typer.Option(None, "-so", "--superklaso", help=tr_multi("Superklaso (rdfs:subClassOf) UUID-prefikso", "Superclass (rdfs:subClassOf) UUID prefix", "Superclasse (rdfs:subClassOf) préfixe UUID")),
     ne: Optional[list[str]] = typer.Option(None, "--ne", help=tr_multi("Malakorda (owl:disjointWith) UUID-prefikso", "Disjoint (owl:disjointWith) UUID prefix", "Disjoint (owl:disjointWith) préfixe UUID")),
     invers: Optional[list[str]] = typer.Option(None, "--invers", "-iv", help=tr_multi("Inversa (owl:inverseOf) UUID-prefikso", "Inverse (owl:inverseOf) UUID prefix", "Inverse (owl:inverseOf) préfixe UUID")),
-    yes: bool = typer.Option(False, "-y", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
     """Aldoni novan nodon kun laŭvolaj arkoj."""
     node_svc = get_node_service()
@@ -225,7 +225,7 @@ def modifi(
     uuid: str = typer.Argument(..., help=tr_multi("Nodo UUID-prefikso", "Node UUID prefix", "Préfixe UUID du nœud")),
     etikedoj: Optional[list[str]] = typer.Option(None, "-e", "--etikedo", help=tr_multi("Etikedo en formo LANG::TEKSTO", "Label as LANG::TEXT", "Étiquette au format LANG::TEXTE")),
     difinoj: Optional[list[str]] = typer.Option(None, "-d", "--difino", help=tr_multi("Difino en formo LANG::TEKSTO", "Definition as LANG::TEXT", "Définition au format LANG::TEXTE")),
-    yes: bool = typer.Option(False, "-y", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
     """Modifi nodon."""
     node_svc = get_node_service()
@@ -279,7 +279,7 @@ def modifi(
 @nodo_app.command("forigi")
 def forigi(
     uuid: str = typer.Argument(..., help=tr_multi("Nodo UUID-prefikso", "Node UUID prefix", "Préfixe UUID du nœud")),
-    yes: bool = typer.Option(False, "-y", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
     """Forigi nodon."""
     node_svc = get_node_service()

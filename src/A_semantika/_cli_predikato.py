@@ -82,7 +82,7 @@ def aldoni(
     label_en: Optional[str] = typer.Option(None, "--en", help=tr_multi("Angla etikedo", "English label", "Étiquette anglaise")),
     priskribo: Optional[str] = typer.Option(None, "-p", "--priskribo", help=tr_multi("Priskribo", "Description", "Description")),
     fonto: str = typer.Option("manual", "--fonto", help=tr_multi("Fonto (wikidata|manual|owl|rdfs)", "Source (wikidata|manual|owl|rdfs)", "Source (wikidata|manual|owl|rdfs)")),
-    yes: bool = typer.Option(False, "-y", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
     """Aldoni novan predikaton."""
     pred_svc = get_predicate_service()
@@ -172,7 +172,7 @@ def modifi(
     label_eo: Optional[str] = typer.Option(None, "--label-eo", help=tr_multi("Esperanta etikedo", "Esperanto label", "Étiquette espéranto")),
     label_en: Optional[str] = typer.Option(None, "--label-en", help=tr_multi("Angla etikedo", "English label", "Étiquette anglaise")),
     priskribo: Optional[str] = typer.Option(None, "-p", "--priskribo", help=tr_multi("Priskribo", "Description", "Description")),
-    yes: bool = typer.Option(False, "-y", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
     """Modifi predikaton."""
     pred_svc = get_predicate_service()
@@ -218,7 +218,7 @@ def modifi(
 @predikato_app.command("forigi")
 def forigi(
     predicate_id: str = typer.Argument(..., help=tr_multi("Predikato ID", "Predicate ID", "ID du prédicat")),
-    yes: bool = typer.Option(False, "-y", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
     """Forigi predikaton."""
     pred_svc = get_predicate_service()

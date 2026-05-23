@@ -90,13 +90,29 @@ def aldoni(
     subject: str = typer.Argument(..., help=tr_multi("Subject UUID-prefikso", "Subject UUID prefix", "Préfixe UUID du sujet")),
     predicate: str = typer.Argument(..., help=tr_multi("Predikato ID", "Predicate ID", "ID du prédicat")),
     object: str = typer.Argument(..., help=tr_multi("Objekta valoro", "Object value", "Valeur de l'objet")),  # noqa: A002
-    str_: bool = typer.Option(False, "-s", "--str", help=tr_multi("Teksta literal", "String literal", "Littéral textuel")),
-    int_: bool = typer.Option(False, "--int", help=tr_multi("Entjera literal", "Integer literal", "Littéral entier")),
-    float_: bool = typer.Option(False, "-f", "--float", help=tr_multi("Float literal", "Float literal", "Littéral flottant")),
-    bool_: bool = typer.Option(False, "-b", "--bool", help=tr_multi("Buleta literal", "Boolean literal", "Littéral booléen")),
+    str_: bool = typer.Option(False, "-s", "--str", help=tr_multi(
+        "Objekto estas teksta literal (not URI)",
+        "Object is a string literal (not URI)",
+        "L'objet est un littéral textuel (pas URI)",
+    )),
+    int_: bool = typer.Option(False, "--int", help=tr_multi(
+        "Objekto estas entjera literal (not URI)",
+        "Object is an integer literal (not URI)",
+        "L'objet est un littéral entier (pas URI)",
+    )),
+    float_: bool = typer.Option(False, "-f", "--float", help=tr_multi(
+        "Objekto estas flosanta literal (not URI)",
+        "Object is a float literal (not URI)",
+        "L'objet est un littéral flottant (pas URI)",
+    )),
+    bool_: bool = typer.Option(False, "-b", "--bool", help=tr_multi(
+        "Objekto estas bulea literal (not URI)",
+        "Object is a boolean literal (not URI)",
+        "L'objet est un littéral booléen (pas URI)",
+    )),
     lingvo: Optional[str] = typer.Option(None, "-l", "--lingvo", help=tr_multi("Lingva etikedo (nur kun --str)", "Language tag (only with --str)", "Étiquette de langue (seulement avec --str)")),
     unuo: Optional[str] = typer.Option(None, "-u", "--unuo", help=tr_multi("Unuo UUID por nombraj valoroj (nur --int/--float)", "Unit UUID for numeric values (only --int/--float)", "UUID d'unité pour valeurs numériques (seulement --int/--float)")),
-    yes: bool = typer.Option(False, "-y", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
     """Aldoni semantikan arkon: subjekto --predikato--> objekto.
 
@@ -177,7 +193,7 @@ def modifi(
     new_subject: Optional[str] = typer.Option(None, "--new-subject", "-ns", help=tr_multi("Nova subjekto UUID-prefikso", "New subject UUID prefix", "Nouveau préfixe UUID du sujet")),
     new_predicate: Optional[str] = typer.Option(None, "--new-predicate", "-np", help=tr_multi("Nova predikato ID", "New predicate ID", "Nouvel ID du prédicat")),
     new_object_val: Optional[str] = typer.Option(None, "--new-object", "-no", help=tr_multi("Nova objekta valoro", "New object value", "Nouvelle valeur de l'objet")),
-    yes: bool = typer.Option(False, "-y", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
     """Modifi arkon (forigi + re-aldoni).
 
@@ -309,7 +325,7 @@ def forigi(
     subject: str = typer.Argument(..., help=tr_multi("Subjekto UUID-prefikso", "Subject UUID prefix", "Préfixe UUID du sujet")),
     predicate: str = typer.Argument(..., help=tr_multi("Predikato ID", "Predicate ID", "ID du prédicat")),
     object: str = typer.Argument(..., help=tr_multi("Objekta valoro", "Object value", "Valeur de l'objet")),  # noqa: A002
-    yes: bool = typer.Option(False, "-y", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
     """Forigi semantikan arkon."""
     node_svc = get_node_service()
