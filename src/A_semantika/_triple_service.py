@@ -192,6 +192,68 @@ class TripleService:
             )
             return cursor.rowcount
 
+    # ── Multi-filter search (used by search_triples_by_labels) ──────────
+
+    def search_triples(
+        self,
+        subject_uuids: list[str] | None = None,
+        predicate_ids: list[str] | None = None,
+        object_values: list[str] | None = None,
+        object_types: list[str] | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """Search triples by pre-resolved lists.
+
+        Within each list the condition is OR; across lists it is AND.
+        None means 'no restriction' for that parameter.
+
+        Args:
+            subject_uuids: List of subject UUIDs to match (OR).
+            predicate_ids: List of predicate IDs to match (OR).
+            object_values: List of object values to match (OR).
+            object_types: List of object types to match (OR).
+            limit: Maximum number of results.
+
+        Returns:
+            List of matching triple dicts.
+        """
+        clauses: list[str] = []
+        params: list[str] = []
+
+        if subject_uuids is not None:
+            if not subject_uuids:
+                return []
+            placeholders = ",".join("?" * len(subject_uuids))
+            clauses.append(f"subject_uuid IN ({placeholders})")
+            params.extend(subject_uuids)
+
+        if predicate_ids is not None:
+            if not predicate_ids:
+                return []
+            placeholders = ",".join("?" * len(predicate_ids))
+            clauses.append(f"predicate_id IN ({placeholders})")
+            params.extend(predicate_ids)
+
+        if object_values is not None:
+            if not object_values:
+                return []
+            placeholders = ",".join("?" * len(object_values))
+            clauses.append(f"object_value IN ({placeholders})")
+            params.extend(object_values)
+
+        if object_types is not None:
+            if not object_types:
+                return []
+            placeholders = ",".join("?" * len(object_types))
+            clauses.append(f"object_type IN ({placeholders})")
+            params.extend(object_types)
+
+        where_clause = " AND ".join(clauses) if clauses else "1=1"
+        sql = f"SELECT * FROM triples WHERE {where_clause} ORDER BY subject_uuid, predicate_id LIMIT ?"
+        params.append(str(limit))
+
+        return self.db.execute(sql, params)
+
     # ── Count / Stats ───────────────────────────────────────────────────
 
     def count(self) -> int:

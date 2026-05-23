@@ -15,6 +15,7 @@ from A_semantika._preview import (
     resolve_node_label,
     resolve_predicate_label,
 )
+from A_semantika._triple_search import search_triples_by_labels
 from A_semantika.service import (
     get_node_service,
     get_predicate_service,
@@ -379,9 +380,9 @@ def forigi(
 
 
 def serci(
-    subject: Optional[str] = typer.Option(None, "--subject", "-s", help=tr_multi("Subjekto UUID-prefikso", "Subject UUID prefix", "Préfixe UUID du sujet")),
-    predicate: Optional[str] = typer.Option(None, "--predicate", "-p", help=tr_multi("Predikato ID", "Predicate ID", "ID du prédicat")),
-    object: Optional[str] = typer.Option(None, "--object", "-o", help=tr_multi("Objekta valoro-prefikso", "Object value prefix", "Préfixe valeur objet")),  # noqa: A002
+    subject: Optional[str] = typer.Option(None, "--subject", "-s", help=tr_multi("Subjekto UUID-prefikso aŭ etikedo", "Subject UUID prefix or label", "Préfixe UUID ou étiquette du sujet")),
+    predicate: Optional[str] = typer.Option(None, "--predicate", "-p", help=tr_multi("Predikato ID aŭ parta nomo", "Predicate ID or partial name", "ID du prédicat ou nom partiel")),
+    object: Optional[str] = typer.Option(None, "--object", "-o", help=tr_multi("Objekto UUID-prefikso, etikedo aŭ valoro", "Object UUID prefix, label or value", "Préfixe UUID objet, étiquette ou valeur")),  # noqa: A002
     limit: int = typer.Option(50, "--limit", "-l", help=tr_multi("Maksimume rezultoj", "Max results", "Résultats max")),
 ) -> None:
     """Serĉi arkojn laŭ subjekto, predikato aŭ objekto."""
@@ -389,28 +390,19 @@ def serci(
     pred_svc = get_predicate_service()
     triple_svc = get_triple_service()
 
-    subj_uuid: str | None = None
-    obj_uuid: str | None = None
-
-    if subject:
-        n = node_svc.resolve_uuid_prefix(subject)
-        if n:
-            subj_uuid = n["uuid"]
-    if object:
-        n = node_svc.resolve_uuid_prefix(object)
-        if n:
-            obj_uuid = n["uuid"]
-
-    if subj_uuid and predicate:
-        results = triple_svc.get_by_sp(subj_uuid, predicate)
-    elif subj_uuid:
-        results = triple_svc.get_by_subject(subj_uuid)
-    elif predicate:
-        results = triple_svc.get_by_predicate(predicate, limit=limit)
-    elif obj_uuid:
-        results = triple_svc.get_by_object(obj_uuid)
+    # If any filter is provided, use partial label matching
+    if subject or predicate or object:
+        results = search_triples_by_labels(
+            triple_svc=triple_svc,
+            node_svc=node_svc,
+            pred_svc=pred_svc,
+            subject=subject,
+            predicate=predicate,
+            object=object,
+            limit=limit,
+        )
     else:
-        # Show all with limit
+        # No filters: show all triples
         results = triple_svc.db.execute(
             "SELECT * FROM triples ORDER BY subject_uuid LIMIT ?",
             (limit,),

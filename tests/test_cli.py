@@ -475,3 +475,95 @@ def test_help_shows_jes_not_yes(runner: CliRunner) -> None:
     assert result.exit_code == 0
     assert "--jes" in result.stdout
     # --yes may appear as alias in help, but --jes must be shown
+
+
+# ── Partial label matching tests (Issue #8 P2) ─────────────────────────────────
+
+
+def test_triple_serci_by_subject_label(runner: CliRunner) -> None:
+    """serci --subject should accept labels, not just UUID prefixes."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::Liono", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::Besto", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    lines = [l for l in ls_result.stdout.strip().split("\n") if l and l[0].isalnum()]
+    uuids = {l.split(" ", 1)[1] if len(l.split()) > 1 else l.split()[0]: l.split()[0]
+             for l in lines}
+
+    liono_uuid = next((uid for label, uid in uuids.items() if "Liono" in label), None)
+    besto_uuid = next((uid for label, uid in uuids.items() if "Besto" in label), None)
+
+    if liono_uuid and besto_uuid:
+        runner.invoke(app, ["aldoni", liono_uuid, "rdf:type", besto_uuid, "--jes"])
+        result = runner.invoke(app, ["serci", "--subject", "Liono"])
+        assert result.exit_code == 0
+        assert "Liono" in result.stdout
+
+
+def test_triple_serci_by_predicate_label(runner: CliRunner) -> None:
+    """serci --predicate should accept partial names."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::Urso", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::Mamulo2", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    urso_uuid = None
+    mamulo2_uuid = None
+    for line in ls_result.stdout.strip().split("\n"):
+        parts = line.strip().split()
+        if len(parts) >= 2:
+            label = " ".join(parts[1:])
+            if "Urso" in label:
+                urso_uuid = parts[0]
+            elif "Mamulo2" in label:
+                mamulo2_uuid = parts[0]
+
+    if urso_uuid and mamulo2_uuid:
+        runner.invoke(app, ["aldoni", urso_uuid, "rdf:type", mamulo2_uuid, "--jes"])
+        result = runner.invoke(app, ["serci", "--predicate", "tipo"])
+        assert result.exit_code == 0
+
+
+def test_triple_serci_by_object_label(runner: CliRunner) -> None:
+    """serci --object should accept labels, not just UUID prefixes."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::Rib-o", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::Fiŝo", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    fish_uuid = None
+    for line in ls_result.stdout.strip().split("\n"):
+        parts = line.strip().split()
+        if len(parts) >= 2 and "Fiŝo" in " ".join(parts[1:]):
+            fish_uuid = parts[0]
+
+    if fish_uuid:
+        # Find the subject UUID
+        rib_o_uuid = None
+        for line in ls_result.stdout.strip().split("\n"):
+            parts = line.strip().split()
+            if len(parts) >= 2 and "Rib-o" in " ".join(parts[1:]):
+                rib_o_uuid = parts[0]
+                break
+
+        if rib_o_uuid and fish_uuid:
+            runner.invoke(app, ["aldoni", rib_o_uuid, "rdf:type", fish_uuid, "--jes"])
+            result = runner.invoke(app, ["serci", "--object", "Fiŝo"])
+            assert result.exit_code == 0
+
+
+def test_triple_serci_backward_compat_uuid_prefix(runner: CliRunner) -> None:
+    """serci --subject should still work with UUID prefixes."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::CompatTest", "--jes"])
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    uuid_prefix = None
+    for line in ls_result.stdout.strip().split("\n"):
+        parts = line.strip().split()
+        if len(parts) >= 2 and "CompatTest" in " ".join(parts[1:]):
+            uuid_prefix = parts[0]
+            break
+
+    if uuid_prefix:
+        result = runner.invoke(app, ["serci", "--subject", uuid_prefix])
+        assert result.exit_code == 0
