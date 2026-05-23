@@ -467,17 +467,21 @@ def test_predikato_aldoni_wikidata_network_failure(runner: CliRunner, monkeypatc
 
 
 def test_predikato_aldoni_non_wikidata_unchanged(runner: CliRunner) -> None:
-    """Non-Wikidata IDs should not trigger auto-fetch."""
+    """Non-Wikidata IDs should not trigger auto-fetch.
+
+    Uses a non-seeded predicate (ex:testType) to avoid conflict with
+    DEFAULT_PREDICATES in storage.py.
+    """
     result = runner.invoke(app, [
-        "predikato", "aldoni", "rdf:type",
-        "-e", "eo::tipo",
+        "predikato", "aldoni", "ex:testType",
+        "-e", "eo::testa tipo",
         "-y",
     ])
     assert result.exit_code == 0
 
-    result = runner.invoke(app, ["predikato", "vidi", "rdf:type"])
+    result = runner.invoke(app, ["predikato", "vidi", "ex:testType"])
     assert result.exit_code == 0
-    assert "tipo" in result.stdout
+    assert "testa" in result.stdout
     assert "manual" in result.stdout or "fonto" in result.stdout
 
 

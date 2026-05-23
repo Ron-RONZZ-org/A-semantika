@@ -10,7 +10,7 @@ def _setup_nodes_and_predicates(node_svc, pred_svc) -> dict:
     node_svc.create({"node_id": "s" + "0" * 35, "etikedoj": {"eo": "Hundo"}})
     node_svc.create({"node_id": "o" + "0" * 35, "etikedoj": {"eo": "Mamulo"}})
     node_svc.create({"node_id": "u" + "0" * 35, "etikedoj": {"eo": "Unuo"}})
-    pred_svc.create({"predicate_id": "rdf:type", "etikedoj": {"eo": "tipo"}})
+    # rdf:type is seeded by DEFAULT_PREDICATES in storage.py — no need to create
     pred_svc.create({"predicate_id": "rdfs:label", "etikedoj": {"eo": "etikedo"}})
     pred_svc.create({"predicate_id": "wdt:P1082", "etikedoj": {"eo": "logxantaro"}})
     return {}

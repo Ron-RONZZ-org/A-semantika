@@ -217,7 +217,7 @@ class TestBuildTriplePreviewTable:
 
         subj = node_svc.create({"etikedoj": {"eo": "Hundo"}})
         obj = node_svc.create({"etikedoj": {"eo": "Mamulo"}})
-        pred = pred_svc.create({"predicate_id": "rdf:type", "etikedoj": {"eo": "tipo"}})
+        # rdf:type is seeded by DEFAULT_PREDICATES — already exists
 
         table, footnote = build_triple_preview_table(
             node_svc, pred_svc,
@@ -267,7 +267,7 @@ class TestConfirmNodeWithArcs:
         from A_semantika._preview import confirm_node_with_arcs
 
         target = node_svc.create({"etikedoj": {"eo": "Mamulo"}})
-        pred_svc.create({"predicate_id": "rdf:type", "etikedoj": {"eo": "tipo"}})
+        # rdf:type is seeded by DEFAULT_PREDICATES — already exists
 
         node_uuid = "test-arc-node"
         node_svc.create({"node_id": node_uuid, "etikedoj": {"eo": "Hundo"}})
@@ -539,7 +539,7 @@ class TestConfirmTriple:
 
         subj = node_svc.create({"etikedoj": {"eo": "Hundo"}})
         obj = node_svc.create({"etikedoj": {"eo": "Mamulo"}})
-        pred_svc.create({"predicate_id": "rdf:type", "etikedoj": {"eo": "tipo"}})
+        # rdf:type is seeded by DEFAULT_PREDICATES — already exists
 
         result = confirm_triple(
             node_svc, pred_svc,

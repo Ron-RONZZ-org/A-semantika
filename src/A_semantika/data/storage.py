@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 -- Uses predicate_id (content-based identifier like wdt:P31) as PK,
 -- not a synthetic uuid — follows RDF convention where predicates
 -- are identified by their URI/ID, not by an artifact.
+-- source: 'wikidata' | 'manual' | 'owl' | 'rdfs' | 'rdf'
 CREATE TABLE IF NOT EXISTS predicates (
     predicate_id  TEXT PRIMARY KEY,
     source        TEXT NOT NULL DEFAULT 'manual',
@@ -103,6 +104,17 @@ CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
     tokenize='unicode61'
 );
 """
+
+
+# Default RDF/OWL predicates seeded into every new database.
+# These match the CLI shortcuts in _cli_nodo.py (--tipo, --superklaso, --ne, --invers).
+# Extended with INSERT OR IGNORE so existing databases are unaffected.
+DEFAULT_PREDICATES: list[dict[str, str]] = [
+    {"predicate_id": "rdf:type",        "source": "rdf",  "etikedoj": '{"eo": "tipo"}'},
+    {"predicate_id": "rdfs:subClassOf",  "source": "rdfs", "etikedoj": '{"eo": "subklaso"}'},
+    {"predicate_id": "owl:disjointWith", "source": "owl",  "etikedoj": '{"eo": "disjunkcio"}'},
+    {"predicate_id": "owl:inverseOf",    "source": "owl",  "etikedoj": '{"eo": "inverso"}'},
+]
 
 
 def _get_data_dir() -> Path:
@@ -381,6 +393,23 @@ def _migrate_predicates_uuid_to_predicate_id(db: "SQLiteDB") -> None:
         pass  # Trash table may not exist
 
 
+def _seed_default_predicates(db: "SQLiteDB") -> None:
+    """Insert default RDF/OWL semantic predicates into the predicates table.
+
+    Uses INSERT OR IGNORE so this is safe to call repeatedly:
+    predicates that already exist (created by _ensure_predicate in
+    older versions of _cli_nodo.py) are left untouched.
+    """
+    now_iso = now()
+    for pred in DEFAULT_PREDICATES:
+        db.execute(
+            "INSERT OR IGNORE INTO predicates "
+            "(predicate_id, source, etikedoj, priskriboj, aliases, kreita_je, modifita_je) "
+            "VALUES (?, ?, ?, '{}', '[]', ?, ?)",
+            (pred["predicate_id"], pred["source"], pred["etikedoj"], now_iso, now_iso),
+        )
+
+
 def init_db(db: "SQLiteDB | None" = None) -> None:
     """Initialize the database schema.
 
@@ -397,6 +426,8 @@ def init_db(db: "SQLiteDB | None" = None) -> None:
     # Run column-rename migrations for existing databases
     _migrate_nodes_uuid_to_node_id(db)
     _migrate_predicates_uuid_to_predicate_id(db)
+    # Seed built-in RDF/OWL predicates (must be AFTER migrations)
+    _seed_default_predicates(db)
 
 
 def close_db() -> None:

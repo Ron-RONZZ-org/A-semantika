@@ -132,7 +132,9 @@ def aldoni(
     pred_svc = get_predicate_service()
     triple_svc = get_triple_service()
 
-    # Ensure rdf:type, rdfs:subClassOf, owl:disjointWith, owl:inverseOf exist as predicates
+    # Safety net: these predicates are seeded in init_db() via
+    # DEFAULT_PREDICATES in storage.py, but _ensure_predicate is kept
+    # for backward compat with databases created before seeding was added.
     _ensure_predicate(pred_svc, "rdf:type", "type")
     _ensure_predicate(pred_svc, "rdfs:subClassOf", "subClassOf")
     _ensure_predicate(pred_svc, "owl:disjointWith", "disjointWith")
