@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Optional
 
 import typer
@@ -39,7 +38,7 @@ def ls(
         return
 
     table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
-    table.add_column("UUID", no_wrap=True)
+    table.add_column("ID", no_wrap=True)
     table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
 
     for n in nodes:
@@ -48,24 +47,24 @@ def ls(
             label = labels.get("eo") or labels.get("en") or ""
         except (json.JSONDecodeError, TypeError):
             label = ""
-        table.add_row(n["uuid"][:8], label)
+        table.add_row(n["node_id"][:8], label)
 
     info(table)
 
 
 @nodo_app.command("vidi")
 def vidi(
-    uuid: str = typer.Argument(..., help=tr_multi("Nodo UUID-prefikso", "Node UUID prefix", "Préfixe UUID du nœud")),
+    node_id: str = typer.Argument(..., help=tr_multi("Nod-indekso", "Node ID", "ID du nœud")),
 ) -> None:
     """Vidi detalojn de nodo."""
     node_svc = get_node_service()
     try:
-        node = node_svc.resolve_uuid_prefix(uuid)
+        node = node_svc.resolve_uuid_prefix(node_id)
     except AmbiguousUUIDError as e:
         error(tr_multi("Ambigua prefikso: {e}", "Ambiguous prefix: {e}", "Préfixe ambigu : {e}").format(e=str(e)))
         raise typer.Exit(1)
     if not node:
-        error(tr_multi("Nodo ne trovita: {u}", "Node not found: {u}", "Nœud non trouvé : {u}").format(u=uuid))
+        error(tr_multi("Nodo ne trovita: {u}", "Node not found: {u}", "Nœud non trouvé : {u}").format(u=node_id))
         raise typer.Exit(1)
 
     try:
@@ -75,7 +74,7 @@ def vidi(
         labels = {}
         defns = {}
 
-    info(tr_multi("UUID: {u}", "UUID: {u}", "UUID : {u}").format(u=node["uuid"]))
+    info(tr_multi("UUID: {u}", "UUID: {u}", "UUID : {u}").format(u=node["node_id"]))
     for lang, val in labels.items() if isinstance(labels, dict) else []:
         info(f"  {lang}: {val}")
     if defns:
@@ -88,13 +87,13 @@ def vidi(
 
 @nodo_app.command("aldoni")
 def aldoni(
-    uuid: Optional[str] = typer.Argument(None, help=tr_multi("UUID (malplena = aŭtomata)", "UUID (empty = auto-generate)", "UUID (vide = auto-généré)")),
+    node_id: Optional[str] = typer.Argument(None, help=tr_multi("Indekso (malplena = aŭtomata)", "ID (empty = auto-generate)", "ID (vide = auto-généré)")),
     etikedoj: Optional[list[str]] = typer.Option(None, "-e", "--etikedo", help=tr_multi("Etikedo en formo LANG::TEKSTO", "Label as LANG::TEXT", "Étiquette au format LANG::TEXTE")),
     difinoj: Optional[list[str]] = typer.Option(None, "-d", "--difino", help=tr_multi("Difino en formo LANG::TEKSTO", "Definition as LANG::TEXT", "Définition au format LANG::TEXTE")),
-    tipo: Optional[list[str]] = typer.Option(None, "-t", "--tipo", help=tr_multi("Tipo (rdf:type) UUID-prefikso", "Type (rdf:type) UUID prefix", "Type (rdf:type) préfixe UUID")),
-    superklaso: Optional[list[str]] = typer.Option(None, "-so", "--superklaso", help=tr_multi("Superklaso (rdfs:subClassOf) UUID-prefikso", "Superclass (rdfs:subClassOf) UUID prefix", "Superclasse (rdfs:subClassOf) préfixe UUID")),
-    ne: Optional[list[str]] = typer.Option(None, "--ne", help=tr_multi("Malakorda (owl:disjointWith) UUID-prefikso", "Disjoint (owl:disjointWith) UUID prefix", "Disjoint (owl:disjointWith) préfixe UUID")),
-    invers: Optional[list[str]] = typer.Option(None, "--invers", "-iv", help=tr_multi("Inversa (owl:inverseOf) UUID-prefikso", "Inverse (owl:inverseOf) UUID prefix", "Inverse (owl:inverseOf) préfixe UUID")),
+    tipo: Optional[list[str]] = typer.Option(None, "-t", "--tipo", help=tr_multi("Tipo (rdf:type) nod-indekso", "Type (rdf:type) node ID", "Type (rdf:type) ID du nœud")),
+    superklaso: Optional[list[str]] = typer.Option(None, "-so", "--superklaso", help=tr_multi("Superklaso (rdfs:subClassOf) nod-indekso", "Superclass (rdfs:subClassOf) node ID", "Superclasse (rdfs:subClassOf) ID du nœud")),
+    ne: Optional[list[str]] = typer.Option(None, "--ne", help=tr_multi("Malakorda (owl:disjointWith) nod-indekso", "Disjoint (owl:disjointWith) node ID", "Disjoint (owl:disjointWith) ID du nœud")),
+    invers: Optional[list[str]] = typer.Option(None, "--invers", "-iv", help=tr_multi("Inversa (owl:inverseOf) nod-indekso", "Inverse (owl:inverseOf) node ID", "Inverse (owl:inverseOf) ID du nœud")),
     yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
     """Aldoni novan nodon kun laŭvolaj arkoj."""
@@ -118,30 +117,15 @@ def aldoni(
         "etikedoj": labels_dict,
         "difinoj": defs_dict,
     }
-    if uuid:
-        # Validate UUID v4 format
-        _UUID_RE = re.compile(
-            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-            re.IGNORECASE,
-        )
-        if not _UUID_RE.match(uuid):
-            error(tr_multi(
-                "Nevalida UUID-formato. UUID devas esti versio 4 UUID "
-                "(xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).",
-                "Invalid UUID format. UUID must be a version 4 UUID "
-                "(xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).",
-                "Format UUID invalide. L'UUID doit être un UUID version 4 "
-                "(xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).",
-            ))
-            raise typer.Exit(1)
-        data["uuid"] = uuid
+    if node_id:
+        data["node_id"] = node_id
 
     try:
         node = node_svc.create(data)
     except ValueError as e:
         error(str(e))
         raise typer.Exit(1)
-    node_uuid = node["uuid"]
+    node_id_val = node["node_id"]
 
     # Build arcs from shortcuts
     arcs: list[dict] = []
@@ -159,8 +143,8 @@ def aldoni(
             target = node_svc.resolve_uuid_prefix(t)
             if target:
                 arcs.append({
-                    "subject": node_uuid, "predicate": "rdf:type",
-                    "object": target["uuid"], "object_type": "uri",
+                    "subject": node_id_val, "predicate": "rdf:type",
+                    "object": target["node_id"], "object_type": "uri",
                 })
         except AmbiguousUUIDError as e:
             error(tr_multi("Ambigua tipo-prefikso: {e}", "Ambiguous type prefix: {e}", "Préfixe type ambigu : {e}").format(e=str(e)))
@@ -170,8 +154,8 @@ def aldoni(
             target = node_svc.resolve_uuid_prefix(s)
             if target:
                 arcs.append({
-                    "subject": node_uuid, "predicate": "rdfs:subClassOf",
-                    "object": target["uuid"], "object_type": "uri",
+                    "subject": node_id_val, "predicate": "rdfs:subClassOf",
+                    "object": target["node_id"], "object_type": "uri",
                 })
         except AmbiguousUUIDError as e:
             error(tr_multi("Ambigua superklaso-prefikso: {e}", "Ambiguous superclass prefix: {e}", "Préfixe superclasse ambigu : {e}").format(e=str(e)))
@@ -181,8 +165,8 @@ def aldoni(
             target = node_svc.resolve_uuid_prefix(n)
             if target:
                 arcs.append({
-                    "subject": node_uuid, "predicate": "owl:disjointWith",
-                    "object": target["uuid"], "object_type": "uri",
+                    "subject": node_id_val, "predicate": "owl:disjointWith",
+                    "object": target["node_id"], "object_type": "uri",
                 })
         except AmbiguousUUIDError as e:
             error(tr_multi("Ambigua malakorda-prefikso: {e}", "Ambiguous disjoint prefix: {e}", "Préfixe disjoint ambigu : {e}").format(e=str(e)))
@@ -192,8 +176,8 @@ def aldoni(
             target = node_svc.resolve_uuid_prefix(inv)
             if target:
                 arcs.append({
-                    "subject": node_uuid, "predicate": "owl:inverseOf",
-                    "object": target["uuid"], "object_type": "uri",
+                    "subject": node_id_val, "predicate": "owl:inverseOf",
+                    "object": target["node_id"], "object_type": "uri",
                 })
         except AmbiguousUUIDError as e:
             error(tr_multi("Ambigua inversa-prefikso: {e}", "Ambiguous inverse prefix: {e}", "Préfixe inverse ambigu : {e}").format(e=str(e)))
@@ -201,10 +185,10 @@ def aldoni(
 
     # Show preview and confirm
     if arcs:
-        label = resolve_node_label(node_svc, node_uuid)
-        if not confirm_node_with_arcs(node_svc, pred_svc, label, node_uuid, arcs, yes=yes):
+        label = resolve_node_label(node_svc, node_id_val)
+        if not confirm_node_with_arcs(node_svc, pred_svc, label, node_id_val, arcs, yes=yes):
             # Rollback: delete the node
-            node_svc.delete(node_uuid)
+            node_svc.delete(node_id_val)
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
             raise typer.Exit(0)
 
@@ -228,23 +212,23 @@ def aldoni(
                 "Ĉu krei nodon {label}?",
                 "Create node {label}?",
                 "Créer le nœud {label}?",
-            ).format(label=resolve_node_label(node_svc, node_uuid)),
+            ).format(label=resolve_node_label(node_svc, node_id_val)),
             default=True,
         ):
-            node_svc.delete(node_uuid)
+            node_svc.delete(node_id_val)
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
             raise typer.Exit(0)
 
     info(tr_multi(
-        "Nodo kreita: {label} ({uuid})",
-        "Node created: {label} ({uuid})",
-        "Nœud créé : {label} ({uuid})",
-    ).format(label=resolve_node_label(node_svc, node_uuid), uuid=node_uuid[:8]))
+        "Nodo kreita: {label} ({node_id})",
+        "Node created: {label} ({node_id})",
+        "Nœud créé : {label} ({node_id})",
+    ).format(label=resolve_node_label(node_svc, node_id_val), node_id=node_id_val[:8]))
 
 
 @nodo_app.command("modifi")
 def modifi(
-    uuid: str = typer.Argument(..., help=tr_multi("Nodo UUID-prefikso", "Node UUID prefix", "Préfixe UUID du nœud")),
+    node_id: str = typer.Argument(..., help=tr_multi("Nod-indekso", "Node ID", "ID du nœud")),
     etikedoj: Optional[list[str]] = typer.Option(None, "-e", "--etikedo", help=tr_multi("Etikedo en formo LANG::TEKSTO", "Label as LANG::TEXT", "Étiquette au format LANG::TEXTE")),
     difinoj: Optional[list[str]] = typer.Option(None, "-d", "--difino", help=tr_multi("Difino en formo LANG::TEKSTO", "Definition as LANG::TEXT", "Définition au format LANG::TEXTE")),
     yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
@@ -252,12 +236,12 @@ def modifi(
     """Modifi nodon."""
     node_svc = get_node_service()
     try:
-        node = node_svc.resolve_uuid_prefix(uuid)
+        node = node_svc.resolve_uuid_prefix(node_id)
     except AmbiguousUUIDError as e:
         error(tr_multi("Ambigua prefikso: {e}", "Ambiguous prefix: {e}", "Préfixe ambigu : {e}").format(e=str(e)))
         raise typer.Exit(1)
     if not node:
-        error(tr_multi("Nodo ne trovita: {u}", "Node not found: {u}", "Nœud non trouvé : {u}").format(u=uuid))
+        error(tr_multi("Nodo ne trovita: {u}", "Node not found: {u}", "Nœud non trouvé : {u}").format(u=node_id))
         raise typer.Exit(1)
 
     updates: dict = {}
@@ -288,24 +272,24 @@ def modifi(
                 "Ĉu modifi nodon {u}?",
                 "Modify node {u}?",
                 "Modifier le nœud {u}?",
-            ).format(u=node["uuid"][:8]),
+            ).format(u=node["node_id"][:8]),
             default=True,
         ):
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
             raise typer.Exit(0)
 
-    updated = node_svc.update(node["uuid"], updates)
-    info(tr_multi("Nodo modifita: {u}", "Node modified: {u}", "Nœud modifié : {u}").format(u=updated["uuid"][:8]))
+    updated = node_svc.update(node["node_id"], updates)
+    info(tr_multi("Nodo modifita: {u}", "Node modified: {u}", "Nœud modifié : {u}").format(u=updated["node_id"][:8]))
 
 
 @nodo_app.command("forigi")
 def forigi(
-    uuids: list[str] = typer.Argument(
+    node_ids: list[str] = typer.Argument(
         ...,
         help=tr_multi(
-            "Nodo UUID-prefiksoj (pluraj)",
-            "Node UUID prefixes (multiple)",
-            "Préfixes UUID des nœuds (plusieurs)",
+            "Nod-indeksoj (pluraj)",
+            "Node IDs (multiple)",
+            "ID des nœuds (plusieurs)",
         ),
     ),
     yes: bool = typer.Option(
@@ -324,15 +308,15 @@ def forigi(
     resolved: list[dict] = []
     errors: list[tuple[str, str]] = []
 
-    for uid in uuids:
+    for nid in node_ids:
         try:
-            node = node_svc.resolve_uuid_prefix(uid)
+            node = node_svc.resolve_uuid_prefix(nid)
             if node:
                 resolved.append(node)
             else:
-                errors.append((uid, tr_multi("ne trovita", "not found", "non trouvé")))
+                errors.append((nid, tr_multi("ne trovita", "not found", "non trouvé")))
         except AmbiguousUUIDError:
-            errors.append((uid, tr_multi("ambigua prefikso", "ambiguous prefix", "préfixe ambigu")))
+            errors.append((nid, tr_multi("ambigua prefikso", "ambiguous prefix", "préfixe ambigu")))
 
     # Report resolution errors
     for input_val, reason in errors:
@@ -348,11 +332,12 @@ def forigi(
     # Single-item deletion skips confirmation (user already specified exact item)
     if not yes and len(resolved) >= 2:
         table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
-        table.add_column("UUID", no_wrap=True)
+        table.add_column("ID", no_wrap=True)
         table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
+
         for node in resolved:
-            label = resolve_node_label(node_svc, node["uuid"])
-            table.add_row(node["uuid"][:8], label)
+            label = resolve_node_label(node_svc, node["node_id"])
+            table.add_row(node["node_id"][:8], label)
         info(table)
 
         from A.utils.interactive import confirm_action
@@ -370,7 +355,7 @@ def forigi(
     deleted = 0
     for node in resolved:
         try:
-            node_svc.delete(node["uuid"])
+            node_svc.delete(node["node_id"])
             deleted += 1
         except Exception as e:
             err_msg = str(e)
@@ -379,12 +364,12 @@ def forigi(
                     "Nodo {u} jam estas en la rubujo.",
                     "Node {u} is already in the trash.",
                     "Le nœud {u} est déjà dans la corbeille.",
-                ).format(u=node["uuid"][:8])
+                ).format(u=node["node_id"][:8])
             error(tr_multi(
                 "Eraro forigante {u}: {e}",
                 "Error deleting {u}: {e}",
                 "Erreur lors de la suppression de {u} : {e}",
-            ).format(u=node["uuid"][:8], e=err_msg))
+            ).format(u=node["node_id"][:8], e=err_msg))
 
     info(tr_multi(
         "Forigis {d} el {t} nodoj.",
@@ -416,7 +401,7 @@ def serci(
             label = labels.get("eo") or labels.get("en") or ""
         except (json.JSONDecodeError, TypeError):
             label = ""
-        table.add_row(n["uuid"][:8], label)
+        table.add_row(n["node_id"][:8], label)
 
     info(table)
 

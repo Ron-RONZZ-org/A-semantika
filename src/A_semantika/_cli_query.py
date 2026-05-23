@@ -195,16 +195,16 @@ def vidi(
         ).format(s=subject_uuid))
         raise typer.Exit(1)
 
-    subj_label = resolve_node_label(node_svc, subj_node["uuid"])
+    subj_label = resolve_node_label(node_svc, subj_node["node_id"])
     from A import info as _info
 
     _info(tr_multi(
         "Nodo: {label} ({uuid})",
         "Node: {label} ({uuid})",
         "Nœud : {label} ({uuid})",
-    ).format(label=subj_label, uuid=subj_node["uuid"][:8]))
+    ).format(label=subj_label, uuid=subj_node["node_id"][:8]))
 
-    results = triple_svc.get_subject_objects(subj_node["uuid"])
+    results = triple_svc.get_subject_objects(subj_node["node_id"])
     if not results:
         info(tr_multi(
             "Neniuj arkoj por tiu nodo.",

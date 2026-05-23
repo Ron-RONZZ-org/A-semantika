@@ -128,7 +128,7 @@ class TripleService:
         return self.db.execute(
             """SELECT t.*, n.etikedoj AS object_node_etikedoj
                FROM triples t
-               LEFT JOIN nodes n ON t.object_node_uuid = n.uuid
+               LEFT JOIN nodes n ON t.object_node_uuid = n.node_id
                WHERE t.subject_uuid = ?
                ORDER BY t.predicate_id""",
             (subject_uuid,),
@@ -304,7 +304,7 @@ class TripleService:
         triples = self.db.execute(
             """SELECT t.*, n.etikedoj AS subj_label, p.etikedoj AS pred_etikedoj
                FROM triples t
-               JOIN nodes n ON t.subject_uuid = n.uuid
+               JOIN nodes n ON t.subject_uuid = n.node_id
                JOIN predicates p ON t.predicate_id = p.predicate_id
                ORDER BY t.subject_uuid, t.predicate_id"""
         )

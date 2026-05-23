@@ -53,14 +53,14 @@ def resolve_subjects(node_svc: NodeService, text: str) -> list[str]:
         try:
             node = node_svc.resolve_uuid_prefix(text)
             if node:
-                return [node["uuid"]]
+                return [node["node_id"]]
         except ValueError:
             pass  # Ambiguous or not found — fall through to label search
 
     # Step 2: FTS5 label search
     results = node_svc.search(text, limit=50)
     if results:
-        return [r["uuid"] for r in results]
+        return [r["node_id"] for r in results]
 
     return []
 
@@ -114,14 +114,14 @@ def resolve_objects(node_svc: NodeService, text: str) -> list[str]:
         try:
             node = node_svc.resolve_uuid_prefix(text)
             if node:
-                return [node["uuid"]]
+                return [node["node_id"]]
         except ValueError:
             pass  # Ambiguous or not found
 
     # Step 2: FTS5 label search — match node labels (for URI objects)
     results = node_svc.search(text, limit=50)
     if results:
-        return [r["uuid"] for r in results]
+        return [r["node_id"] for r in results]
 
     # Step 3: Return raw text as literal value match candidate
     return [text]

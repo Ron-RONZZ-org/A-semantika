@@ -7,9 +7,9 @@ import pytest
 @pytest.fixture(autouse=True)
 def _setup_nodes_and_predicates(node_svc, pred_svc) -> dict:
     """Create nodes and predicates needed for triple tests."""
-    node_svc.create({"uuid": "s" + "0" * 35, "etikedoj": {"eo": "Hundo"}})
-    node_svc.create({"uuid": "o" + "0" * 35, "etikedoj": {"eo": "Mamulo"}})
-    node_svc.create({"uuid": "u" + "0" * 35, "etikedoj": {"eo": "Unuo"}})
+    node_svc.create({"node_id": "s" + "0" * 35, "etikedoj": {"eo": "Hundo"}})
+    node_svc.create({"node_id": "o" + "0" * 35, "etikedoj": {"eo": "Mamulo"}})
+    node_svc.create({"node_id": "u" + "0" * 35, "etikedoj": {"eo": "Unuo"}})
     pred_svc.create({"predicate_id": "rdf:type", "etikedoj": {"eo": "tipo"}})
     pred_svc.create({"predicate_id": "rdfs:label", "etikedoj": {"eo": "etikedo"}})
     pred_svc.create({"predicate_id": "wdt:P1082", "etikedoj": {"eo": "logxantaro"}})

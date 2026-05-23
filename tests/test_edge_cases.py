@@ -133,7 +133,7 @@ class TestUUIDHeuristic:
     def test_resolve_uuid_prefix_with_hyphenated(self, node_svc):
         """UUID prefix with hyphens should resolve correctly."""
         uuid = "c0ffeec0-0000-0000-0000-000000000001"
-        node_svc.create({"uuid": uuid, "etikedoj": {"eo": "Kafo"}})
+        node_svc.create({"node_id": uuid, "etikedoj": {"eo": "Kafo"}})
 
         # Prefix without trailing hyphen
         from A_semantika._triple_search import resolve_subjects
@@ -221,7 +221,7 @@ class TestBuildTriplePreviewTable:
 
         table, footnote = build_triple_preview_table(
             node_svc, pred_svc,
-            subj["uuid"], "rdf:type", obj["uuid"],
+            subj["node_id"], "rdf:type", obj["node_id"],
             "uri",
         )
         assert table is not None
@@ -236,7 +236,7 @@ class TestBuildTriplePreviewTable:
 
         table, footnote = build_triple_preview_table(
             node_svc, pred_svc,
-            subj["uuid"], "rdfs:label", "Hundo",
+            subj["node_id"], "rdfs:label", "Hundo",
             "literal", object_lang="eo",
         )
         assert table is not None
@@ -252,8 +252,8 @@ class TestBuildTriplePreviewTable:
 
         table, footnote = build_triple_preview_table(
             node_svc, pred_svc,
-            subj["uuid"], "wdt:P1082", "1000000",
-            "literal", object_datatype="xsd:integer", object_unit=unit["uuid"],
+            subj["node_id"], "wdt:P1082", "1000000",
+            "literal", object_datatype="xsd:integer", object_unit=unit["node_id"],
         )
         assert table is not None
         assert "integer" in footnote
@@ -270,13 +270,13 @@ class TestConfirmNodeWithArcs:
         pred_svc.create({"predicate_id": "rdf:type", "etikedoj": {"eo": "tipo"}})
 
         node_uuid = "test-arc-node"
-        node_svc.create({"uuid": node_uuid, "etikedoj": {"eo": "Hundo"}})
+        node_svc.create({"node_id": node_uuid, "etikedoj": {"eo": "Hundo"}})
 
         arcs = [
             {
                 "subject": node_uuid,
                 "predicate": "rdf:type",
-                "object": target["uuid"],
+                "object": target["node_id"],
                 "object_type": "uri",
             },
         ]
@@ -397,7 +397,7 @@ class TestTurtleExportCustom:
         pred_svc.create({"predicate_id": "ex:customProp", "etikedoj": {"eo": "prop"}})
 
         triple_svc.add(
-            subject_uuid=subj["uuid"],
+            subject_uuid=subj["node_id"],
             predicate_id="ex:customProp",
             object_value="42",
             object_type="literal",
@@ -414,7 +414,7 @@ class TestTurtleExportCustom:
         pred_svc.create({"predicate_id": "wdt:P1082", "etikedoj": {"eo": "loĝantaro"}})
 
         triple_svc.add(
-            subject_uuid=subj["uuid"],
+            subject_uuid=subj["node_id"],
             predicate_id="wdt:P1082",
             object_value="1000000",
             object_type="literal",
@@ -543,7 +543,7 @@ class TestConfirmTriple:
 
         result = confirm_triple(
             node_svc, pred_svc,
-            subj["uuid"], "rdf:type", obj["uuid"],
+            subj["node_id"], "rdf:type", obj["node_id"],
             "uri", yes=True,
         )
         assert result is True
@@ -558,9 +558,9 @@ class TestConfirmTriple:
 
         result = confirm_triple(
             node_svc, pred_svc,
-            subj["uuid"], "wdt:P1082", "1000000",
+            subj["node_id"], "wdt:P1082", "1000000",
             "literal", object_datatype="xsd:integer",
-            object_unit=unit["uuid"],
+            object_unit=unit["node_id"],
             yes=True,
         )
         assert result is True
@@ -670,22 +670,20 @@ class TestPredikatGrupoForigiMulti:
 class TestNodoAldoniErrorHandling:
     """Graceful error handling for nodo aldoni (issue #15)."""
 
-    def test_nodo_aldoni_invalid_uuid_format(self, runner: CliRunner):
-        """Non-UUID string as positional arg should show friendly error (C1)."""
+    def test_nodo_aldoni_custom_id_works(self, runner: CliRunner):
+        """Human-readable ID as positional arg should work (C1 removed)."""
         result = runner.invoke(app, [
-            "nodo", "aldoni", "SPACO",
+            "nodo", "aldoni", "SPACO", "-e", "eo::Spaco", "-y",
         ])
-        assert result.exit_code == 1
-        # Must show a UUID format error, not a traceback
-        assert "Nevalida UUID" in result.stdout or "Invalid UUID" in result.stdout
-        assert "Traceback" not in result.stdout
+        assert result.exit_code == 0
+        assert "kreita" in result.stdout or "Created" in result.stdout
 
-    def test_nodo_aldoni_duplicate_uuid_friendly(self, runner: CliRunner, node_svc):
-        """Using an existing UUID should show friendly error (C2+C3)."""
-        existing_uuid = "dddddddd-1111-1111-1111-111111111111"
-        node_svc.create({"uuid": existing_uuid, "etikedoj": {"eo": "Ekzistanta"}})
+    def test_nodo_aldoni_duplicate_id_friendly(self, runner: CliRunner, node_svc):
+        """Using an existing node_id should show friendly error (C2+C3)."""
+        existing_id = "DUPLICATO"
+        node_svc.create({"node_id": existing_id, "etikedoj": {"eo": "Ekzistanta"}})
         result = runner.invoke(app, [
-            "nodo", "aldoni", existing_uuid, "-y",
+            "nodo", "aldoni", existing_id, "-y",
         ])
         assert result.exit_code == 1
         # Must show a meaningful error, not a traceback
@@ -693,8 +691,8 @@ class TestNodoAldoniErrorHandling:
         assert "modifi" in result.stdout
         assert "Traceback" not in result.stdout
 
-    def test_nodo_aldoni_auto_uuid_no_collision(self, runner: CliRunner, node_svc):
-        """Auto-generated UUID (no positional arg) should still work."""
+    def test_nodo_aldoni_auto_id_no_collision(self, runner: CliRunner, node_svc):
+        """Auto-generated node_id (no positional arg) should still work."""
         result = runner.invoke(app, [
             "nodo", "aldoni", "-e", "eo::Aŭtomata", "-y",
         ])
@@ -706,26 +704,26 @@ class TestNodoAldoniErrorHandling:
         node = node_svc.create({"etikedoj": {"eo": "Forigota"}})
         # First delete
         result1 = runner.invoke(app, [
-            "nodo", "forigi", node["uuid"][:8], "-y",
+            "nodo", "forigi", node["node_id"][:8], "-y",
         ])
         assert result1.exit_code == 0
         # Second delete — should not crash
         result2 = runner.invoke(app, [
-            "nodo", "forigi", node["uuid"][:8], "-y",
+            "nodo", "forigi", node["node_id"][:8], "-y",
         ])
         assert result2.exit_code == 1
         assert "ne trovita" in result2.stdout or "not found" in result2.stdout
         assert "Traceback" not in result2.stdout
 
 
-class TestNodoForigiAmbiguousUUID:
-    """Ambiguous UUID prefix in multi-forigi should report per-item."""
+class TestNodoForigiAmbiguousPrefix:
+    """Ambiguous node_id prefix in multi-forigi should report per-item."""
 
     def test_ambiguous_prefix_reported(self, runner: CliRunner, node_svc):
         """Ambiguous prefix should report error and not block other deletions."""
-        node_svc.create({"uuid": "bbbbbbbb-0000-0000-0000-000000000001", "etikedoj": {"eo": "AmbA"}})
-        node_svc.create({"uuid": "bbbbbbba-0000-0000-0000-000000000001", "etikedoj": {"eo": "AmbB"}})
-        node_svc.create({"uuid": "cccccccc-0000-0000-0000-000000000001", "etikedoj": {"eo": "Clear"}})
+        node_svc.create({"node_id": "bbbbbbbb-0000-0000-0000-000000000001", "etikedoj": {"eo": "AmbA"}})
+        node_svc.create({"node_id": "bbbbbbba-0000-0000-0000-000000000001", "etikedoj": {"eo": "AmbB"}})
+        node_svc.create({"node_id": "cccccccc-0000-0000-0000-000000000001", "etikedoj": {"eo": "Clear"}})
 
         # "bbbb" matches both AmbA and AmbB → ambiguous
         result = runner.invoke(app, [

@@ -59,7 +59,8 @@ class NodeService(CRUDService):
     Features:
     - FTS5 full-text search on label_text + difin_text
     - Auto-denormalization of etikedoj/difinoj JSON into flat text
-    - Optional UUID override on create
+    - Human-readable node_id (not UUID) as primary key
+    - Optional auto-generated UUID if node_id not provided
     - Undo/trash enabled (default undo_size=10)
     """
 
@@ -71,18 +72,18 @@ class NodeService(CRUDService):
             undo_size=10,
         )
 
-    # ── Override create to support optional UUID ────────────────────────
+    # ── Override create to support optional node_id ──────────────────────
 
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Create a node, with optional pre-assigned UUID.
+        """Create a node, with optional pre-assigned node_id.
 
-        If data contains a 'uuid' key, use it instead of generating one.
+        If data contains a 'node_id' key, use it instead of generating one.
         """
-        node_uuid = data.pop("uuid", None) or str(_uuid.uuid4())
+        node_id_val = data.pop("node_id", None) or str(_uuid.uuid4())
         timestamp = now()
 
         raw = {
-            "uuid": node_uuid,
+            "node_id": node_id_val,
             "etikedoj": json.dumps(data.get("etikedoj", {})),
             "label_text": _extract_label_text(data.get("etikedoj", {})),
             "difinoj": json.dumps(data.get("difinoj", {})),
@@ -93,20 +94,20 @@ class NodeService(CRUDService):
         # Insert directly to bypass CRUDService's auto-UUID generation
         try:
             self.db.execute(
-                "INSERT INTO nodes (uuid, etikedoj, label_text, difinoj, difin_text, kreita_je, modifita_je) "
-                "VALUES (:uuid, :etikedoj, :label_text, :difinoj, :difin_text, :kreita_je, :modifita_je)",
+                "INSERT INTO nodes (node_id, etikedoj, label_text, difinoj, difin_text, kreita_je, modifita_je) "
+                "VALUES (:node_id, :etikedoj, :label_text, :difinoj, :difin_text, :kreita_je, :modifita_je)",
                 raw,
             )
         except Exception as e:
             if "UNIQUE constraint failed" in str(e):
                 raise ValueError(
-                    f"Node with UUID '{node_uuid}' already exists. "
-                    f"Use 'A semantika nodo modifi {node_uuid}' to modify it."
+                    f"Node with ID '{node_id_val}' already exists. "
+                    f"Use 'A semantika nodo modifi {node_id_val}' to modify it."
                 ) from e
             raise
         # Re-index FTS for the denormalized values
         if self._fts_config:
-            self._index_fts(node_uuid)
+            self._index_fts(node_id_val)
 
         # Track for undo
         if self._undo_manager is not None:
@@ -115,20 +116,28 @@ class NodeService(CRUDService):
             op = create_undo_operation(
                 operation_type="add",
                 table=self.table,
-                record_uuid=node_uuid,
+                record_uuid=node_id_val,
                 new_data=raw,
             )
             self._undo_manager.push(op)
 
-        return self.get(node_uuid)
+        return self.get(node_id_val)
 
-    # ── Override update to re-index FTS after denormalization ───────────
+    # ── Override get to use node_id column ───────────────────────────────
 
-    def update(self, uuid: str, data: dict[str, Any]) -> dict[str, Any]:
+    def get(self, node_id: str) -> dict[str, Any] | None:
+        """Get a single node by node_id (supports prefix matching)."""
+        return self.db.execute_one(
+            f"SELECT * FROM {self.table} WHERE node_id LIKE ?", (f"{node_id}%",)
+        )
+
+    # ── Override update to use node_id column ────────────────────────────
+
+    def update(self, node_id: str, data: dict[str, Any]) -> dict[str, Any]:
         """Update a node, re-denormalizing labels if etikedoj/difinoj changed."""
-        old = self.get(uuid)
+        old = self.get(node_id)
         if not old:
-            msg = f"Node not found: {uuid}"
+            msg = f"Node not found: {node_id}"
             raise ValueError(msg)
 
         updates = dict(data)
@@ -157,15 +166,15 @@ class NodeService(CRUDService):
         for key, val in updates.items():
             set_parts.append(f"{key} = ?")
             params.append(val)
-        params.append(uuid)
+        params.append(node_id)
 
-        sql = f"UPDATE nodes SET {', '.join(set_parts)} WHERE uuid = ?"
+        sql = f"UPDATE nodes SET {', '.join(set_parts)} WHERE node_id = ?"
         self.db.execute(sql, params)
 
         # Re-index FTS
         if self._fts_config:
-            self._remove_from_fts(uuid)
-            self._index_fts(uuid)
+            self._remove_from_fts(node_id)
+            self._index_fts(node_id)
 
         # Track for undo
         if self._undo_manager is not None and old:
@@ -174,17 +183,133 @@ class NodeService(CRUDService):
             op = create_undo_operation(
                 operation_type="modify",
                 table=self.table,
-                record_uuid=uuid,
+                record_uuid=node_id,
                 old_data=old,
                 new_data=updates,
             )
             self._undo_manager.push(op)
 
-        return self.get(uuid)
+        return self.get(node_id)
+
+    # ── Override delete to use node_id column ────────────────────────────
+
+    def delete(self, node_id: str, soft: bool = True) -> None:
+        """Delete a node.
+
+        Args:
+            node_id: Node ID
+            soft: If True, move to trash table. If False, permanent delete.
+        """
+        old_data = self.get(node_id)
+
+        if soft:
+            self._move_to_trash(node_id)
+        else:
+            if self._fts_config:
+                self._remove_from_fts(node_id)
+            sql = f"DELETE FROM {self.table} WHERE node_id = ?"
+            with self.db.transaction() as conn:
+                conn.execute(sql, (node_id,))
+
+        if self._undo_manager is not None and old_data:
+            from A.core.service import create_undo_operation
+
+            self._undo_manager.push(create_undo_operation(
+                operation_type="delete",
+                table=self.table,
+                record_uuid=node_id,
+                old_data=old_data,
+            ))
+
+        try:
+            self._post_delete(node_id, old_data, soft)
+        except Exception:
+            pass
+
+    # ── Override _move_to_trash to use node_id column ────────────────────
+
+    def _move_to_trash(self, node_id: str) -> None:
+        """Move node to trash table."""
+        entry = self.db.execute_one(
+            f"SELECT * FROM {self.table} WHERE node_id = ?", (node_id,)
+        )
+        if not entry:
+            return
+
+        if self._fts_config:
+            self._remove_from_fts(node_id)
+
+        from datetime import datetime, timezone
+
+        entry["forigita_je"] = datetime.now(timezone.utc).isoformat()
+        entry.setdefault("modifita_je", entry["forigita_je"])
+
+        columns = list(entry.keys())
+        values = list(entry.values())
+        placeholders = ", ".join(["?"] * len(columns))
+        sql = f"INSERT OR REPLACE INTO {self._trash_table} ({', '.join(columns)}) VALUES ({placeholders})"
+
+        with self.db.transaction() as conn:
+            conn.execute(sql, values)
+            conn.execute(f"DELETE FROM {self.table} WHERE node_id = ?", (node_id,))
+
+    # ── Override restore to use node_id column ───────────────────────────
+
+    def restore(self, node_id: str) -> dict[str, Any] | None:
+        """Restore node from trash."""
+        entry = self.db.execute_one(
+            f"SELECT * FROM {self._trash_table} WHERE node_id = ?", (node_id,)
+        )
+        if not entry:
+            return None
+
+        from datetime import datetime, timezone
+
+        entry["modifita_je"] = datetime.now(timezone.utc).isoformat()
+        entry.pop("forigita_je", None)
+
+        columns = list(entry.keys())
+        values = list(entry.values())
+        placeholders = ", ".join(["?"] * len(columns))
+        insert_sql = f"INSERT INTO {self.table} ({', '.join(columns)}) VALUES ({placeholders})"
+
+        with self.db.transaction() as conn:
+            conn.execute(insert_sql, values)
+            conn.execute(f"DELETE FROM {self._trash_table} WHERE node_id = ?", (node_id,))
+
+        return entry
+
+    # ── Override _ensure_fts — use node_id instead of uuid in FTS schema ──
+
+    def _ensure_fts(self) -> None:
+        """Create FTS5 virtual table with node_id column (not uuid)."""
+        if not self._fts_config:
+            return
+        config = self._fts_config
+        columns_def = ", ".join(config.fts_columns)
+        self.db.execute(
+            f"CREATE VIRTUAL TABLE IF NOT EXISTS {config.fts_table}"
+            f" USING fts5("
+            f"  node_id UNINDEXED,"
+            f"  {columns_def},"
+            f"  content={config.table},"
+            f"  content_rowid=rowid,"
+            f"  tokenize='{config.tokenize}'"
+            f")"
+        )
+
+        # Populate FTS if empty
+        count = self.db.execute_one(
+            f"SELECT COUNT(*) AS cnt FROM {config.fts_table}"
+        )
+        if count and count["cnt"] == 0:
+            self.db.execute(
+                f"INSERT INTO {config.fts_table}({config.fts_table}) VALUES('rebuild')"
+            )
 
     # ── Override _remove_from_fts for SQLite 3.50+ compatibility ────────
 
-    def _remove_from_fts(self, uuid: str) -> None:
+    def _remove_from_fts(self, node_id: str) -> None:
         """Remove node from FTS index using FTS5 'delete' command.
 
         Overrides CRUDService._remove_from_fts which uses a direct
@@ -196,7 +321,7 @@ class NodeService(CRUDService):
         if not self._fts_config:
             return
         row = self.db.execute_one(
-            f"SELECT rowid FROM {self.table} WHERE uuid = ?", (uuid,)
+            f"SELECT rowid FROM {self.table} WHERE node_id = ?", (node_id,)
         )
         if not row or row.get("rowid") is None:
             return
@@ -206,52 +331,88 @@ class NodeService(CRUDService):
             (row["rowid"],),
         )
 
-    # ── UUID prefix resolution ──────────────────────────────────────────
+    # ── Override _index_fts to use node_id column ─────────────────────────
+
+    def _index_fts(self, node_id: str) -> None:
+        """Index a single node in FTS5.
+
+        Override to use node_id instead of uuid column.
+        Self-contained — avoids A-core build_index_sql which hardcodes uuid.
+        """
+        if not self._fts_config:
+            return
+        entry = self.db.execute_one(
+            f"SELECT rowid, node_id, "
+            f"{', '.join(self._fts_config.fts_columns)} "
+            f"FROM {self.table} WHERE node_id = ?",
+            (node_id,)
+        )
+        if not entry:
+            return
+
+        # Build INSERT with node_id instead of uuid
+        values = [entry["rowid"], node_id]
+        for col in self._fts_config.fts_columns:
+            val = entry.get(col, "")
+            if col in self._fts_config.normalize:
+                val = self._fts_config.normalize[col](val)
+            values.append(val)
+
+        placeholders = ", ".join(["?"] * (len(self._fts_config.fts_columns) + 2))
+        fts_cols = ", ".join(["node_id"] + self._fts_config.fts_columns)
+        sql = (
+            f"INSERT INTO {self._fts_config.fts_table} (rowid, {fts_cols})"
+            f" VALUES ({placeholders})"
+        )
+        self.db.execute(sql, values)
+
+    # ── node_id prefix resolution ────────────────────────────────────────
 
     def resolve_uuid_prefix(self, prefix: str) -> dict | None:
-         """Resolve a UUID prefix to a full node.
+        """Resolve a node_id prefix to a full node.
 
-         Returns the node dict if exactly one match, None if no match.
-         Raises AmbiguousUUIDError if prefix is ambiguous (multiple matches).
-         """
-         if not prefix:
-             return None
+        Returns the node dict if exactly one match, None if no match.
+        Raises AmbiguousUUIDError if prefix is ambiguous (multiple matches).
+        """
+        if not prefix:
+            return None
 
-         # If prefix looks like a full UUID (36 chars with dashes), try exact match
-         if len(prefix) == 36 and prefix.count("-") == 4:
-             node = self.db.execute_one("SELECT * FROM nodes WHERE uuid = ?", (prefix,))
-             if node:
-                 return node
+        # Full node_id match via exact match
+        node = self.db.execute_one(
+            "SELECT * FROM nodes WHERE node_id = ?", (prefix,)
+        )
+        if node:
+            return node
 
-         # Prefix search via LIKE
-         matches = self.db.execute(
-             "SELECT * FROM nodes WHERE uuid LIKE ?",
-             (f"{prefix}%",),
-         )
-         if not matches:
-             return None
-         if len(matches) > 1:
-             msg = f"UUID prefix '{prefix}' is ambiguous ({len(matches)} matches)"
-             raise AmbiguousUUIDError(msg)
-         return matches[0]
+        # Prefix search via LIKE
+        matches = self.db.execute(
+            "SELECT * FROM nodes WHERE node_id LIKE ?",
+            (f"{prefix}%",),
+        )
+        if not matches:
+            return None
+        if len(matches) > 1:
+            msg = f"Node ID prefix '{prefix}' is ambiguous ({len(matches)} matches)"
+            raise AmbiguousUUIDError(msg)
+        return matches[0]
 
-    def get_display_label(self, uuid_or_prefix: str) -> tuple[str, str]:
+    def get_display_label(self, node_id_or_prefix: str) -> tuple[str, str]:
         """Get (display_label, language_code) for a node.
 
         Returns label in eo, falling back to en, then to the first available,
-        then to the UUID prefix as last resort.
+        then to the node_id prefix as last resort.
         """
-        node = self.resolve_uuid_prefix(uuid_or_prefix)
+        node = self.resolve_uuid_prefix(node_id_or_prefix)
         if not node:
-            return (uuid_or_prefix, "")
+            return (node_id_or_prefix, "")
 
         try:
             labels = json.loads(node["etikedoj"])
         except (json.JSONDecodeError, TypeError):
-            return (node["uuid"][:8], "")
+            return (node["node_id"][:8], "")
 
         if not isinstance(labels, dict):
-            return (node["uuid"][:8], "")
+            return (node["node_id"][:8], "")
 
         for lang in ("eo", "en"):
             val = labels.get(lang)
@@ -262,7 +423,7 @@ class NodeService(CRUDService):
         for val in labels.values():
             if val and isinstance(val, str):
                 return (val, "")
-        return (node["uuid"][:8], "")
+        return (node["node_id"][:8], "")
 
     # ── Search ──────────────────────────────────────────────────────────
 
@@ -276,17 +437,12 @@ class NodeService(CRUDService):
 
         # Try FTS first
         # Sanitize FTS5 query: strip special characters that can crash MATCH
-        # FTS5 special chars: " * ^ - + ~ ( ) { } [ ] : < > %
-        # FTS5 reserved keywords: AND, OR, NOT, NEAR, COLUMN
-        # Hyphens are removed entirely (FTS5 treats "-" as a NOT operator)
         _FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR", "COLUMN"}
         safe_tokens = []
         for word in query.strip().split():
-            # Remove all FTS5 special characters including hyphens
             cleaned = "".join(c for c in word if c.isalnum() or c in ("_", "."))
             if not cleaned:
                 continue
-            # Skip FTS5 reserved keywords (they'd cause syntax errors as prefix terms)
             if cleaned.upper() in _FTS5_KEYWORDS:
                 continue
             safe_tokens.append(f"{cleaned}*")
@@ -295,7 +451,7 @@ class NodeService(CRUDService):
         fts_query = " OR ".join(safe_tokens)
         fts_sql = """
             SELECT n.* FROM nodes n
-            JOIN nodes_fts f ON n.uuid = f.uuid
+            JOIN nodes_fts f ON n.node_id = f.node_id
             WHERE nodes_fts MATCH ?
             LIMIT ?
         """

@@ -37,9 +37,9 @@ def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
     try:
         labels = json.loads(node["etikedoj"])
     except (json.JSONDecodeError, TypeError):
-        return node["uuid"][:8]
+        return node["node_id"][:8]
     if not isinstance(labels, dict):
-        return node["uuid"][:8]
+        return node["node_id"][:8]
     for lang in ("eo", "en"):
         val = labels.get(lang)
         if val and isinstance(val, str):
@@ -47,7 +47,7 @@ def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
     for val in labels.values():
         if val and isinstance(val, str):
             return val
-    return node["uuid"][:8]
+    return node["node_id"][:8]
 
 
 def resolve_predicate_label(pred_svc: PredicateService, predicate_id: str) -> str:
@@ -120,7 +120,7 @@ def build_triple_preview_table(
         except AmbiguousUUIDError as e:
             error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
             raise typer.Exit(1) from e
-        subj_id = n["uuid"][:8] if n else subject_uuid[:8]
+        subj_id = n["node_id"][:8] if n else subject_uuid[:8]
         lang_hint = ""
         lang_code = ""
         if n:
@@ -141,7 +141,7 @@ def build_triple_preview_table(
         except AmbiguousUUIDError as e:
             error(tr_multi("Ambigua objekto-prefikso: {e}", "Ambiguous object prefix: {e}", "Préfixe objet ambigu : {e}").format(e=str(e)))
             raise typer.Exit(1) from e
-        obj_id = obj_node["uuid"][:8] if obj_node else object_value[:8]
+        obj_id = obj_node["node_id"][:8] if obj_node else object_value[:8]
         table.add_row(f"{subj_id}{lang_hint}", pred_id_display, obj_id)
         footnote = tr_multi("→ URI", "→ URI", "→ URI")
     elif object_type == "literal" and object_datatype:
@@ -152,7 +152,7 @@ def build_triple_preview_table(
         except AmbiguousUUIDError as e:
             error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
             raise typer.Exit(1) from e
-        subj_id = n["uuid"][:8] if n else subject_uuid[:8]
+        subj_id = n["node_id"][:8] if n else subject_uuid[:8]
         p = pred_svc.get_by_predicate_id(predicate_id)
         pred_id_display = p["predicate_id"] if p else predicate_id
         table.add_row(subj_id, pred_id_display, object_value)
@@ -170,7 +170,7 @@ def build_triple_preview_table(
             except AmbiguousUUIDError as e:
                 error(tr_multi("Ambigua unuo-prefikso: {e}", "Ambiguous unit prefix: {e}", "Préfixe unité ambigu : {e}").format(e=str(e)))
                 raise typer.Exit(1) from e
-            unit_id = unit_node["uuid"][:8] if unit_node else object_unit[:8]
+            unit_id = unit_node["node_id"][:8] if unit_node else object_unit[:8]
             parts.append(f"unit: {unit_label} ({unit_id})")
         footnote = ", ".join(parts)
     else:
@@ -181,7 +181,7 @@ def build_triple_preview_table(
         except AmbiguousUUIDError as e:
             error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
             raise typer.Exit(1) from e
-        subj_id = n["uuid"][:8] if n else subject_uuid[:8]
+        subj_id = n["node_id"][:8] if n else subject_uuid[:8]
         p = pred_svc.get_by_predicate_id(predicate_id)
         pred_id_display = p["predicate_id"] if p else predicate_id
         quoted_val = f'"{object_value}"'

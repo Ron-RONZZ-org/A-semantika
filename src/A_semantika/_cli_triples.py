@@ -134,7 +134,7 @@ def aldoni(
             "Sujet non trouvé : {s}",
         ).format(s=subject))
         raise typer.Exit(1)
-    subject_uuid = subj_node["uuid"]
+    subject_uuid = subj_node["node_id"]
 
     # Resolve object UUID if URI type
     object_uuid = object
@@ -155,7 +155,7 @@ def aldoni(
                 "Objet non trouvé : {o}",
             ).format(o=object))
             raise typer.Exit(1)
-        object_uuid = obj_node["uuid"]
+        object_uuid = obj_node["node_id"]
 
     # Validate predicate exists (BEFORE confirmation preview)
     if not pred_svc.get_by_predicate_id(predicate):
@@ -348,9 +348,9 @@ def forigi(
             raise typer.Exit(0)
 
     deleted = triple_svc.remove(
-        subject_uuid=subj_node["uuid"],
+        subject_uuid=subj_node["node_id"],
         predicate_id=predicate,
-        object_value=obj_node["uuid"],
+        object_value=obj_node["node_id"],
         object_type="uri",
     )
     if deleted:

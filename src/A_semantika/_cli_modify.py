@@ -164,7 +164,7 @@ def modifi(
             "Sujet non trouvé : {s}",
         ).format(s=subject))
         raise typer.Exit(1)
-    subject_uuid = subj_node["uuid"]
+    subject_uuid = subj_node["node_id"]
 
     # Current object is always URI for modifi (compound PK requirement)
     try:
@@ -183,7 +183,7 @@ def modifi(
             "Objet non trouvé : {o}",
         ).format(o=object))
         raise typer.Exit(1)
-    object_uuid = obj_node["uuid"]
+    object_uuid = obj_node["node_id"]
 
     existing = triple_svc.get_one(subject_uuid, predicate, object_uuid, "uri")
     if not existing:
@@ -212,7 +212,7 @@ def modifi(
             "Nouveau sujet non trouvé : {s}",
         ).format(s=new_subj))
         raise typer.Exit(1)
-    new_subj_uuid = new_subj_node["uuid"]
+    new_subj_uuid = new_subj_node["node_id"]
 
     if new_obj is None:
         new_obj = object or ""
@@ -232,7 +232,7 @@ def modifi(
             "Nouvel objet non trouvé : {o}",
         ).format(o=new_obj))
         raise typer.Exit(1)
-    new_obj_uuid = new_obj_node["uuid"]
+    new_obj_uuid = new_obj_node["node_id"]
 
     # Show preview
     if not yes:

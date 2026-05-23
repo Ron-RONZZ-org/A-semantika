@@ -9,9 +9,9 @@ import pytest
 def _setup_nodes_and_predicates(node_svc, pred_svc) -> None:
     """Create test data: nodes + predicates."""
     # Use hex-only UUIDs with distinct prefixes to resolve uniquely
-    node_svc.create({"uuid": "a1000000-0000-0000-0000-000000000001", "etikedoj": {"eo": "Hundo"}})
-    node_svc.create({"uuid": "a2000000-0000-0000-0000-000000000002", "etikedoj": {"eo": "Kato"}})
-    node_svc.create({"uuid": "a3000000-0000-0000-0000-000000000003", "etikedoj": {"eo": "Mamulo"}})
+    node_svc.create({"node_id": "a1000000-0000-0000-0000-000000000001", "etikedoj": {"eo": "Hundo"}})
+    node_svc.create({"node_id": "a2000000-0000-0000-0000-000000000002", "etikedoj": {"eo": "Kato"}})
+    node_svc.create({"node_id": "a3000000-0000-0000-0000-000000000003", "etikedoj": {"eo": "Mamulo"}})
     pred_svc.create({"predicate_id": "rdf:type", "etikedoj": {"eo": "tipo", "en": "type"}})
     pred_svc.create({"predicate_id": "wdt:P1082", "etikedoj": {"eo": "logxantaro", "en": "population"}})
 

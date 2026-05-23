@@ -23,7 +23,7 @@ PRAGMA foreign_keys=ON;
 
 -- Nodes: entities in the knowledge graph
 CREATE TABLE IF NOT EXISTS nodes (
-    uuid        TEXT PRIMARY KEY,
+    node_id     TEXT PRIMARY KEY,
     etikedoj    TEXT NOT NULL DEFAULT '{}',
     label_text  TEXT NOT NULL DEFAULT '',
     difinoj     TEXT NOT NULL DEFAULT '{}',
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS predicate_group_members (
 
 -- Triples: core semantic arcs (subject-predicate-object)
 CREATE TABLE IF NOT EXISTS triples (
-    subject_uuid    TEXT NOT NULL REFERENCES nodes(uuid),
+    subject_uuid    TEXT NOT NULL REFERENCES nodes(node_id),
     predicate_id    TEXT NOT NULL REFERENCES predicates(predicate_id),
     object_type     TEXT NOT NULL DEFAULT 'uri',
     object_value    TEXT NOT NULL,
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS triples (
     object_unit     TEXT DEFAULT NULL,
     object_node_uuid TEXT GENERATED ALWAYS AS (
         CASE WHEN object_type='uri' THEN object_value ELSE NULL END
-    ) STORED REFERENCES nodes(uuid),
+    ) STORED REFERENCES nodes(node_id),
     kreita_je       TEXT NOT NULL,
     PRIMARY KEY (subject_uuid, predicate_id, object_value, object_type)
 ) WITHOUT ROWID;
@@ -91,8 +91,9 @@ CREATE INDEX IF NOT EXISTS idx_nodes_label_text
 -- FTS5 on nodes (external content table)
 -- Note: CRUDService manages FTS indexing manually via _index_fts/_remove_from_fts,
 -- so no triggers are needed (they would conflict with CRUDService's approach).
+-- Uses node_id (not uuid) since nodes table uses human-readable IDs.
 CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
-    uuid UNINDEXED,
+    node_id UNINDEXED,
     label_text,
     difin_text,
     content=nodes,
