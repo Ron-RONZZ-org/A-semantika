@@ -33,9 +33,11 @@ CREATE TABLE IF NOT EXISTS nodes (
 );
 
 -- Predicates: semantic properties
+-- Uses predicate_id (content-based identifier like wdt:P31) as PK,
+-- not a synthetic uuid — follows RDF convention where predicates
+-- are identified by their URI/ID, not by an artifact.
 CREATE TABLE IF NOT EXISTS predicates (
-    uuid          TEXT PRIMARY KEY,
-    predicate_id  TEXT NOT NULL UNIQUE,
+    predicate_id  TEXT PRIMARY KEY,
     source        TEXT NOT NULL DEFAULT 'manual',
     etikedoj      TEXT NOT NULL DEFAULT '{}',
     priskriboj    TEXT NOT NULL DEFAULT '{}',
@@ -127,10 +129,149 @@ def get_db() -> "SQLiteDB":
     return _DB
 
 
+def _migrate_nodes_uuid_to_node_id(db: "SQLiteDB") -> None:
+    """Migrate existing databases from old 'uuid' column to 'node_id'.
+
+    The ``CREATE TABLE IF NOT EXISTS`` in SCHEMA_SQL does not alter
+    existing tables, so databases created before the 19be0ff commit
+    (``feat: rename nodes.uuid to node_id for human-readable IDs``)
+    still have ``uuid`` as the primary key column.
+
+    This migration:
+    1. Drops the old ``nodes_fts`` FTS5 virtual table (it references the
+       old column name; rebuilt by ``NodeService._ensure_fts``).
+    2. Renames ``uuid`` → ``node_id`` on the ``nodes`` table.
+    3. Renames ``uuid`` → ``node_id`` on the ``nodes_rubujo`` trash table
+       if it exists.
+
+    Safe to call on already-migrated databases (no-op when ``node_id``
+    column already exists).
+    """
+    # Check current columns of the nodes table
+    try:
+        columns = {
+            row["name"]
+            for row in db.execute("PRAGMA table_info(nodes)")
+        }
+    except Exception:
+        # Table does not exist yet — nothing to migrate
+        return
+
+    if "node_id" in columns:
+        # Already migrated (either new schema or previous run)
+        return
+
+    if "uuid" not in columns:
+        # Unexpected — neither column exists; skip
+        return
+
+    # ── Step 1: Drop the old FTS5 virtual table ──────────────────────
+    # The old FTS5 table referenced uuid, but the renamed content table
+    # now uses node_id.  DROP + recreate avoids content sync issues.
+    # NodeService._ensure_fts will recreate it with the correct schema.
+    db.execute("DROP TABLE IF EXISTS nodes_fts")
+
+    # ── Step 2: Rename uuid → node_id on main table ─────────────────
+    db.execute("ALTER TABLE nodes RENAME COLUMN uuid TO node_id")
+
+    # ── Step 3: Rename uuid → node_id on trash table if it exists ──
+    try:
+        trash_columns = {
+            row["name"]
+            for row in db.execute("PRAGMA table_info(nodes_rubujo)")
+        }
+        if "uuid" in trash_columns and "node_id" not in trash_columns:
+            db.execute("ALTER TABLE nodes_rubujo RENAME COLUMN uuid TO node_id")
+        elif "uuid" in trash_columns and "node_id" in trash_columns:
+            # Edge case: _ensure_trash_table column sync added node_id
+            # alongside uuid.  Drop the orphaned uuid column.
+            db.execute("ALTER TABLE nodes_rubujo DROP COLUMN uuid")
+    except Exception:
+        # Trash table may not exist (no nodes ever deleted) — safe
+        pass
+
+
+def _migrate_predicates_uuid_to_predicate_id(db: "SQLiteDB") -> None:
+    """Migrate existing databases from uuid PK to predicate_id PK.
+
+    Prior to commit 19be0ff, the predicates table used a synthetic uuid
+    as primary key.  This migration drops uuid and promotes predicate_id
+    (which was already NOT NULL UNIQUE) to primary key.
+    """
+    try:
+        columns = {
+            row["name"]
+            for row in db.execute("PRAGMA table_info(predicates)")
+        }
+    except Exception:
+        return  # Table does not exist yet
+
+    if "uuid" not in columns:
+        return  # Already migrated or new schema
+
+    # Recreate with predicate_id as PK (uuid dropped)
+    db.execute("""
+        CREATE TABLE predicates_new (
+            predicate_id  TEXT PRIMARY KEY,
+            source        TEXT NOT NULL DEFAULT 'manual',
+            etikedoj      TEXT NOT NULL DEFAULT '{}',
+            priskriboj    TEXT NOT NULL DEFAULT '{}',
+            aliases       TEXT NOT NULL DEFAULT '[]',
+            kreita_je     TEXT NOT NULL,
+            modifita_je   TEXT NOT NULL
+        )
+    """)
+    db.execute("""
+        INSERT INTO predicates_new
+            (predicate_id, source, etikedoj, priskriboj,
+             aliases, kreita_je, modifita_je)
+        SELECT predicate_id, source, etikedoj, priskriboj,
+               aliases, kreita_je, modifita_je
+        FROM predicates
+    """)
+    db.execute("DROP TABLE predicates")
+    db.execute("ALTER TABLE predicates_new RENAME TO predicates")
+
+    # Also migrate trash table if it exists
+    try:
+        trash_cols = {
+            row["name"]
+            for row in db.execute("PRAGMA table_info(predicates_rubujo)")
+        }
+        if "uuid" in trash_cols:
+            # Recreate trash table without uuid column
+            db.execute("""
+                CREATE TABLE predicates_rubujo_new (
+                    predicate_id  TEXT PRIMARY KEY,
+                    source        TEXT NOT NULL DEFAULT 'manual',
+                    etikedoj      TEXT NOT NULL DEFAULT '{}',
+                    priskriboj    TEXT NOT NULL DEFAULT '{}',
+                    aliases       TEXT NOT NULL DEFAULT '[]',
+                    kreita_je     TEXT NOT NULL,
+                    modifita_je   TEXT NOT NULL,
+                    forigita_je   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            db.execute("""
+                INSERT INTO predicates_rubujo_new
+                    (predicate_id, source, etikedoj, priskriboj,
+                     aliases, kreita_je, modifita_je, forigita_je)
+                SELECT predicate_id, source, etikedoj, priskriboj,
+                       aliases, kreita_je, modifita_je, forigita_je
+                FROM predicates_rubujo
+            """)
+            db.execute("DROP TABLE predicates_rubujo")
+            db.execute("ALTER TABLE predicates_rubujo_new RENAME TO predicates_rubujo")
+    except Exception:
+        pass  # Trash table may not exist
+
+
 def init_db(db: "SQLiteDB | None" = None) -> None:
     """Initialize the database schema.
 
     Safe to call multiple times (uses IF NOT EXISTS).
+    Also runs migration for legacy databases that still have the
+    ``uuid`` column (renamed to ``node_id`` in commit 19be0ff).
     """
     if db is None:
         db = get_db()
@@ -138,6 +279,9 @@ def init_db(db: "SQLiteDB | None" = None) -> None:
         statement = statement.strip()
         if statement:
             db.execute(statement)
+    # Run column-rename migrations for existing databases
+    _migrate_nodes_uuid_to_node_id(db)
+    _migrate_predicates_uuid_to_predicate_id(db)
 
 
 def close_db() -> None:

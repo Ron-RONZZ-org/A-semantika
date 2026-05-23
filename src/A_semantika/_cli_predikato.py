@@ -280,7 +280,7 @@ def modifi(
             raise typer.Exit(0)
 
     try:
-        pred_svc.update(pred["uuid"], updates)
+        pred_svc.update(pred["predicate_id"], updates)
         info(tr_multi("Predikato modifita: {p}", "Predicate modified: {p}", "Prédicat modifié : {p}").format(p=predicate_id))
     except Exception as e:
         error(tr_multi("Eraro: {e}", "Error: {e}", "Erreur : {e}").format(e=str(e)))
@@ -356,14 +356,14 @@ def forigi(
     deleted = 0
     for pred in resolved:
         try:
-            pred_svc.delete(pred["uuid"])
+            pred_svc.delete(pred["predicate_id"])
             deleted += 1
         except Exception as e:
             error(tr_multi(
                 "Eraro forigante {p}: {e}",
                 "Error deleting {p}: {e}",
                 "Erreur lors de la suppression de {p} : {e}",
-            ).format(p=pred.get("predicate_id", pred["uuid"][:8]), e=str(e)))
+                ).format(p=pred.get("predicate_id", pred["predicate_id"][:8]), e=str(e)))
 
     info(tr_multi(
         "Forigis {d} el {t} predikatojn.",

@@ -3,11 +3,14 @@
 Predicates are lightweight metadata (no undo/trash needed).
 Stores multilingual labels/descriptions as JSON columns, matching
 the nodes pattern (etikedoj / priskriboj).
+
+Uses predicate_id (content-based identifier like wdt:P31) as PK,
+not a synthetic uuid — follows RDF convention where predicates
+are identified by their URI/ID, not by an artifact.
 """
 from __future__ import annotations
 
 import json
-import uuid as _uuid
 from typing import Any
 
 from A.core.service import CRUDService
@@ -67,6 +70,7 @@ class PredicateService(CRUDService):
         """Create a predicate with JSON-serialized etikedoj/priskriboj.
 
         Accepts etikedoj and priskriboj as dicts or JSON strings.
+        Uses predicate_id as PK (no synthetic uuid generated).
         """
         predicate_id = data.get("predicate_id", "")
         if not predicate_id:
@@ -82,7 +86,6 @@ class PredicateService(CRUDService):
         priskriboj = _ensure_json(data.get("priskriboj", {}))
 
         raw = {
-            "uuid": str(_uuid.uuid4()),
             "predicate_id": predicate_id,
             "source": data.get("source", "manual"),
             "etikedoj": etikedoj,
@@ -94,20 +97,20 @@ class PredicateService(CRUDService):
 
         self.db.execute(
             """INSERT INTO predicates
-               (uuid, predicate_id, source, etikedoj, priskriboj, aliases, kreita_je, modifita_je)
-               VALUES (:uuid, :predicate_id, :source, :etikedoj, :priskriboj, :aliases, :kreita_je, :modifita_je)""",
+               (predicate_id, source, etikedoj, priskriboj, aliases, kreita_je, modifita_je)
+               VALUES (:predicate_id, :source, :etikedoj, :priskriboj, :aliases, :kreita_je, :modifita_je)""",
             raw,
         )
-        return self.get(raw["uuid"])
+        return self.get_by_predicate_id(predicate_id)
 
-    def update(self, uuid: str, data: dict[str, Any]) -> dict[str, Any]:
+    def update(self, predicate_id: str, data: dict[str, Any]) -> dict[str, Any]:
         """Update a predicate.
 
         If etikedoj or priskriboj is a dict, it is serialized to JSON.
         """
-        old = self.get(uuid)
+        old = self.get_by_predicate_id(predicate_id)
         if not old:
-            msg = f"Predicate not found: {uuid}"
+            msg = f"Predicate not found: {predicate_id}"
             raise ValueError(msg)
 
         updates = dict(data)
@@ -126,11 +129,23 @@ class PredicateService(CRUDService):
         for key, val in updates.items():
             set_parts.append(f"{key} = ?")
             params.append(val)
-        params.append(uuid)
+        params.append(predicate_id)
 
-        sql = f"UPDATE predicates SET {', '.join(set_parts)} WHERE uuid = ?"
+        sql = f"UPDATE predicates SET {', '.join(set_parts)} WHERE predicate_id = ?"
         self.db.execute(sql, params)
-        return self.get(uuid)
+        return self.get_by_predicate_id(predicate_id)
+
+    def delete(self, predicate_id: str, soft: bool = True) -> None:
+        """Hard-delete a predicate by predicate_id.
+
+        Predicates are lightweight metadata — undo/trash are not needed.
+        The ``soft`` parameter is accepted for API compatibility but
+        ignored (deletion is always permanent).
+        """
+        self.db.execute(
+            "DELETE FROM predicates WHERE predicate_id = ?",
+            (predicate_id,),
+        )
 
     def search(self, query: str, limit: int = 50) -> list[dict]:
         """Search predicates across predicate_id and JSON text fields.

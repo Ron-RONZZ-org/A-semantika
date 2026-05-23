@@ -16,7 +16,8 @@ class TestPredicateCreate:
         assert pred["predicate_id"] == "wdt:P31"
         etikedoj = json.loads(pred["etikedoj"])
         assert etikedoj.get("eo") == "estas tipo de"
-        assert pred["uuid"] is not None
+        # Predicate uses predicate_id as PK (no synthetic uuid)
+        assert "uuid" not in pred
 
     def test_create_duplicate_predicate_id_raises(self, pred_svc) -> None:
         """Duplicate predicate_id should raise."""
@@ -76,7 +77,7 @@ class TestPredicateUpdate:
     def test_update_label(self, pred_svc) -> None:
         """Updating a predicate label should work."""
         pred = pred_svc.create({"predicate_id": "wdt:P31", "etikedoj": {"eo": "tipo"}})
-        pred_svc.update(pred["uuid"], {"etikedoj": {"eo": "tipo", "en": "instance of"}})
+        pred_svc.update(pred["predicate_id"], {"etikedoj": {"eo": "tipo", "en": "instance of"}})
         updated = pred_svc.get_by_predicate_id("wdt:P31")
         assert updated is not None
         etikedoj = json.loads(updated["etikedoj"])
