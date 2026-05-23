@@ -302,7 +302,7 @@ class TripleService:
         ]
 
         triples = self.db.execute(
-            """SELECT t.*, n.etikedoj AS subj_label, p.label_en AS pred_label
+            """SELECT t.*, n.etikedoj AS subj_label, p.etikedoj AS pred_etikedoj
                FROM triples t
                JOIN nodes n ON t.subject_uuid = n.uuid
                JOIN predicates p ON t.predicate_id = p.predicate_id

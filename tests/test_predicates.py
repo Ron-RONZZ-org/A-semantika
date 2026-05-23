@@ -1,5 +1,7 @@
-"""Tests for PredicateService — CRUD, search, FTS5."""
+"""Tests for PredicateService — CRUD, search."""
 from __future__ import annotations
+
+import json
 
 
 class TestPredicateCreate:
@@ -9,18 +11,29 @@ class TestPredicateCreate:
         """Creating a predicate with minimal data should work."""
         pred = pred_svc.create({
             "predicate_id": "wdt:P31",
-            "label_eo": "estas tipo de",
+            "etikedoj": {"eo": "estas tipo de"},
         })
         assert pred["predicate_id"] == "wdt:P31"
-        assert pred["label_eo"] == "estas tipo de"
+        etikedoj = json.loads(pred["etikedoj"])
+        assert etikedoj.get("eo") == "estas tipo de"
         assert pred["uuid"] is not None
 
     def test_create_duplicate_predicate_id_raises(self, pred_svc) -> None:
         """Duplicate predicate_id should raise."""
-        pred_svc.create({"predicate_id": "wdt:P31", "label_eo": "tipo"})
+        pred_svc.create({"predicate_id": "wdt:P31", "etikedoj": {"eo": "tipo"}})
         import pytest
         with pytest.raises(Exception):
-            pred_svc.create({"predicate_id": "wdt:P31", "label_eo": "tipo denove"})
+            pred_svc.create({"predicate_id": "wdt:P31", "etikedoj": {"eo": "tipo denove"}})
+
+    def test_create_with_priskriboj(self, pred_svc) -> None:
+        """Creating with priskriboj should work."""
+        pred = pred_svc.create({
+            "predicate_id": "wdt:P31",
+            "etikedoj": {"eo": "tipo", "en": "type"},
+            "priskriboj": {"eo": "Priskribo", "en": "Description"},
+        })
+        assert json.loads(pred["etikedoj"]) == {"eo": "tipo", "en": "type"}
+        assert json.loads(pred["priskriboj"]) == {"eo": "Priskribo", "en": "Description"}
 
 
 class TestPredicateRead:
@@ -28,10 +41,10 @@ class TestPredicateRead:
 
     def test_get_by_predicate_id(self, pred_svc) -> None:
         """get_by_predicate_id should work."""
-        pred_svc.create({"predicate_id": "wdt:P31", "label_eo": "tipo"})
+        pred_svc.create({"predicate_id": "wdt:P31", "etikedoj": {"eo": "tipo"}})
         fetched = pred_svc.get_by_predicate_id("wdt:P31")
         assert fetched is not None
-        assert fetched["label_eo"] == "tipo"
+        assert json.loads(fetched["etikedoj"])["eo"] == "tipo"
 
     def test_get_by_predicate_id_nonexistent(self, pred_svc) -> None:
         """Nonexistent predicate_id should return None."""
@@ -43,16 +56,16 @@ class TestPredicateSearch:
 
     def test_search_by_id(self, pred_svc) -> None:
         """Search by predicate_id should work."""
-        pred_svc.create({"predicate_id": "wdt:P31", "label_eo": "tipo"})
-        pred_svc.create({"predicate_id": "wdt:P1082", "label_eo": "logxantaro"})
+        pred_svc.create({"predicate_id": "wdt:P31", "etikedoj": {"eo": "tipo"}})
+        pred_svc.create({"predicate_id": "wdt:P1082", "etikedoj": {"eo": "logxantaro"}})
 
         results = pred_svc.search("wdt:P31")
         assert len(results) >= 1
         assert results[0]["predicate_id"] == "wdt:P31"
 
     def test_search_by_label(self, pred_svc) -> None:
-        """Search by label text should work."""
-        pred_svc.create({"predicate_id": "wdt:P31", "label_eo": "estas tipo de"})
+        """Search by label text (from etikedoj JSON) should work."""
+        pred_svc.create({"predicate_id": "wdt:P31", "etikedoj": {"eo": "estas tipo de"}})
         results = pred_svc.search("tipo")
         assert len(results) >= 1
 
@@ -62,9 +75,10 @@ class TestPredicateUpdate:
 
     def test_update_label(self, pred_svc) -> None:
         """Updating a predicate label should work."""
-        pred = pred_svc.create({"predicate_id": "wdt:P31", "label_eo": "tipo"})
-        pred_svc.update(pred["uuid"], {"label_en": "instance of"})
+        pred = pred_svc.create({"predicate_id": "wdt:P31", "etikedoj": {"eo": "tipo"}})
+        pred_svc.update(pred["uuid"], {"etikedoj": {"eo": "tipo", "en": "instance of"}})
         updated = pred_svc.get_by_predicate_id("wdt:P31")
         assert updated is not None
-        assert updated["label_en"] == "instance of"
-        assert updated["label_eo"] == "tipo"  # unchanged
+        etikedoj = json.loads(updated["etikedoj"])
+        assert etikedoj["en"] == "instance of"
+        assert etikedoj["eo"] == "tipo"  # unchanged

@@ -81,9 +81,8 @@ CREATE TABLE predicates (
     uuid          TEXT PRIMARY KEY,
     predicate_id  TEXT NOT NULL UNIQUE,
     source        TEXT NOT NULL DEFAULT 'manual',  -- 'wikidata'|'manual'|'owl'|'rdfs'
-    label_en      TEXT DEFAULT '',
-    label_eo      TEXT DEFAULT '',
-    priskribo     TEXT DEFAULT '',
+    etikedoj      TEXT NOT NULL DEFAULT '{}',  -- JSON: {"eo": "...", "en": "...", ...}
+    priskriboj    TEXT NOT NULL DEFAULT '{}',  -- JSON: {"eo": "...", "en": "...", ...}
     aliases       TEXT NOT NULL DEFAULT '[]',
     kreita_je     TEXT NOT NULL,
     modifita_je   TEXT NOT NULL
@@ -149,8 +148,10 @@ CREATE INDEX idx_nodes_label_text ON nodes(label_text);
 - UUID override on `aldoni`: optional `[UUID]` positional arg for manual UUID assignment
 
 ### PredicateService (extends CRUDService)
-- Search on `predicate_id`, `label_en`, `label_eo`, `priskribo`
+- Stores multilingual labels/descriptions as JSON dicts: `etikedoj` / `priskriboj`
+- Search on `predicate_id`, `etikedoj`, `priskriboj`, `aliases` via LIKE
 - No undo/trash needed (predicates are lightweight metadata)
+- Custom `create()` / `update()` with JSON serialization of dict fields
 
 ### PredicateGroupService (extends CRUDService)
 - Member management: `add_member()`, `remove_member()`, `list_members()`
@@ -208,9 +209,18 @@ A semantika nodo aldoni [UUID]
   [-y / --jes]
 
 A semantika predikato aldoni <predicate-id>
-  [-e / --etikedo "LANGCODE::STR"]*
-  [-a / --aliaso STR]*
+  [-e / --etikedo "LANGCODE::STR"]*   # Repeatable, e.g. -e "eo::tipo" -e "en::type"
+  [-p / --priskribo "LANGCODE::STR"]* # Repeatable, e.g. -p "eo::Priskribo"
   [-y / --jes]
+
+A semantika predikato modifi <predicate-id>
+  [-e / --etikedo "LANGCODE::STR"]*   # Merge by default: add/update languages
+  [-p / --priskribo "LANGCODE::STR"]* # Merge by default: add/update descriptions
+  [-r / --anstatauxigi]               # Replace instead of merge (clears existing)
+  [-y / --jes]
+
+A semantika predikato vidi <predicate-id>   # Shows all languages from etikedoj + priskriboj
+A semantika predikato ls                     # Single label column (eo/en fallback)
 
 A semantika predikat-grupo aldoni <group-name>
 A semantika predikat-grupo importi <file>
@@ -248,6 +258,7 @@ A semantika predikat-grupo importi <file>
 | **I8-R1** | `--jes` flag rename + help clarification (Issue #8) | None | ✅ Complete |
 | **I8-R2** | Partial label search for `serci` (Issue #8) | `A_semantika._triple_search` | ✅ Complete |
 | **I8-R3** | Interactive search-then-select picker for `forigi`/`modifi` (Issue #8) | `A.utils.interactive.select_candidate` | ✅ Complete |
+| **I9** | Predicate JSON migration + UX cleanup (Issue #9) | JSON `etikedoj`/`priskriboj`, merge/replace `modifi` | ✅ Complete |
 
 ## Critical Bugs Fixed (May 2026)
 

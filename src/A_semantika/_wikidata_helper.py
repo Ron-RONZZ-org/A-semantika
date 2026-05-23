@@ -3,6 +3,10 @@
 Provides validation, normalization, search, and metadata fetch utilities
 for Wikidata property integration. All functions are stateless -- no DB
 writes happen here.
+
+Maps Wikidata data to A-semantika's JSON-based predicate model:
+  etikedoj:  {"eo": "...", "en": "...", ...}
+  priskriboj: {"eo": "...", "en": "...", ...}
 """
 from __future__ import annotations
 
@@ -52,7 +56,7 @@ def search_wikidata(
 ) -> list[dict[str, Any]]:
     """Search Wikidata properties matching *query*.
 
-    Results are mapped to A-semantika's predicate model:
+    Results are mapped to A-semantika's predicate model for display:
     ``{predicate_id, label, priskribo, aliases, source}``
 
     Since Wikidata returns a single best-match label (not per-language),
@@ -97,8 +101,8 @@ def fetch_wikidata_details(
     """Fetch per-language labels and details for a Wikidata property.
 
     Uses ``get_property_details()`` which returns separate labels for
-    each requested language, suitable for populating both ``label_eo``
-    and ``label_en`` columns.
+    each requested language. Results are mapped to A-semantika's JSON
+    predicate model (``etikedoj`` / ``priskriboj`` dicts).
 
     Args:
         prop_id: Wikidata property ID with or without ``wdt:`` prefix
@@ -108,7 +112,7 @@ def fetch_wikidata_details(
 
     Returns:
         Dict mapped to A-semantika predicate model:
-        ``{predicate_id, label_eo, label_en, priskribo, aliases, source}``
+        ``{predicate_id, etikedoj, priskriboj, aliases, source}``
         or ``None`` on network failure or missing property.
     """
     bare_id = prop_id.removeprefix("wdt:").removeprefix("WDT:").strip()
@@ -125,11 +129,17 @@ def fetch_wikidata_details(
     descs: dict[str, str] = details.get("descriptions") or {}
     raw_aliases: dict[str, list[str]] = details.get("aliases") or {}
 
-    priskribo = ""
+    # Build etikedoj dict from per-language labels
+    etikedoj: dict[str, str] = {}
+    for lang in languages:
+        if lang in labels and labels[lang]:
+            etikedoj[lang] = labels[lang]
+
+    # Build priskriboj dict from per-language descriptions
+    priskriboj: dict[str, str] = {}
     for lang in languages:
         if lang in descs and descs[lang]:
-            priskribo = descs[lang]
-            break
+            priskriboj[lang] = descs[lang]
 
     merged_aliases: list[str] = []
     seen: set[str] = set()
@@ -141,9 +151,8 @@ def fetch_wikidata_details(
 
     return {
         "predicate_id": f"wdt:{bare_id}",
-        "label_eo": labels.get("eo", ""),
-        "label_en": labels.get("en", ""),
-        "priskribo": priskribo,
+        "etikedoj": etikedoj,
+        "priskriboj": priskriboj,
         "aliases": json.dumps(merged_aliases, ensure_ascii=False),
         "source": "wikidata",
     }

@@ -58,8 +58,8 @@ class TestGroupMembers:
     @pytest.fixture(autouse=True)
     def _setup(self, pred_svc, group_svc) -> None:
         """Create predicates and groups for member tests."""
-        pred_svc.create({"predicate_id": "wdt:P31", "label_eo": "tipo"})
-        pred_svc.create({"predicate_id": "wdt:P1082", "label_eo": "logxantaro"})
+        pred_svc.create({"predicate_id": "wdt:P31", "etikedoj": {"eo": "tipo"}})
+        pred_svc.create({"predicate_id": "wdt:P1082", "etikedoj": {"eo": "logxantaro"}})
         group_svc.create({"group_name": "test_group"})
 
     def test_add_member(self, group_svc) -> None:

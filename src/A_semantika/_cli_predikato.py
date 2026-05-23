@@ -2,6 +2,7 @@
 """
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 import typer
@@ -9,13 +10,15 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi, warning as awarning
-from A_semantika.service import get_predicate_service
+from A_semantika._predicate_service import _label_from_etikedoj
 from A_semantika._wikidata_helper import (
     is_wikidata_id,
     normalize_predicate_id,
     search_wikidata,
     fetch_wikidata_details,
 )
+
+from A_semantika.service import get_predicate_service
 
 predikato_app = typer.Typer(
     name="predikato",
@@ -27,6 +30,37 @@ predikato_app = typer.Typer(
     no_args_is_help=True,
     context_settings={"help_option_names": ["-h", "--help", "--helpo"]},
 )
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _parse_lang_value_pairs(items: list[str] | None) -> dict[str, str]:
+    """Parse ``LANGCODE::TEKSTO`` list into a language→text dict.
+
+    Skips malformed entries (no ``::`` separator).
+    """
+    result: dict[str, str] = {}
+    if not items:
+        return result
+    for item in items:
+        if "::" in item:
+            lang, _, text = item.partition("::")
+            if lang and text:
+                result[lang] = text
+    return result
+
+
+def _get_predicate_label(pred: dict) -> str:
+    """Get the display label for a predicate dict, from etikedoj JSON."""
+    try:
+        labels = json.loads(pred.get("etikedoj", "{}"))
+    except (json.JSONDecodeError, TypeError):
+        labels = {}
+    return _label_from_etikedoj(labels) or pred.get("predicate_id", "")
+
+
+# ── Commands ─────────────────────────────────────────────────────────────────
 
 
 @predikato_app.command("ls")
@@ -43,12 +77,12 @@ def ls(
 
     table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
     table.add_column(tr_multi("Predikato ID", "Predicate ID", "ID prédicat"), no_wrap=True)
-    table.add_column(tr_multi("Etikedo (EO)", "Label (EO)", "Étiquette (EO)"), no_wrap=True)
-    table.add_column(tr_multi("Etikedo (EN)", "Label (EN)", "Étiquette (EN)"), no_wrap=True)
+    table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
     table.add_column(tr_multi("Fonto", "Source", "Source"))
 
     for p in predicates:
-        table.add_row(p["predicate_id"], p.get("label_eo", ""), p.get("label_en", ""), p.get("source", ""))
+        label = _get_predicate_label(p)
+        table.add_row(p["predicate_id"], label, p.get("source", ""))
 
     info(table)
 
@@ -64,22 +98,27 @@ def vidi(
         error(tr_multi("Predikato ne trovita: {p}", "Predicate not found: {p}", "Prédicat non trouvé : {p}").format(p=predicate_id))
         raise typer.Exit(1)
 
-    info(tr_multi(
-        "ID: {v}", "ID: {v}", "ID : {v}",
-    ).format(v=pred["predicate_id"]))
-    info(tr_multi(
-        "Etikedo (EO): {v}", "Label (EO): {v}", "Étiquette (EO) : {v}",
-    ).format(v=pred.get("label_eo", "")))
-    info(tr_multi(
-        "Etikedo (EN): {v}", "Label (EN): {v}", "Étiquette (EN) : {v}",
-    ).format(v=pred.get("label_en", "")))
-    info(tr_multi(
-        "Fonto: {v}", "Source: {v}", "Source : {v}",
-    ).format(v=pred.get("source", "")))
-    if pred.get("priskribo"):
-        info(tr_multi(
-            "Priskribo: {v}", "Description: {v}", "Description : {v}",
-        ).format(v=pred["priskribo"]))
+    info(f"ID: {pred['predicate_id']}")
+    info(f"Fonto: {pred.get('source', '')}")
+
+    try:
+        etikedoj = json.loads(pred.get("etikedoj", "{}"))
+    except (json.JSONDecodeError, TypeError):
+        etikedoj = {}
+    if etikedoj:
+        info(tr_multi("Etikedoj:", "Labels:", "Étiquettes :"))
+        for lang, val in sorted(etikedoj.items()):
+            info(f"  {lang}: {val}")
+
+    try:
+        priskriboj = json.loads(pred.get("priskriboj", "{}"))
+    except (json.JSONDecodeError, TypeError):
+        priskriboj = {}
+    if priskriboj:
+        info(tr_multi("Priskriboj:", "Descriptions:", "Descriptions :"))
+        for lang, val in sorted(priskriboj.items()):
+            info(f"  {lang}: {val}")
+
     from A import info as _info
     _info(tr_multi("Kreita: {d}", "Created: {d}", "Créé : {d}").format(d=pred["kreita_je"]))
     _info(tr_multi("Modifita: {d}", "Modified: {d}", "Modifié : {d}").format(d=pred["modifita_je"]))
@@ -88,13 +127,15 @@ def vidi(
 @predikato_app.command("aldoni")
 def aldoni(
     predicate_id: str = typer.Argument(..., help=tr_multi("Predikato ID (ekz. wdt:P31)", "Predicate ID (e.g. wdt:P31)", "ID du prédicat (ex. wdt:P31)")),
-    label_eo: Optional[list[str]] = typer.Option(None, "-e", "--etikedo", help=tr_multi("Etikedo en formo LANGCODE::TEKSTO", "Label as LANGCODE::TEXT", "Étiquette au format LANGCODE::TEXTE")),
-    label_en: Optional[str] = typer.Option(None, "--en", help=tr_multi("Angla etikedo", "English label", "Étiquette anglaise")),
-    priskribo: Optional[str] = typer.Option(None, "-p", "--priskribo", help=tr_multi("Priskribo", "Description", "Description")),
-    fonto: str = typer.Option("manual", "--fonto", help=tr_multi("Fonto (wikidata|manual|owl|rdfs)", "Source (wikidata|manual|owl|rdfs)", "Source (wikidata|manual|owl|rdfs)")),
+    etikedoj: Optional[list[str]] = typer.Option(None, "-e", "--etikedo", help=tr_multi("Etikedo en formo LANGCODE::TEKSTO (ripetebla)", "Label as LANGCODE::TEXT (repeatable)", "Étiquette au format LANGCODE::TEXTE (répétable)")),
+    priskriboj: Optional[list[str]] = typer.Option(None, "-p", "--priskribo", help=tr_multi("Priskribo en formo LANGCODE::TEKSTO (ripetebla)", "Description as LANGCODE::TEXT (repeatable)", "Description au format LANGCODE::TEXTE (répétable)")),
     yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
-    """Aldoni novan predikaton."""
+    """Aldoni novan predikaton.
+
+    Uzu -e por etikedoj kaj -p por priskriboj, en formo LANGCODE::TEKSTO.
+    Ekz: predikato aldoni wdt:P31 -e eo::tipo -e en::instance of -p eo::Priskribo
+    """
     pred_svc = get_predicate_service()
 
     # Auto-detect and normalize Wikidata IDs
@@ -107,47 +148,39 @@ def aldoni(
         error(tr_multi("Predikato jam ekzistas: {p}", "Predicate already exists: {p}", "Prédicat existe déjà : {p}").format(p=predicate_id))
         raise typer.Exit(1)
 
-    # Parse labels: --etikedo eo::Vorto --etikedo en::Word
-    eo_label = ""
-    en_label = label_en or ""
-    if label_eo:
-        for e in label_eo:
-            if "::" in e:
-                lang, _, text = e.partition("::")
-                if lang == "eo" and not eo_label:
-                    eo_label = text
-                elif lang == "en" and not en_label:
-                    en_label = text
+    # Parse labels and descriptions from LANGCODE::TEKSTO format
+    labels_dict = _parse_lang_value_pairs(etikedoj)
+    descs_dict = _parse_lang_value_pairs(priskriboj)
 
     # Auto-fetch Wikidata details for Wikidata property IDs
     wd_details: dict | None = None
     if is_wd:
         wd_details = fetch_wikidata_details(predicate_id)
 
-    # Build data: auto-fetched values as base, user flags override
+    # Build data: auto-fetched values as base, user labels merge/override
     data: dict = {}
     if wd_details:
         data = dict(wd_details)
-        # User-provided flags override auto-fetched values
-        if eo_label:
-            data["label_eo"] = eo_label
-        if en_label:
-            data["label_en"] = en_label
-        if priskribo is not None:
-            data["priskribo"] = priskribo
+        # Merge user-provided labels with auto-fetched (user overrides per-lang)
+        if labels_dict:
+            merged_labels = dict(data.get("etikedoj", {}))
+            merged_labels.update(labels_dict)
+            data["etikedoj"] = merged_labels
+        if descs_dict:
+            merged_descs = dict(data.get("priskriboj", {}))
+            merged_descs.update(descs_dict)
+            data["priskriboj"] = merged_descs
         # Force source=wikidata for Wikidata IDs
         data["source"] = "wikidata"
     else:
-        # For Wikidata IDs, force source=wikidata even on network failure
-        effective_source = "wikidata" if is_wd else fonto
+        effective_source = "wikidata" if is_wd else "manual"
         data = {
             "predicate_id": predicate_id,
-            "label_eo": eo_label,
-            "label_en": en_label,
-            "priskribo": priskribo or "",
+            "etikedoj": labels_dict,
+            "priskriboj": descs_dict,
             "source": effective_source,
         }
-        if is_wd and wd_details is None:
+        if is_wd:
             awarning(tr_multi(
                 "Ne povis aŭtomate preni etikedojn de Vikidatumoj. Kreante mane.",
                 "Could not auto-fetch labels from Wikidata. Creating manually.",
@@ -179,25 +212,54 @@ def aldoni(
 @predikato_app.command("modifi")
 def modifi(
     predicate_id: str = typer.Argument(..., help=tr_multi("Predikato ID", "Predicate ID", "ID du prédicat")),
-    label_eo: Optional[str] = typer.Option(None, "--label-eo", help=tr_multi("Esperanta etikedo", "Esperanto label", "Étiquette espéranto")),
-    label_en: Optional[str] = typer.Option(None, "--label-en", help=tr_multi("Angla etikedo", "English label", "Étiquette anglaise")),
-    priskribo: Optional[str] = typer.Option(None, "-p", "--priskribo", help=tr_multi("Priskribo", "Description", "Description")),
+    etikedoj: Optional[list[str]] = typer.Option(None, "-e", "--etikedo", help=tr_multi("Etikedo en formo LANGCODE::TEKSTO (ripetebla, kunfandema)", "Label as LANGCODE::TEXT (repeatable, merge)", "Étiquette au format LANGCODE::TEXTE (répétable, fusion)")),
+    priskriboj: Optional[list[str]] = typer.Option(None, "-p", "--priskribo", help=tr_multi("Priskribo en formo LANGCODE::TEKSTO (ripetebla, kunfandema)", "Description as LANGCODE::TEXT (repeatable, merge)", "Description au format LANGCODE::TEXTE (répétable, fusion)")),
+    anstatauxigi: bool = typer.Option(False, "-r", "--anstatauxigi", "--anstataŭigi", help=tr_multi("Anstataŭigi anstataŭ kunfandi etikedojn/priskribojn", "Replace instead of merging labels/descriptions", "Remplacer au lieu de fusionner les étiquettes/descriptions")),
     yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
-    """Modifi predikaton."""
+    """Modifi predikaton.
+
+    Defaŭlte -e kaj -p KUNFANDAS novajn valorojn kun ekzistantaj (aldonas/ĝisdatigas).
+    Uzu -r por ANSTATAŬIGI (forigi ĉiujn ekzistantajn kaj uzi nur la specifitajn).
+
+    Ekzemploj:
+      predikato modifi wdt:P31 -e fr::type        # aldoni francan etikedon
+      predikato modifi wdt:P31 -e fr::type -r      # anstataŭigi per nur franca
+    """
     pred_svc = get_predicate_service()
     pred = pred_svc.get_by_predicate_id(predicate_id)
     if not pred:
         error(tr_multi("Predikato ne trovita: {p}", "Predicate not found: {p}", "Prédicat non trouvé : {p}").format(p=predicate_id))
         raise typer.Exit(1)
 
-    updates = {}
-    if label_eo is not None:
-        updates["label_eo"] = label_eo
-    if label_en is not None:
-        updates["label_en"] = label_en
-    if priskribo is not None:
-        updates["priskribo"] = priskribo
+    updates: dict = {}
+
+    # Handle etikedoj: merge or replace
+    if etikedoj is not None:
+        new_labels = _parse_lang_value_pairs(etikedoj)
+        if anstatauxigi:
+            updates["etikedoj"] = new_labels
+        else:
+            # Merge: load existing, update with new values
+            try:
+                existing_labels = json.loads(pred.get("etikedoj", "{}"))
+            except (json.JSONDecodeError, TypeError):
+                existing_labels = {}
+            existing_labels.update(new_labels)
+            updates["etikedoj"] = existing_labels
+
+    # Handle priskriboj: merge or replace
+    if priskriboj is not None:
+        new_descs = _parse_lang_value_pairs(priskriboj)
+        if anstatauxigi:
+            updates["priskriboj"] = new_descs
+        else:
+            try:
+                existing_descs = json.loads(pred.get("priskriboj", "{}"))
+            except (json.JSONDecodeError, TypeError):
+                existing_descs = {}
+            existing_descs.update(new_descs)
+            updates["priskriboj"] = existing_descs
 
     if not updates:
         error(tr_multi("Neniu ŝanĝo specifita.", "No changes specified.", "Aucun changement spécifié."))
@@ -273,8 +335,7 @@ def serci(
     wikidata_results: list[dict] = []
     if wikidata:
         raw_wd = search_wikidata(query)
-        # Deduplicate by predicate_id (Wikidata wins if both match -- it
-        # provides labels that the local entry may be missing)
+        # Deduplicate by predicate_id
         local_ids = {r["predicate_id"] for r in results}
         for wd in raw_wd:
             if wd["predicate_id"] not in local_ids:
@@ -303,7 +364,7 @@ def serci(
         table.add_column(tr_multi("Fonto", "Source", "Source"))
 
     for p in results:
-        label = p.get("label_eo") or p.get("label_en") or ""
+        label = _get_predicate_label(p)
         row: list[str] = [p["predicate_id"], label]
         if has_wikidata:
             row.append(tr_multi("loka", "local", "local"))

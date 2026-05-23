@@ -53,12 +53,25 @@ def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
 def resolve_predicate_label(pred_svc: PredicateService, predicate_id: str) -> str:
     """Resolve a predicate ID to a display label.
 
-    Returns label_eo or label_en, falling back to predicate_id.
+    Returns eo/en label from etikedoj JSON, falling back to predicate_id.
     """
     pred = pred_svc.get_by_predicate_id(predicate_id)
     if not pred:
         return predicate_id
-    return pred.get("label_eo") or pred.get("label_en") or predicate_id
+    try:
+        etikedoj = json.loads(pred.get("etikedoj", "{}"))
+    except (json.JSONDecodeError, TypeError):
+        etikedoj = {}
+    if not isinstance(etikedoj, dict):
+        return predicate_id
+    for lang in ("eo", "en"):
+        val = etikedoj.get(lang)
+        if val and isinstance(val, str):
+            return val
+    for val in etikedoj.values():
+        if val and isinstance(val, str):
+            return val
+    return predicate_id
 
 
 def build_triple_preview_table(

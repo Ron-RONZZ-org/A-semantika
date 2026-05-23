@@ -37,9 +37,8 @@ CREATE TABLE IF NOT EXISTS predicates (
     uuid          TEXT PRIMARY KEY,
     predicate_id  TEXT NOT NULL UNIQUE,
     source        TEXT NOT NULL DEFAULT 'manual',
-    label_en      TEXT DEFAULT '',
-    label_eo      TEXT DEFAULT '',
-    priskribo     TEXT DEFAULT '',
+    etikedoj      TEXT NOT NULL DEFAULT '{}',
+    priskriboj    TEXT NOT NULL DEFAULT '{}',
     aliases       TEXT NOT NULL DEFAULT '[]',
     kreita_je     TEXT NOT NULL,
     modifita_je   TEXT NOT NULL

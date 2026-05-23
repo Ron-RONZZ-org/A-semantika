@@ -345,7 +345,7 @@ def serci(
 
 def _ensure_predicate(pred_svc, predicate_id: str, label_eo: str) -> None:
     """Ensure a predicate exists, creating it if needed.
-    
+
     Safe for concurrent operations: only ignores duplicate key errors,
     not other errors.
     """
@@ -355,7 +355,7 @@ def _ensure_predicate(pred_svc, predicate_id: str, label_eo: str) -> None:
     try:
         pred_svc.create({
             "predicate_id": predicate_id,
-            "label_eo": label_eo,
+            "etikedoj": {"eo": label_eo},
             "source": "rdf",
         })
     except ValueError as e:

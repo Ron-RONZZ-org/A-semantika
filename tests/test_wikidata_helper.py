@@ -160,9 +160,8 @@ class TestFetchWikidataDetails:
         result = fetch_wikidata_details("wdt:P1082")
         assert result is not None
         assert result["predicate_id"] == "wdt:P1082"
-        assert result["label_eo"] == "loĝantaro"
-        assert result["label_en"] == "population"
-        assert result["priskribo"] == "nombro da loĝantoj"
+        assert result["etikedoj"] == {"eo": "loĝantaro", "en": "population"}
+        assert result["priskriboj"] == {"eo": "nombro da loĝantoj", "en": "number of inhabitants"}
         assert result["source"] == "wikidata"
 
     @patch("A_semantika._wikidata_helper.get_property_details")
@@ -176,7 +175,7 @@ class TestFetchWikidataDetails:
         result = fetch_wikidata_details("P31")
         assert result is not None
         assert result["predicate_id"] == "wdt:P31"
-        assert result["label_eo"] == "estas ekzemplo de"
+        assert result["etikedoj"]["eo"] == "estas ekzemplo de"
 
     @patch("A_semantika._wikidata_helper.get_property_details")
     def test_network_failure_returns_none(self, mock_details) -> None:
@@ -186,7 +185,7 @@ class TestFetchWikidataDetails:
 
     @patch("A_semantika._wikidata_helper.get_property_details")
     def test_missing_languages_graceful(self, mock_details) -> None:
-        """When the property has no eo label, label_eo should be empty."""
+        """When the property has no eo/en labels, etikedoj should be empty for those."""
         mock_details.return_value = {
             "id": "P999",
             "labels": {"fr": "test"},
@@ -195,9 +194,8 @@ class TestFetchWikidataDetails:
         }
         result = fetch_wikidata_details("P999")
         assert result is not None
-        assert result["label_eo"] == ""
-        assert result["label_en"] == ""
-        assert result["priskribo"] == ""  # fr not in priority languages default: eo, en
+        assert result["etikedoj"] == {}  # fr not in priority languages default: eo, en
+        assert result["priskriboj"] == {}
 
     @patch("A_semantika._wikidata_helper.get_property_details")
     def test_passes_timeout(self, mock_details) -> None:

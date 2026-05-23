@@ -11,8 +11,8 @@ def _setup_nodes_and_predicates(node_svc, pred_svc) -> None:
     node_svc.create({"uuid": "s" + "0" * 35, "etikedoj": {"eo": "Hundo"}})
     node_svc.create({"uuid": "c" + "0" * 35, "etikedoj": {"eo": "Kato"}})
     node_svc.create({"uuid": "o" + "0" * 35, "etikedoj": {"eo": "Mamulo"}})
-    pred_svc.create({"predicate_id": "rdf:type", "label_eo": "tipo", "label_en": "type"})
-    pred_svc.create({"predicate_id": "wdt:P1082", "label_eo": "logxantaro", "label_en": "population"})
+    pred_svc.create({"predicate_id": "rdf:type", "etikedoj": {"eo": "tipo", "en": "type"}})
+    pred_svc.create({"predicate_id": "wdt:P1082", "etikedoj": {"eo": "logxantaro", "en": "population"}})
 
 
 @pytest.fixture

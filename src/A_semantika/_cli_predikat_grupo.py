@@ -2,6 +2,7 @@
 """
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 import typer
@@ -69,7 +70,11 @@ def vidi(
     if members:
         info(tr_multi("Membroj:", "Members:", "Membres :"))
         for m in members:
-            label = m.get("label_eo") or m.get("label_en") or m["predicate_id"]
+            try:
+                etikedoj = json.loads(m.get("etikedoj", "{}"))
+                label = etikedoj.get("eo") or etikedoj.get("en") or m["predicate_id"]
+            except (json.JSONDecodeError, TypeError):
+                label = m["predicate_id"]
             info(f"  - {m['predicate_id']} ({label})")
     else:
         info(tr_multi("Neniuj membroj.", "No members.", "Aucun membre."))

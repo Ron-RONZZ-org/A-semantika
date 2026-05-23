@@ -10,9 +10,9 @@ def _setup_nodes_and_predicates(node_svc, pred_svc) -> dict:
     node_svc.create({"uuid": "s" + "0" * 35, "etikedoj": {"eo": "Hundo"}})
     node_svc.create({"uuid": "o" + "0" * 35, "etikedoj": {"eo": "Mamulo"}})
     node_svc.create({"uuid": "u" + "0" * 35, "etikedoj": {"eo": "Unuo"}})
-    pred_svc.create({"predicate_id": "rdf:type", "label_eo": "tipo"})
-    pred_svc.create({"predicate_id": "rdfs:label", "label_eo": "etikedo"})
-    pred_svc.create({"predicate_id": "wdt:P1082", "label_eo": "logxantaro"})
+    pred_svc.create({"predicate_id": "rdf:type", "etikedoj": {"eo": "tipo"}})
+    pred_svc.create({"predicate_id": "rdfs:label", "etikedoj": {"eo": "etikedo"}})
+    pred_svc.create({"predicate_id": "wdt:P1082", "etikedoj": {"eo": "logxantaro"}})
     return {}
 
 

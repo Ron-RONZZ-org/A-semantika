@@ -139,7 +139,7 @@ class PredicateGroupService(CRUDService):
             return []
 
         return self.db.execute(
-            """SELECT pgm.*, p.label_en, p.label_eo, p.source
+            """SELECT pgm.*, p.etikedoj, p.source
                FROM predicate_group_members pgm
                JOIN predicates p ON pgm.predicate_id = p.predicate_id
                WHERE pgm.group_uuid = ?
