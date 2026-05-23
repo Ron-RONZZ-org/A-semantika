@@ -22,6 +22,7 @@ A-encik's existing `encik semantika` subsystem remains unchanged. Deprecation de
 - `A.data.search.FTSConfig` — FTS5 full-text search config
 - `A.core.paths` — data_dir, config_dir
 - `A.utils.interactive.confirm_action` — confirmation prompts
+- `A.utils.interactive.select_candidate` — numbered-table item picker (Issue #8 R3)
 - Plugin discovery via entry points
 
 All source code must import from `A`, never duplicate utilities.
@@ -41,6 +42,7 @@ src/A_semantika/
 ├── _node_service.py       # NodeService (CRUDService + FTS5)
 ├── _predicate_service.py  # PredicateService (CRUDService + LIKE search)
 ├── _predicate_group_service.py  # PredicateGroupService (CRUDService + member mgmt)
+├── _triple_search.py      # Triple search by partial labels (Issue #8 R2)
 ├── _triple_service.py     # TripleService (custom, non-CRUDService)
 ├── _preview.py            # Rich table preview helpers
 └── data/
@@ -51,6 +53,7 @@ tests/
 ├── test_nodes.py
 ├── test_predicates.py
 ├── test_predicate_groups.py
+├── test_triple_search.py  # Triple search unit tests (Issue #8 R2)
 ├── test_triples.py
 ├── test_storage.py
 └── test_wikidata_helper.py   # Wikidata helper unit tests
@@ -175,7 +178,20 @@ A semantika aldoni <subject> <predicate> <object>
   [-b / --bool]       boolean literal
   [-l / --lingvo]     language tag for string literals
   [-u / --unuo]       unit UUID for numeric values
-  [-y / --yes]        skip confirmation
+  [-y / --jes]        skip confirmation (was --yes, kept as alias)
+
+A semantika forigi <subject> [<predicate> [<object>]]
+  [-y / --jes]
+  If predicate/object omitted → interactive picker via partial label search
+
+A semantika modifi <subject> [<predicate> [<object>]]
+  [--new-subject / -ns]   [--new-predicate / -np]   [--new-object / -no]
+  [-y / --jes]
+  If predicate/object omitted → interactive picker via partial label search
+
+A semantika serci [--subject LABEL] [--predicate LABEL] [--object LABEL]
+  Labels are resolved via partial matching (UUID prefix, FTS5 label, or raw text)
+  Backward compat: serci <single-label> searches across all three fields
 
 A semantika nodo aldoni [UUID]
   [-e / --etikedo "LANG::STR"]*
@@ -184,12 +200,12 @@ A semantika nodo aldoni [UUID]
   [-so / --superklaso UUID]*        [shortcut: rdfs:subClassOf]
   [--ne UUID]*                      [shortcut: owl:disjointWith]
   [-iv / --invers UUID]*            [shortcut: owl:inverseOf]
-  [-y / --yes]
+  [-y / --jes]
 
 A semantika predikato aldoni <predicate-id>
   [-e / --etikedo "LANGCODE::STR"]*
   [-a / --aliaso STR]*
-  [-y / --yes]
+  [-y / --jes]
 
 A semantika predikat-grupo aldoni <group-name>
 A semantika predikat-grupo importi <file>
@@ -224,6 +240,9 @@ A semantika predikat-grupo importi <file>
 | **P1** | Core triple store (schema, services, CLI, Turtle export, tests) | A-core (stdlib) | ✅ Complete |
 | **P2** | Wikidata integration (`predikato serci` + `predikato aldoni`) | `A.core.wikidata` extraction | ✅ Complete |
 | **P3** | OWL/RDFS import (RDFS hierarchy + basic OWL) | None | ⏳ Planned |
+| **I8-R1** | `--jes` flag rename + help clarification (Issue #8) | None | ✅ Complete |
+| **I8-R2** | Partial label search for `serci` (Issue #8) | `A_semantika._triple_search` | ✅ Complete |
+| **I8-R3** | Interactive search-then-select picker for `forigi`/`modifi` (Issue #8) | `A.utils.interactive.select_candidate` | ✅ Complete |
 
 ## Critical Bugs Fixed (May 2026)
 
@@ -246,13 +265,25 @@ A semantika predikat-grupo importi <file>
 - Re-raises validation/FK/other errors to surface real problems
 - Thread-safe predicate creation via typed shortcuts (--tipo, --superklaso, etc.)
 
-### Issue #8: Ambiguous UUID Prefix Handling
-**Fixed**: All CLI commands now properly report ambiguous UUID prefix matches
-- Created custom `AmbiguousUUIDError` exception in `_node_service.py`
-- Updated `resolve_uuid_prefix()` to raise it instead of generic `ValueError`
-- All callers (_cli_nodo.py, _cli_triples.py, _preview.py) wrapped in try-except
-- User-friendly error: "Ambigua {context}-prefikso: {prefix}"
-- Prevents silent failures and improves debugging
+### Issue #8: CLI Improvements (Multi-phase)
+**Phase 1 — `--jes` flag rename + help clarifications**
+- Renamed `--yes` to `--jes` across all 4 CLI files (nodo, predikato, predikat-grupo, triples)
+- Kept `-y`/`--yes` as backward-compatible aliases
+- Clarified `--str`/`--int`/`--float`/`--bool` help texts in `_cli_triples.py`
+
+**Phase 2 — Partial label search for `serci`**
+- Created `_triple_search.py` with `resolve_subjects()`, `resolve_predicates()`, `resolve_objects()`
+- Added `search_triples_by_labels()` — triples search by partial labels with FTS5 fallback
+- Added `search_triples()` multi-filter method to `TripleService`
+- Updated `serci()` CLI to accept `--subject`/`--predicate`/`--object` with partial label matching
+- Label-only backward compat: `serci <label>` searches across subject/predicate/object labels
+
+**Phase 3 — Interactive search-then-select picker for `forigi`/`modifi`**
+- Added `_pick_triple()` helper using `select_candidate` from `A.utils.interactive`
+- Made `predicate`/`object` optional in `forigi()` — missing args trigger interactive picker
+- Made `predicate`/`object` optional in `modifi()` — missing args trigger interactive picker
+- Added CLI integration tests for all interactive modes (subject-only, subject+predicate, no-match)
+- Fixed fragile UUID parsing in tests by using explicit UUIDs instead of `nodo ls` output parsing
 
 ## Code Standards
 
@@ -297,6 +328,7 @@ Use `uv` for development. See A-core AGENTS.md for details.
 - Issue #5: CRITICAL: Turtle export produces invalid syntax
 - Issue #6: CRITICAL: Missing predicate validation allows invalid triples
 - Issue #7: CRITICAL: Race condition in predicate creation during concurrent operations
+- Issue #8: CLI improvements: `--jes` flag rename, partial label search, interactive picker
 
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
