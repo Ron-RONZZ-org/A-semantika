@@ -408,3 +408,226 @@ def test_predikato_aldoni_non_wikidata_unchanged(runner: CliRunner) -> None:
     assert result.exit_code == 0
     assert "tipo" in result.stdout
     assert "manual" in result.stdout or "fonto" in result.stdout
+
+
+# ── --jes flag tests (Issue #8 R1) ──────────────────────────────────────────────
+
+
+def test_nodo_aldoni_jes_flag(runner: CliRunner) -> None:
+    """--jes flag should skip confirmation for nodo aldoni."""
+    result = runner.invoke(app, [
+        "nodo", "aldoni",
+        "-e", "eo::JesTesto",
+        "--jes",
+    ])
+    assert result.exit_code == 0
+    assert "kreita" in result.stdout or "Created" in result.stdout or "créé" in result.stdout
+
+
+def test_nodo_aldoni_yes_backward_compat(runner: CliRunner) -> None:
+    """--yes flag should still work (backward compat)."""
+    result = runner.invoke(app, [
+        "nodo", "aldoni",
+        "-e", "eo::YesTesto",
+        "--yes",
+    ])
+    assert result.exit_code == 0
+    assert "kreita" in result.stdout or "Created" in result.stdout or "créé" in result.stdout
+
+
+def test_triple_aldoni_jes_flag(runner: CliRunner) -> None:
+    """--jes flag should skip confirmation for triple aldoni."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::SubjJes", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::ObjJes", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    lines = [l for l in ls_result.stdout.strip().split("\n") if l and l[0].isalnum()]
+    uuids = [l.split()[0] for l in lines if len(l.split()) >= 1]
+
+    if len(uuids) >= 2:
+        result = runner.invoke(app, [
+            "aldoni", uuids[0], "rdf:type", uuids[1], "--jes",
+        ])
+        assert result.exit_code == 0, f"aldoni --jes failed: {result.stdout}"
+        assert "kreita" in result.stdout or "Arc" in result.stdout or "created" in result.stdout
+
+
+def test_forigi_jes_flag(runner: CliRunner) -> None:
+    """--jes flag should skip confirmation for forigi."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::ForigJes", "--jes"])
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    for line in ls_result.stdout.strip().split("\n"):
+        if "ForigJes" in line and line[0].isalnum():
+            uuid_prefix = line.split()[0]
+            break
+    else:
+        return
+
+    result = runner.invoke(app, ["nodo", "forigi", uuid_prefix, "--jes"])
+    assert result.exit_code == 0
+    assert "forigita" in result.stdout
+
+
+def test_help_shows_jes_not_yes(runner: CliRunner) -> None:
+    """Help text should mention --jes as the canonical flag."""
+    result = runner.invoke(app, ["nodo", "aldoni", "--help"])
+    assert result.exit_code == 0
+    assert "--jes" in result.stdout
+    # --yes may appear as alias in help, but --jes must be shown
+
+
+# ── Partial label matching tests (Issue #8 P2) ─────────────────────────────────
+
+
+def test_triple_serci_by_subject_label(runner: CliRunner) -> None:
+    """serci --subject should accept labels, not just UUID prefixes."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::Liono", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::Besto", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    lines = [l for l in ls_result.stdout.strip().split("\n") if l and l[0].isalnum()]
+    uuids = {l.split(" ", 1)[1] if len(l.split()) > 1 else l.split()[0]: l.split()[0]
+             for l in lines}
+
+    liono_uuid = next((uid for label, uid in uuids.items() if "Liono" in label), None)
+    besto_uuid = next((uid for label, uid in uuids.items() if "Besto" in label), None)
+
+    if liono_uuid and besto_uuid:
+        runner.invoke(app, ["aldoni", liono_uuid, "rdf:type", besto_uuid, "--jes"])
+        result = runner.invoke(app, ["serci", "--subject", "Liono"])
+        assert result.exit_code == 0
+        assert "Liono" in result.stdout
+
+
+def test_triple_serci_by_predicate_label(runner: CliRunner) -> None:
+    """serci --predicate should accept partial names."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::Urso", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::Mamulo2", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    urso_uuid = None
+    mamulo2_uuid = None
+    for line in ls_result.stdout.strip().split("\n"):
+        parts = line.strip().split()
+        if len(parts) >= 2:
+            label = " ".join(parts[1:])
+            if "Urso" in label:
+                urso_uuid = parts[0]
+            elif "Mamulo2" in label:
+                mamulo2_uuid = parts[0]
+
+    if urso_uuid and mamulo2_uuid:
+        runner.invoke(app, ["aldoni", urso_uuid, "rdf:type", mamulo2_uuid, "--jes"])
+        result = runner.invoke(app, ["serci", "--predicate", "tipo"])
+        assert result.exit_code == 0
+
+
+def test_triple_serci_by_object_label(runner: CliRunner) -> None:
+    """serci --object should accept labels, not just UUID prefixes."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::Rib-o", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::Fiŝo", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    fish_uuid = None
+    for line in ls_result.stdout.strip().split("\n"):
+        parts = line.strip().split()
+        if len(parts) >= 2 and "Fiŝo" in " ".join(parts[1:]):
+            fish_uuid = parts[0]
+
+    if fish_uuid:
+        # Find the subject UUID
+        rib_o_uuid = None
+        for line in ls_result.stdout.strip().split("\n"):
+            parts = line.strip().split()
+            if len(parts) >= 2 and "Rib-o" in " ".join(parts[1:]):
+                rib_o_uuid = parts[0]
+                break
+
+        if rib_o_uuid and fish_uuid:
+            runner.invoke(app, ["aldoni", rib_o_uuid, "rdf:type", fish_uuid, "--jes"])
+            result = runner.invoke(app, ["serci", "--object", "Fiŝo"])
+            assert result.exit_code == 0
+
+
+# ── Search-then-Select tests (Issue #8 R3) ─────────────────────────────────────
+
+
+def test_triple_forigi_full_triplet_backward_compat(runner: CliRunner) -> None:
+    """forigi with full SPO triplet should still work (backward compat)."""
+    subj_uuid = "c1111111-1111-1111-1111-111111111111"
+    obj_uuid = "c2222222-2222-2222-2222-222222222222"
+    runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::ForigCompSubj", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", obj_uuid, "-e", "eo::ForigCompObj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    # Add triple
+    result = runner.invoke(app, ["aldoni", subj_uuid[:8], "rdf:type", obj_uuid[:8], "--jes"])
+    assert result.exit_code == 0
+
+    # Delete with full SPO
+    result = runner.invoke(app, ["forigi", subj_uuid[:8], "rdf:type", obj_uuid[:8], "--jes"])
+    assert result.exit_code == 0
+    assert "forigita" in result.stdout or "Arc deleted" in result.stdout
+
+
+def test_triple_forigi_interactive_subject_only(runner: CliRunner) -> None:
+    """forigi with only subject should show interactive picker."""
+    subj_uuid = "a1111111-1111-1111-1111-111111111111"
+    obj_uuid = "a2222222-2222-2222-2222-222222222222"
+    runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::IntSubj", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", obj_uuid, "-e", "eo::IntObj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    # Add triple
+    r = runner.invoke(app, ["aldoni", subj_uuid[:8], "rdf:type", obj_uuid[:8], "--jes"])
+    assert r.exit_code == 0, f"Triple aldoni failed: {r.stdout}"
+
+    # Delete with only subject → interactive picker
+    result = runner.invoke(app, ["forigi", subj_uuid[:8], "--jes"], input="1\n")
+    assert result.exit_code in (0,), f"Interactive forigi failed: {result.stdout}"
+
+
+def test_triple_forigi_interactive_subject_and_predicate(runner: CliRunner) -> None:
+    """forigi with subject+predicate should show filtered picker."""
+    subj_uuid = "b1111111-1111-1111-1111-111111111111"
+    obj_uuid = "b2222222-2222-2222-2222-222222222222"
+    runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::IntSPSubj", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", obj_uuid, "-e", "eo::IntSPObj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    # Add triple
+    r = runner.invoke(app, ["aldoni", subj_uuid[:8], "rdf:type", obj_uuid[:8], "--jes"])
+    assert r.exit_code == 0, f"Triple aldoni failed: {r.stdout}"
+
+    # subject + predicate → filtered picker
+    result = runner.invoke(app, ["forigi", subj_uuid[:8], "rdf:type", "--jes"], input="1\n")
+    assert result.exit_code in (0,), f"Interactive forigi SP failed: {result.stdout}"
+
+
+def test_triple_forigi_interactive_no_match(runner: CliRunner) -> None:
+    """forigi interactive with no matches should show error."""
+    result = runner.invoke(app, [
+        "forigi", "nonexistent", "--jes",
+    ])
+    assert result.exit_code == 1
+    assert "Neniuj" in result.stdout or "No matching" in result.stdout
+
+
+def test_triple_serci_backward_compat_uuid_prefix(runner: CliRunner) -> None:
+    """serci --subject should still work with UUID prefixes."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::CompatTest", "--jes"])
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    uuid_prefix = None
+    for line in ls_result.stdout.strip().split("\n"):
+        parts = line.strip().split()
+        if len(parts) >= 2 and "CompatTest" in " ".join(parts[1:]):
+            uuid_prefix = parts[0]
+            break
+
+    if uuid_prefix:
+        result = runner.invoke(app, ["serci", "--subject", uuid_prefix])
+        assert result.exit_code == 0

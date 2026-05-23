@@ -77,7 +77,7 @@ def vidi(
 @predikat_grupo_app.command("aldoni")
 def aldoni(
     group_name: str = typer.Argument(..., help=tr_multi("Grupa nomo", "Group name", "Nom du groupe")),
-    yes: bool = typer.Option(False, "-y", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
     """Aldoni novan predikat-grupon."""
     group_svc = get_predicate_group_service()
@@ -112,7 +112,7 @@ def aldoni(
 def modifi(
     old_name: str = typer.Argument(..., help=tr_multi("Nuna grupa nomo", "Current group name", "Nom actuel du groupe")),
     new_name: str = typer.Argument(..., help=tr_multi("Nova grupa nomo", "New group name", "Nouveau nom du groupe")),
-    yes: bool = typer.Option(False, "-y", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
     """Renomi predikat-grupon."""
     group_svc = get_predicate_group_service()
@@ -146,7 +146,7 @@ def modifi(
 @predikat_grupo_app.command("forigi")
 def forigi(
     group_name: str = typer.Argument(..., help=tr_multi("Grupa nomo", "Group name", "Nom du groupe")),
-    yes: bool = typer.Option(False, "-y", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
     """Forigi predikat-grupon."""
     group_svc = get_predicate_group_service()
