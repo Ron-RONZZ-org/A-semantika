@@ -67,7 +67,7 @@ tests/
 ```sql
 -- Nodes: entities in the knowledge graph
 CREATE TABLE nodes (
-    uuid        TEXT PRIMARY KEY,
+    node_id     TEXT PRIMARY KEY,  -- human-readable ID (e.g. SPACO), or auto-generated UUID
     etikedoj    TEXT NOT NULL DEFAULT '{}',  -- JSON: {"eo": "Vorto", "en": "Word"}
     label_text  TEXT NOT NULL DEFAULT '',     -- denormalized from etikedoj (for FTS5)
     difinoj     TEXT NOT NULL DEFAULT '{}',  -- JSON definitions
@@ -106,7 +106,7 @@ CREATE TABLE predicate_group_members (
 -- Triples: the core semantic arcs (subject-predicate-object)
 -- Compound SPOK PK mirrors RDF triple store indexing.
 CREATE TABLE triples (
-    subject_uuid    TEXT NOT NULL REFERENCES nodes(uuid),
+    subject_uuid    TEXT NOT NULL REFERENCES nodes(node_id),
     predicate_id    TEXT NOT NULL REFERENCES predicates(predicate_id),
     object_type     TEXT NOT NULL DEFAULT 'uri',   -- 'uri' or 'literal'
     object_value    TEXT NOT NULL,
@@ -114,7 +114,7 @@ CREATE TABLE triples (
     object_datatype TEXT DEFAULT NULL,
     object_node_uuid TEXT GENERATED ALWAYS AS (
         CASE WHEN object_type='uri' THEN object_value ELSE NULL END
-    ) STORED REFERENCES nodes(uuid),
+    ) STORED REFERENCES nodes(node_id),
     kreita_je       TEXT NOT NULL,
     PRIMARY KEY (subject_uuid, predicate_id, object_value, object_type)
 ) WITHOUT ROWID;
@@ -128,7 +128,7 @@ CREATE INDEX idx_pred_group_members_pred  ON predicate_group_members(predicate_i
 
 -- FTS5 on nodes
 CREATE VIRTUAL TABLE nodes_fts USING fts5(
-    uuid UNINDEXED,
+    node_id UNINDEXED,
     label_text,
     difin_text,
     content=nodes,
@@ -357,30 +357,51 @@ Use `uv` for development. See A-core AGENTS.md for details.
   - S1-S4: LIKE COLLATE NOCASE, predicate validation before confirm, consistent DB patterns, `clear_members()` method
   - 40 new edge case tests in `test_edge_cases.py` (195 total)
 
-### Issue #15: Ungraceful Error Handling for UNIQUE Constraints (May 2026)
+### Issue #15: Human-Readable Node IDs + Graceful Error Handling (May 2026)
 
-**Fixed**: Raw `IntegrityError` tracebacks in `nodo aldoni` and `nodo forigi` are now caught and shown as user-friendly messages.
+**Scope:** Two changes — column rename (`uuid` → `node_id` for human-readable IDs) and graceful `IntegrityError` handling.
+
+#### Part 1: Column Rename `uuid` → `node_id`
+
+The `nodes` table now uses `node_id TEXT PRIMARY KEY` instead of `uuid TEXT PRIMARY KEY`. Human-readable strings (e.g. `SPACO`, `HOMOTEST`) are valid IDs. Auto-generated UUIDs still work when no ID is provided.
+
+**Key changes:**
+
+| Area | File | What |
+|------|------|------|
+| Schema | `data/storage.py` | `nodes.uuid` → `nodes.node_id`; `REFERENCES nodes(uuid)` → `nodes(node_id)`; FTS5 `uuid UNINDEXED` → `node_id UNINDEXED` |
+| Service | `_node_service.py` | 7 CRUDService overrides updated: `get`, `delete`, `_move_to_trash`, `restore`, `_remove_from_fts`, `_index_fts`, `_ensure_fts` — all use `node_id` column |
+| FTS5 | `_node_service.py` | Custom `_ensure_fts()` creates schema with `node_id UNINDEXED`; `_index_fts()` self-contained (avoids A-core `build_index_sql` which hardcodes `uuid`) |
+| FTS5 | `_node_service.py` | `search()` JOIN: `f.uuid` → `f.node_id` |
+| CLI | `_cli_nodo.py`, `_cli_triples.py`, `_cli_modify.py`, `_cli_query.py`, `_preview.py` | All `node["uuid"]` → `node["node_id"]`; help text `"UUID"` → `"ID"`/`"Indekso"` |
+| Tests | All 4 test files | `{"uuid": ...}` → `{"node_id": ...}`; assertions use `node["node_id"]` |
+
+**Scope:** A-semantika only. `predicates`, `predicate_groups`, `predicate_group_members` keep their `uuid` columns. Other A-modules (A-encik, A-vorto) keep their auto-generated UUIDs.
+
+#### Part 2: Friendly IntegrityError Handling
+
+Raw `IntegrityError` tracebacks in `nodo aldoni` and `nodo forigi` are caught and shown as user-friendly messages.
 
 | Before | After |
 |--------|-------|
-| `$ A semantika nodo aldoni SPACO` → raw traceback `IntegrityError: UNIQUE constraint failed: nodes.uuid` | `[✗] Nevalida UUID-formato...` (UUID validated before any DB write) |
-| `$ A semantika nodo aldoni <existing-uuid>` → raw traceback `IntegrityError` | `[✗] Node with UUID '...' already exists. Use 'A semantika nodo modifi ...' to modify it.` |
-| `$ A semantika nodo forigi <uuid>` (corrupted trash) → `Eraro forigante ...: UNIQUE constraint failed: nodes_rubujo.uuid` | `Nodo ... jam estas en la rubujo` (or handled by A-core C4) |
+| `$ A semantika nodo aldoni <existing-id>` → raw traceback `IntegrityError: UNIQUE constraint failed: nodes.node_id` | `[✗] Node already exists. Use 'A semantika nodo modifi ...' to modify it.` |
+| `$ A semantika nodo forigi <id>` (corrupted trash) → `Eraro forigante ...: UNIQUE constraint failed: nodes_rubujo.node_id` | `Nodo ... jam estas en la rubujo` (or handled by A-core C4) |
 
-**5 changes across 2 repos:**
+**Changes:**
 
 | Change | File | What |
 |--------|------|------|
-| **C1** | `_cli_nodo.py:aldoni()` | UUID format validation — rejects non-UUID strings via regex before any DB write |
 | **C2** | `_node_service.py:create()` | Catches `IntegrityError` on INSERT → raises `ValueError` with "already exists" guidance |
 | **C3** | `_cli_nodo.py:aldoni()` | Catches `ValueError` from service → shows `error()` + clean `typer.Exit(1)` |
 | **C4** | `A-core/service.py:_move_to_trash()` | `INSERT` → `INSERT OR REPLACE` — prevents trash-duplicate at source (separate A-core PR) |
 | **C5** | `_cli_nodo.py:forigi()` | Filters raw `"UNIQUE constraint failed"` → friendly "already in trash" message |
 
-**5 new tests** in `test_nodes.py` and `test_edge_cases.py` covering:
-- Invalid UUID format CLI rejection
-- Duplicate UUID with friendly error message
-- Auto-generated UUID still works
+**C1 removed:** UUID format validation was removed — human-readable IDs are now valid and expected.
+
+**Tests:** Updated in `test_nodes.py` and `test_edge_cases.py`:
+- Human-readable custom ID via CLI
+- Duplicate node_id with friendly error message
+- Auto-generated ID still works
 - Double delete is safe
 
 **Upstream dependency:** A-core PR `fix/move-to-trash-insert-or-replace` (C4) — one-word change, fully backward compatible.
@@ -397,7 +418,7 @@ Use `uv` for development. See A-core AGENTS.md for details.
 6. 3-phase implementation: resolve → confirm → execute
 
 **Commands updated:**
-- `nodo forigi <uuids...>` — accepts multiple UUID prefixes
+- `nodo forigi <node_ids...>` — accepts multiple node_id prefixes
 - `predikato forigi <predicate_ids...>` — accepts multiple predicate IDs
 - `predikat-grupo forigi <group_names...>` — accepts multiple group names
 - Root triple `forigi` left as-is (SPO-based, different semantics)
