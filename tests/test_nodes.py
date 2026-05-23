@@ -38,6 +38,15 @@ class TestNodeCreate:
         with pytest.raises(Exception):
             node_svc.create({"uuid": "a" * 36, "etikedoj": {"eo": "Test2"}})
 
+    def test_create_duplicate_uuid_value_error_message(self, node_svc) -> None:
+        """Duplicate UUID should raise ValueError with 'already exists' message."""
+        uuid_val = "bbbbbbbb-1111-1111-1111-111111111111"
+        node_svc.create({"uuid": uuid_val, "etikedoj": {"eo": "Unua"}})
+        import pytest
+        with pytest.raises(ValueError, match="already exists") as exc_info:
+            node_svc.create({"uuid": uuid_val, "etikedoj": {"eo": "Dua"}})
+        assert "modifi" in str(exc_info.value)
+
 
 class TestNodeRead:
     """Node read/get tests."""

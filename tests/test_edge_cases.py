@@ -667,6 +667,57 @@ class TestPredikatGrupoForigiMulti:
         assert "Nenio forigebla" in result.stdout or "Nothing to delete" in result.stdout
 
 
+class TestNodoAldoniErrorHandling:
+    """Graceful error handling for nodo aldoni (issue #15)."""
+
+    def test_nodo_aldoni_invalid_uuid_format(self, runner: CliRunner):
+        """Non-UUID string as positional arg should show friendly error (C1)."""
+        result = runner.invoke(app, [
+            "nodo", "aldoni", "SPACO",
+        ])
+        assert result.exit_code == 1
+        # Must show a UUID format error, not a traceback
+        assert "Nevalida UUID" in result.stdout or "Invalid UUID" in result.stdout
+        assert "Traceback" not in result.stdout
+
+    def test_nodo_aldoni_duplicate_uuid_friendly(self, runner: CliRunner, node_svc):
+        """Using an existing UUID should show friendly error (C2+C3)."""
+        existing_uuid = "dddddddd-1111-1111-1111-111111111111"
+        node_svc.create({"uuid": existing_uuid, "etikedoj": {"eo": "Ekzistanta"}})
+        result = runner.invoke(app, [
+            "nodo", "aldoni", existing_uuid, "-y",
+        ])
+        assert result.exit_code == 1
+        # Must show a meaningful error, not a traceback
+        assert "already exists" in result.stdout
+        assert "modifi" in result.stdout
+        assert "Traceback" not in result.stdout
+
+    def test_nodo_aldoni_auto_uuid_no_collision(self, runner: CliRunner, node_svc):
+        """Auto-generated UUID (no positional arg) should still work."""
+        result = runner.invoke(app, [
+            "nodo", "aldoni", "-e", "eo::Aŭtomata", "-y",
+        ])
+        assert result.exit_code == 0
+        assert "Nodo kreita" in result.stdout or "Node created" in result.stdout
+
+    def test_nodo_forigi_twice_is_safe(self, runner: CliRunner, node_svc):
+        """Deleting an already-deleted node should not crash."""
+        node = node_svc.create({"etikedoj": {"eo": "Forigota"}})
+        # First delete
+        result1 = runner.invoke(app, [
+            "nodo", "forigi", node["uuid"][:8], "-y",
+        ])
+        assert result1.exit_code == 0
+        # Second delete — should not crash
+        result2 = runner.invoke(app, [
+            "nodo", "forigi", node["uuid"][:8], "-y",
+        ])
+        assert result2.exit_code == 1
+        assert "ne trovita" in result2.stdout or "not found" in result2.stdout
+        assert "Traceback" not in result2.stdout
+
+
 class TestNodoForigiAmbiguousUUID:
     """Ambiguous UUID prefix in multi-forigi should report per-item."""
 

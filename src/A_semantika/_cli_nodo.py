@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Optional
 
 import typer
@@ -118,9 +119,28 @@ def aldoni(
         "difinoj": defs_dict,
     }
     if uuid:
+        # Validate UUID v4 format
+        _UUID_RE = re.compile(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            re.IGNORECASE,
+        )
+        if not _UUID_RE.match(uuid):
+            error(tr_multi(
+                "Nevalida UUID-formato. UUID devas esti versio 4 UUID "
+                "(xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).",
+                "Invalid UUID format. UUID must be a version 4 UUID "
+                "(xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).",
+                "Format UUID invalide. L'UUID doit être un UUID version 4 "
+                "(xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).",
+            ))
+            raise typer.Exit(1)
         data["uuid"] = uuid
 
-    node = node_svc.create(data)
+    try:
+        node = node_svc.create(data)
+    except ValueError as e:
+        error(str(e))
+        raise typer.Exit(1)
     node_uuid = node["uuid"]
 
     # Build arcs from shortcuts
@@ -353,11 +373,18 @@ def forigi(
             node_svc.delete(node["uuid"])
             deleted += 1
         except Exception as e:
+            err_msg = str(e)
+            if "UNIQUE constraint failed" in err_msg:
+                err_msg = tr_multi(
+                    "Nodo {u} jam estas en la rubujo.",
+                    "Node {u} is already in the trash.",
+                    "Le nœud {u} est déjà dans la corbeille.",
+                ).format(u=node["uuid"][:8])
             error(tr_multi(
                 "Eraro forigante {u}: {e}",
                 "Error deleting {u}: {e}",
                 "Erreur lors de la suppression de {u} : {e}",
-            ).format(u=node["uuid"][:8], e=str(e)))
+            ).format(u=node["uuid"][:8], e=err_msg))
 
     info(tr_multi(
         "Forigis {d} el {t} nodoj.",

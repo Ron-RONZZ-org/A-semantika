@@ -91,11 +91,19 @@ class NodeService(CRUDService):
             "modifita_je": timestamp,
         }
         # Insert directly to bypass CRUDService's auto-UUID generation
-        self.db.execute(
-            "INSERT INTO nodes (uuid, etikedoj, label_text, difinoj, difin_text, kreita_je, modifita_je) "
-            "VALUES (:uuid, :etikedoj, :label_text, :difinoj, :difin_text, :kreita_je, :modifita_je)",
-            raw,
-        )
+        try:
+            self.db.execute(
+                "INSERT INTO nodes (uuid, etikedoj, label_text, difinoj, difin_text, kreita_je, modifita_je) "
+                "VALUES (:uuid, :etikedoj, :label_text, :difinoj, :difin_text, :kreita_je, :modifita_je)",
+                raw,
+            )
+        except Exception as e:
+            if "UNIQUE constraint failed" in str(e):
+                raise ValueError(
+                    f"Node with UUID '{node_uuid}' already exists. "
+                    f"Use 'A semantika nodo modifi {node_uuid}' to modify it."
+                ) from e
+            raise
         # Re-index FTS for the denormalized values
         if self._fts_config:
             self._index_fts(node_uuid)
