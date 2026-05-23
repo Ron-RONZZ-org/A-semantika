@@ -224,6 +224,8 @@ def _migrate_predicates_uuid_to_predicate_id(db: "SQLiteDB") -> None:
     has_json_labels = "etikedoj" in columns
 
     # ── Step 1: Recreate table with predicate_id PK + JSON labels ──
+    # Drop leftovers from a previous partial migration run.
+    db.execute("DROP TABLE IF EXISTS predicates_new")
     db.execute("""
         CREATE TABLE predicates_new (
             predicate_id  TEXT PRIMARY KEY,
@@ -300,6 +302,7 @@ def _migrate_predicates_uuid_to_predicate_id(db: "SQLiteDB") -> None:
             for row in db.execute("PRAGMA table_info(predicates_rubujo)")
         }
         if "uuid" in trash_cols:
+            db.execute("DROP TABLE IF EXISTS predicates_rubujo_new")
             db.execute("""
                 CREATE TABLE predicates_rubujo_new (
                     predicate_id  TEXT PRIMARY KEY,
