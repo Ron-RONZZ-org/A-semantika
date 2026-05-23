@@ -346,6 +346,15 @@ Use `uv` for development. See A-core AGENTS.md for details.
 - Issue #7: CRITICAL: Race condition in predicate creation during concurrent operations
 - Issue #8: CLI improvements: `--jes` flag rename, partial label search, interactive picker
 - Issue #10: Esperanto locale compliance — all user-facing argument/option names in EO; trilingual output for predikato display; backward compat aliases for renamed flags; split _cli_triples.py into _cli_helpers.py, _cli_modify.py, _cli_query.py (<500 lines)
+- Issue #12: **5 medium-severity bugs + code quality fixes**:
+  - M1: FTS5 query sanitization — strip special chars that cause syntax errors
+  - M2: Narrowed `except ValueError: pass` to only suppress "already exists"
+  - M3: UUID heuristic tightened — rejects short non-hex labels like "tipo", "Hundo"
+  - M4: None dereference guard for `new_object` in `_cli_modify.py`
+  - M5: Schema already includes `object_unit` (verified, documented)
+  - L1-L4: Indent fix, `import uuid` at module level, inline imports lifted, custom Turtle datatypes
+  - S1-S4: LIKE COLLATE NOCASE, predicate validation before confirm, consistent DB patterns, `clear_members()` method
+  - 40 new edge case tests in `test_edge_cases.py` (195 total)
 
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
