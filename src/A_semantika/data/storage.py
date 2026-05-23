@@ -192,11 +192,21 @@ def _migrate_nodes_uuid_to_node_id(db: "SQLiteDB") -> None:
 
 
 def _migrate_predicates_uuid_to_predicate_id(db: "SQLiteDB") -> None:
-    """Migrate existing databases from uuid PK to predicate_id PK.
+    """Migrate existing databases from uuid PK to predicate_id PK,
+    and from legacy flat columns (label_en/label_eo/priskribo) to
+    JSON columns (etikedoj/priskriboj).
 
-    Prior to commit 19be0ff, the predicates table used a synthetic uuid
-    as primary key.  This migration drops uuid and promotes predicate_id
-    (which was already NOT NULL UNIQUE) to primary key.
+    The predicates schema evolved through three states:
+
+    | State | PK | Label cols |
+    |-------|----|------------|
+    | 590d9b1 (original) | ``uuid`` | ``label_en``, ``label_eo``, ``priskribo`` |
+    | 035a4f5 | ``uuid`` | ``etikedoj`` (JSON), ``priskriboj`` (JSON) |
+    | current (this commit) | ``predicate_id`` | ``etikedoj`` (JSON), ``priskriboj`` (JSON) |
+
+    ``CREATE TABLE IF NOT EXISTS`` was used at every step, so databases
+    created at any earlier state still have the old column layout.
+    This migration handles all three → current.
     """
     try:
         columns = {
@@ -209,7 +219,11 @@ def _migrate_predicates_uuid_to_predicate_id(db: "SQLiteDB") -> None:
     if "uuid" not in columns:
         return  # Already migrated or new schema
 
-    # Recreate with predicate_id as PK (uuid dropped)
+    # Detect which label column layout the old table has
+    has_legacy_labels = "label_eo" in columns
+    has_json_labels = "etikedoj" in columns
+
+    # ── Step 1: Recreate table with predicate_id PK + JSON labels ──
     db.execute("""
         CREATE TABLE predicates_new (
             predicate_id  TEXT PRIMARY KEY,
@@ -221,25 +235,71 @@ def _migrate_predicates_uuid_to_predicate_id(db: "SQLiteDB") -> None:
             modifita_je   TEXT NOT NULL
         )
     """)
-    db.execute("""
-        INSERT INTO predicates_new
-            (predicate_id, source, etikedoj, priskriboj,
-             aliases, kreita_je, modifita_je)
-        SELECT predicate_id, source, etikedoj, priskriboj,
-               aliases, kreita_je, modifita_je
-        FROM predicates
-    """)
+
+    # Step 2: Copy data — different SELECT depending on source layout
+    if has_legacy_labels:
+        # Legacy labels: flatten label_eo/label_en/priskribo into JSON
+        # Use SQLite json_object to build etikedoj/priskriboj dicts.
+        # CASE handles NULL/empty values gracefully.
+        db.execute("""
+            INSERT INTO predicates_new
+                (predicate_id, source,
+                 etikedoj, priskriboj,
+                 aliases, kreita_je, modifita_je)
+            SELECT
+                predicate_id,
+                source,
+                CASE
+                    WHEN label_eo IS NOT NULL AND label_eo != ''
+                         AND label_en IS NOT NULL AND label_en != ''
+                    THEN json_object('eo', label_eo, 'en', label_en)
+                    WHEN label_eo IS NOT NULL AND label_eo != ''
+                    THEN json_object('eo', label_eo)
+                    WHEN label_en IS NOT NULL AND label_en != ''
+                    THEN json_object('en', label_en)
+                    ELSE '{}'
+                END,
+                CASE
+                    WHEN priskribo IS NOT NULL AND priskribo != ''
+                    THEN json_object('eo', priskribo)
+                    ELSE '{}'
+                END,
+                aliases,
+                kreita_je,
+                modifita_je
+            FROM predicates
+        """)
+    elif has_json_labels:
+        # Already has JSON labels — direct copy
+        db.execute("""
+            INSERT INTO predicates_new
+                (predicate_id, source, etikedoj, priskriboj,
+                 aliases, kreita_je, modifita_je)
+            SELECT predicate_id, source, etikedoj, priskriboj,
+                   aliases, kreita_je, modifita_je
+            FROM predicates
+        """)
+    else:
+        # Fallback — no known label columns (unlikely)
+        db.execute("""
+            INSERT INTO predicates_new
+                (predicate_id, source, etikedoj, priskriboj,
+                 aliases, kreita_je, modifita_je)
+            SELECT predicate_id, source, '{}', '{}',
+                   aliases, kreita_je, modifita_je
+            FROM predicates
+        """)
+
     db.execute("DROP TABLE predicates")
     db.execute("ALTER TABLE predicates_new RENAME TO predicates")
 
-    # Also migrate trash table if it exists
+    # ── Step 3: Migrate trash table if it exists ───────────────────
     try:
         trash_cols = {
             row["name"]
             for row in db.execute("PRAGMA table_info(predicates_rubujo)")
         }
         if "uuid" in trash_cols:
-            # Recreate trash table without uuid column
             db.execute("""
                 CREATE TABLE predicates_rubujo_new (
                     predicate_id  TEXT PRIMARY KEY,
@@ -252,14 +312,60 @@ def _migrate_predicates_uuid_to_predicate_id(db: "SQLiteDB") -> None:
                     forigita_je   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            db.execute("""
-                INSERT INTO predicates_rubujo_new
-                    (predicate_id, source, etikedoj, priskriboj,
-                     aliases, kreita_je, modifita_je, forigita_je)
-                SELECT predicate_id, source, etikedoj, priskriboj,
-                       aliases, kreita_je, modifita_je, forigita_je
-                FROM predicates_rubujo
-            """)
+
+            # Same label-column detection for trash table
+            has_legacy_trash = "label_eo" in trash_cols
+            has_json_trash = "etikedoj" in trash_cols
+
+            if has_legacy_trash:
+                db.execute("""
+                    INSERT INTO predicates_rubujo_new
+                        (predicate_id, source,
+                         etikedoj, priskriboj,
+                         aliases, kreita_je, modifita_je, forigita_je)
+                    SELECT
+                        predicate_id,
+                        source,
+                        CASE
+                            WHEN label_eo IS NOT NULL AND label_eo != ''
+                                 AND label_en IS NOT NULL AND label_en != ''
+                            THEN json_object('eo', label_eo, 'en', label_en)
+                            WHEN label_eo IS NOT NULL AND label_eo != ''
+                            THEN json_object('eo', label_eo)
+                            WHEN label_en IS NOT NULL AND label_en != ''
+                            THEN json_object('en', label_en)
+                            ELSE '{}'
+                        END,
+                        CASE
+                            WHEN priskribo IS NOT NULL AND priskribo != ''
+                            THEN json_object('eo', priskribo)
+                            ELSE '{}'
+                        END,
+                        aliases,
+                        kreita_je,
+                        modifita_je,
+                        forigita_je
+                    FROM predicates_rubujo
+                """)
+            elif has_json_trash:
+                db.execute("""
+                    INSERT INTO predicates_rubujo_new
+                        (predicate_id, source, etikedoj, priskriboj,
+                         aliases, kreita_je, modifita_je, forigita_je)
+                    SELECT predicate_id, source, etikedoj, priskriboj,
+                           aliases, kreita_je, modifita_je, forigita_je
+                    FROM predicates_rubujo
+                """)
+            else:
+                db.execute("""
+                    INSERT INTO predicates_rubujo_new
+                        (predicate_id, source, etikedoj, priskriboj,
+                         aliases, kreita_je, modifita_je, forigita_je)
+                    SELECT predicate_id, source, '{}', '{}',
+                           aliases, kreita_je, modifita_je, forigita_je
+                    FROM predicates_rubujo
+                """)
+
             db.execute("DROP TABLE predicates_rubujo")
             db.execute("ALTER TABLE predicates_rubujo_new RENAME TO predicates_rubujo")
     except Exception:
