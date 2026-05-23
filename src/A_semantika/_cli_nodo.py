@@ -325,7 +325,8 @@ def forigi(
         raise typer.Exit(1)
 
     # Phase 2: Batch preview and confirmation
-    if not yes:
+    # Single-item deletion skips confirmation (user already specified exact item)
+    if not yes and len(resolved) >= 2:
         table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
         table.add_column("UUID", no_wrap=True)
         table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)

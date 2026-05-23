@@ -289,6 +289,43 @@ def test_predikat_grupo_forigi_multiple(runner: CliRunner) -> None:
     assert "Forigis 2 el 2" in result.stdout
 
 
+# ── Single-item forigi skip confirmation (Issue #14) ──────────────────────
+
+
+def test_nodo_forigi_single_no_confirm(runner: CliRunner) -> None:
+    """Single node forigi without -y skips confirmation."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::NoConfNode", "--jes"])
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    uuid_prefix = None
+    for line in ls_result.stdout.strip().split("\n"):
+        parts = line.strip().split()
+        if len(parts) >= 2 and "NoConfNode" in " ".join(parts[1:]):
+            uuid_prefix = parts[0]
+            break
+    assert uuid_prefix is not None, "Node not found"
+
+    # No -y flag — should skip prompt for single item and delete directly
+    result = runner.invoke(app, ["nodo", "forigi", uuid_prefix])
+    assert result.exit_code == 0
+    assert "Forigis" in result.stdout or "forigita" in result.stdout
+
+
+def test_predikato_forigi_single_no_confirm(runner: CliRunner) -> None:
+    """Single predicate forigi without -y skips confirmation."""
+    runner.invoke(app, ["predikato", "aldoni", "wdt:X14", "-e", "eo::NoConfPred", "--jes"])
+    result = runner.invoke(app, ["predikato", "forigi", "wdt:X14"])
+    assert result.exit_code == 0
+    assert "Forigis" in result.stdout or "forigita" in result.stdout
+
+
+def test_predikat_grupo_forigi_single_no_confirm(runner: CliRunner) -> None:
+    """Single group forigi without -y skips confirmation."""
+    runner.invoke(app, ["predikat-grupo", "aldoni", "no-conf-group", "--jes"])
+    result = runner.invoke(app, ["predikat-grupo", "forigi", "no-conf-group"])
+    assert result.exit_code == 0
+    assert "Forigis" in result.stdout or "forigita" in result.stdout
+
+
 # ── Wikidata integration tests (mocked) ──────────────────────────────────────
 
 
