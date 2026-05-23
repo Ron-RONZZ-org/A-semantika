@@ -35,10 +35,13 @@ src/A_semantika/
 ├── cli.py                 # Typer app with 4 subcommand groups
 ├── service.py             # NodeService, PredicateService, PredicateGroupService, TripleService
 ├── _wikidata_helper.py    # Wikidata API adapter (validation, search, metadata fetch)
+├── _cli_helpers.py        # Shared CLI helpers (pick_triple, type flag validation)
+├── _cli_modify.py         # Root `modifi` command (Issue #8 R3 + Issue #10 EO)
 ├── _cli_nodo.py           # Nodo subcommand CLI
 ├── _cli_predikato.py      # Predikato subcommand CLI (+ Wikidata flags)
 ├── _cli_predikat_grupo.py # Predikat-grupo subcommand CLI
-├── _cli_triples.py        # Root triple command CLI
+├── _cli_query.py          # Root query commands: serci, vidi, eksporti (Issue #10 EO)
+├── _cli_triples.py        # Root triple CLI: aldoni, forigi
 ├── _node_service.py       # NodeService (CRUDService + FTS5)
 ├── _predicate_service.py  # PredicateService (CRUDService + LIKE search)
 ├── _predicate_group_service.py  # PredicateGroupService (CRUDService + member mgmt)
@@ -185,11 +188,13 @@ A semantika forigi <subject> [<predicate> [<object>]]
   If predicate/object omitted → interactive picker via partial label search
 
 A semantika modifi <subject> [<predicate> [<object>]]
-  [--new-subject / -ns]   [--new-predicate / -np]   [--new-object / -no]
+  [--nova-subjekto / -ns]  [--nova-predikato / -np]  [--nova-objekto / -no]
+  Deprecated: --new-subject / --new-predicate / --new-object (hidden aliases)
   [-y / --jes]
   If predicate/object omitted → interactive picker via partial label search
 
-A semantika serci [--subject LABEL] [--predicate LABEL] [--object LABEL]
+A semantika serci [--subjekto LABEL] [--predikato LABEL] [--objekto LABEL]
+  Deprecated: --subject / --predicate / --object (hidden aliases)
   Labels are resolved via partial matching (UUID prefix, FTS5 label, or raw text)
   Backward compat: serci <single-label> searches across all three fields
 
@@ -329,6 +334,7 @@ Use `uv` for development. See A-core AGENTS.md for details.
 - Issue #6: CRITICAL: Missing predicate validation allows invalid triples
 - Issue #7: CRITICAL: Race condition in predicate creation during concurrent operations
 - Issue #8: CLI improvements: `--jes` flag rename, partial label search, interactive picker
+- Issue #10: Esperanto locale compliance — all user-facing argument/option names in EO; trilingual output for predikato display; backward compat aliases for renamed flags; split _cli_triples.py into _cli_helpers.py, _cli_modify.py, _cli_query.py (<500 lines)
 
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9

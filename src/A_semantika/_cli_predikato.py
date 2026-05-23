@@ -43,8 +43,8 @@ def ls(
 
     table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
     table.add_column(tr_multi("Predikato ID", "Predicate ID", "ID prédicat"), no_wrap=True)
-    table.add_column("label_eo", no_wrap=True)
-    table.add_column("label_en", no_wrap=True)
+    table.add_column(tr_multi("Etikedo (EO)", "Label (EO)", "Étiquette (EO)"), no_wrap=True)
+    table.add_column(tr_multi("Etikedo (EN)", "Label (EN)", "Étiquette (EN)"), no_wrap=True)
     table.add_column(tr_multi("Fonto", "Source", "Source"))
 
     for p in predicates:
@@ -64,12 +64,22 @@ def vidi(
         error(tr_multi("Predikato ne trovita: {p}", "Predicate not found: {p}", "Prédicat non trouvé : {p}").format(p=predicate_id))
         raise typer.Exit(1)
 
-    info(f"ID: {pred['predicate_id']}")
-    info(f"label_eo: {pred.get('label_eo', '')}")
-    info(f"label_en: {pred.get('label_en', '')}")
-    info(f"fonto: {pred.get('source', '')}")
+    info(tr_multi(
+        "ID: {v}", "ID: {v}", "ID : {v}",
+    ).format(v=pred["predicate_id"]))
+    info(tr_multi(
+        "Etikedo (EO): {v}", "Label (EO): {v}", "Étiquette (EO) : {v}",
+    ).format(v=pred.get("label_eo", "")))
+    info(tr_multi(
+        "Etikedo (EN): {v}", "Label (EN): {v}", "Étiquette (EN) : {v}",
+    ).format(v=pred.get("label_en", "")))
+    info(tr_multi(
+        "Fonto: {v}", "Source: {v}", "Source : {v}",
+    ).format(v=pred.get("source", "")))
     if pred.get("priskribo"):
-        info(f"priskribo: {pred['priskribo']}")
+        info(tr_multi(
+            "Priskribo: {v}", "Description: {v}", "Description : {v}",
+        ).format(v=pred["priskribo"]))
     from A import info as _info
     _info(tr_multi("Kreita: {d}", "Created: {d}", "Créé : {d}").format(d=pred["kreita_je"]))
     _info(tr_multi("Modifita: {d}", "Modified: {d}", "Modifié : {d}").format(d=pred["modifita_je"]))
