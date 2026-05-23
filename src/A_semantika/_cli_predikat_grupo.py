@@ -58,8 +58,12 @@ def vidi(
         error(tr_multi("Grupo ne trovita: {g}", "Group not found: {g}", "Groupe non trouvé : {g}").format(g=group_name))
         raise typer.Exit(1)
 
-    info(f"Grupo: {group['group_name']}")
-    info(f"UUID: {group['uuid'][:8]}")
+    info(tr_multi(
+        "Grupo: {g}", "Group: {g}", "Groupe : {g}",
+    ).format(g=group["group_name"]))
+    info(tr_multi(
+        "UUID: {u}", "UUID: {u}", "UUID : {u}",
+    ).format(u=group["uuid"][:8]))
 
     members = group_svc.list_members(group_name)
     if members:

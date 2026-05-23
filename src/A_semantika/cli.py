@@ -12,15 +12,10 @@ from A_semantika._cli_nodo import nodo_app
 from A_semantika._cli_predikat_grupo import predikat_grupo_app
 from A_semantika._cli_predikato import predikato_app
 
-# Root triple commands (defined in _cli_triples.py, registered here)
-from A_semantika._cli_triples import (
-    aldoni,
-    eksporti,
-    forigi,
-    modifi,
-    serci,
-    vidi,
-)
+# Root triple commands (defined in _cli_*.py files)
+from A_semantika._cli_modify import modifi
+from A_semantika._cli_query import eksporti, serci, vidi
+from A_semantika._cli_triples import aldoni, forigi
 
 app = typer.Typer(
     name="semantika",

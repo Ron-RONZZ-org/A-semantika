@@ -180,7 +180,7 @@ def test_triple_serci(runner: CliRunner) -> None:
 
     if len(uuids) >= 2:
         runner.invoke(app, ["aldoni", uuids[0], "rdf:type", uuids[1], "-y"])
-        result = runner.invoke(app, ["serci", "--subject", uuids[0]])
+        result = runner.invoke(app, ["serci", "--subjekto", uuids[0]])
         assert result.exit_code == 0
 
 
@@ -496,7 +496,7 @@ def test_triple_serci_by_subject_label(runner: CliRunner) -> None:
 
     if liono_uuid and besto_uuid:
         runner.invoke(app, ["aldoni", liono_uuid, "rdf:type", besto_uuid, "--jes"])
-        result = runner.invoke(app, ["serci", "--subject", "Liono"])
+        result = runner.invoke(app, ["serci", "--subjekto", "Liono"])
         assert result.exit_code == 0
         assert "Liono" in result.stdout
 
@@ -521,7 +521,7 @@ def test_triple_serci_by_predicate_label(runner: CliRunner) -> None:
 
     if urso_uuid and mamulo2_uuid:
         runner.invoke(app, ["aldoni", urso_uuid, "rdf:type", mamulo2_uuid, "--jes"])
-        result = runner.invoke(app, ["serci", "--predicate", "tipo"])
+        result = runner.invoke(app, ["serci", "--predikato", "tipo"])
         assert result.exit_code == 0
 
 
@@ -549,7 +549,7 @@ def test_triple_serci_by_object_label(runner: CliRunner) -> None:
 
         if rib_o_uuid and fish_uuid:
             runner.invoke(app, ["aldoni", rib_o_uuid, "rdf:type", fish_uuid, "--jes"])
-            result = runner.invoke(app, ["serci", "--object", "Fiŝo"])
+            result = runner.invoke(app, ["serci", "--objekto", "Fiŝo"])
             assert result.exit_code == 0
 
 
@@ -629,5 +629,51 @@ def test_triple_serci_backward_compat_uuid_prefix(runner: CliRunner) -> None:
             break
 
     if uuid_prefix:
+        result = runner.invoke(app, ["serci", "--subjekto", uuid_prefix])
+        assert result.exit_code == 0
+
+
+# ── Deprecated alias backward-compat tests (Issue #10) ──────────────────────
+
+
+def test_serci_subject_deprecated_alias(runner: CliRunner) -> None:
+    """Old --subject flag should still work (deprecated)."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::DepSubj", "--jes"])
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    uuid_prefix = None
+    for line in ls_result.stdout.strip().split("\n"):
+        parts = line.strip().split()
+        if len(parts) >= 2 and "DepSubj" in " ".join(parts[1:]):
+            uuid_prefix = parts[0]
+            break
+    if uuid_prefix:
         result = runner.invoke(app, ["serci", "--subject", uuid_prefix])
+        assert result.exit_code == 0
+
+
+def test_serci_predicate_deprecated_alias(runner: CliRunner) -> None:
+    """Old --predicate flag should still work (deprecated)."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::DepPredSubj", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::DepPredObj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    lines = [l for l in ls_result.stdout.strip().split("\n") if l and l[0].isalnum()]
+    uuids = [l.split()[0] for l in lines if len(l.split()) >= 1]
+    if len(uuids) >= 2:
+        runner.invoke(app, ["aldoni", uuids[0], "rdf:type", uuids[1], "--jes"])
+        result = runner.invoke(app, ["serci", "--predicate", "rdf:type"])
+        assert result.exit_code == 0
+
+
+def test_serci_object_deprecated_alias(runner: CliRunner) -> None:
+    """Old --object flag should still work (deprecated)."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::DepObjSubj", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::DepObjObj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    lines = [l for l in ls_result.stdout.strip().split("\n") if l and l[0].isalnum()]
+    uuids = [l.split()[0] for l in lines if len(l.split()) >= 1]
+    if len(uuids) >= 2:
+        runner.invoke(app, ["aldoni", uuids[0], "rdf:type", uuids[1], "--jes"])
+        result = runner.invoke(app, ["serci", "--object", uuids[1]])
         assert result.exit_code == 0
