@@ -276,6 +276,15 @@ def modifi(
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
             raise typer.Exit(0)
 
+    # No-op check: skip delete+insert if nothing changed
+    if subject_uuid == new_subj_uuid and predicate == new_pred and object_uuid == new_obj_uuid:
+        info(tr_multi(
+            "Neniu ŝanĝo: arko restas neŝanĝita.",
+            "No change: arc remains unchanged.",
+            "Aucun changement : l'arc reste inchangé.",
+        ))
+        return
+
     # Execute: delete + re-add in transaction
     from A_semantika.data.storage import now
 
