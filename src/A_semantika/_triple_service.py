@@ -18,8 +18,14 @@ class TripleService:
     """
 
     # Known RDF/OWL namespace prefixes for Turtle export.
-    # Predicates matching these are emitted without the default ``:`` prefix.
-    _KNOWN_PREFIXES = ("rdf:", "rdfs:", "xsd:", "owl:")
+    # Maps prefix → full URI. Predicates matching these are emitted without
+    # the default ``:`` prefix. Extend via register_prefix().
+    _PREFIX_URIS: dict[str, str] = {
+        "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+        "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+        "xsd": "http://www.w3.org/2001/XMLSchema#",
+        "owl": "http://www.w3.org/2002/07/owl#",
+    }
 
     def __init__(self, db: Any) -> None:
         self.db = db
@@ -340,15 +346,25 @@ class TripleService:
         val = val.replace("\t", "\\t")
         return val
 
+    def register_prefix(self, prefix: str, uri: str) -> None:
+        """Register a custom namespace prefix for Turtle export.
+
+        Args:
+            prefix: The prefix (without colon), e.g. 'foaf'.
+            uri: The full namespace URI, e.g. 'http://xmlns.com/foaf/0.1/'.
+        """
+        self._PREFIX_URIS[prefix] = uri
+
     def _format_turtle_uri(self, val: str) -> str:
         """Format a URI reference for Turtle, respecting known namespaces.
 
-        Known prefixes (rdf:, rdfs:, xsd:, owl:) are emitted as-is.
+        Known prefixes (rdf:, rdfs:, xsd:, owl:) are emitted as prefixed names.
         All other values get the default ``:`` prefix.
         """
-        for namespace in self._KNOWN_PREFIXES:
-            if val.startswith(namespace):
-                return val
+        if ":" in val:
+            prefix, _, local = val.partition(":")
+            if prefix in self._PREFIX_URIS:
+                return val  # Already a valid prefixed name
         return f":{val}"
 
     def export_turtle(self, base_uri: str = "https://example.org/") -> str:
@@ -368,12 +384,10 @@ class TripleService:
         """
         lines = [
             "@prefix : <{base}> .".format(base=base_uri),
-            "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
-            "@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .",
-            "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .",
-            "@prefix owl: <http://www.w3.org/2002/07/owl#> .",
-            "",
         ]
+        for prefix, uri in sorted(self._PREFIX_URIS.items()):
+            lines.append(f"@prefix {prefix}: <{uri}> .")
+        lines.append("")
 
         triples = self.db.execute(
             """SELECT t.*, n.etikedoj AS subj_label, p.etikedoj AS pred_etikedoj

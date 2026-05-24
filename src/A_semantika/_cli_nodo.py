@@ -117,15 +117,8 @@ def aldoni(
     if node_id:
         data["node_id"] = node_id
 
-    try:
-        node = node_svc.create(data)
-    except ValueError as e:
-        error(str(e))
-        raise typer.Exit(1)
-    node_id_val = node["node_id"]
-
-    # Build arcs from shortcuts
-    arcs: list[dict] = []
+    # Pre-resolve arc target nodes before creating the subject node,
+    # so ambiguous/not-found errors don't leave orphan nodes.
     pred_svc = get_predicate_service()
     triple_svc = get_triple_service()
 
@@ -137,50 +130,67 @@ def aldoni(
     _ensure_predicate(pred_svc, "owl:disjointWith", "disjointWith")
     _ensure_predicate(pred_svc, "owl:inverseOf", "inverseOf")
 
+    arc_templates: list[dict] = []
+    arc_errors: list[str] = []
+
+    def _resolve_arc_target(predicate: str, user_input: str) -> str | None:
+        """Resolve an arc target node_id. Returns node_id or None (not found)."""
+        target = node_svc.resolve_uuid_prefix(user_input)
+        if target:
+            return target["node_id"]
+        return None  # not found — skip silently (valid for auto-complete)
+
     for t in (tipo or []):
         try:
-            target = node_svc.resolve_uuid_prefix(t)
-            if target:
-                arcs.append({
-                    "subject": node_id_val, "predicate": "rdf:type",
-                    "object": target["node_id"], "object_type": "uri",
-                })
+            target_id = _resolve_arc_target("rdf:type", t)
+            if target_id:
+                arc_templates.append((target_id, "rdf:type"))
         except AmbiguousUUIDError as e:
-            error(tr_multi("Ambigua tipo-prefikso: {e}", "Ambiguous type prefix: {e}", "Préfixe type ambigu : {e}").format(e=str(e)))
-            raise typer.Exit(1)
+            arc_errors.append(tr_multi("Ambigua tipo-prefikso: {e}",
+                "Ambiguous type prefix: {e}", "Préfixe type ambigu : {e}").format(e=str(e)))
     for s in (superklaso or []):
         try:
-            target = node_svc.resolve_uuid_prefix(s)
-            if target:
-                arcs.append({
-                    "subject": node_id_val, "predicate": "rdfs:subClassOf",
-                    "object": target["node_id"], "object_type": "uri",
-                })
+            target_id = _resolve_arc_target("rdfs:subClassOf", s)
+            if target_id:
+                arc_templates.append((target_id, "rdfs:subClassOf"))
         except AmbiguousUUIDError as e:
-            error(tr_multi("Ambigua superklaso-prefikso: {e}", "Ambiguous superclass prefix: {e}", "Préfixe superclasse ambigu : {e}").format(e=str(e)))
-            raise typer.Exit(1)
+            arc_errors.append(tr_multi("Ambigua superklaso-prefikso: {e}",
+                "Ambiguous superclass prefix: {e}", "Préfixe superclasse ambigu : {e}").format(e=str(e)))
     for n in (ne or []):
         try:
-            target = node_svc.resolve_uuid_prefix(n)
-            if target:
-                arcs.append({
-                    "subject": node_id_val, "predicate": "owl:disjointWith",
-                    "object": target["node_id"], "object_type": "uri",
-                })
+            target_id = _resolve_arc_target("owl:disjointWith", n)
+            if target_id:
+                arc_templates.append((target_id, "owl:disjointWith"))
         except AmbiguousUUIDError as e:
-            error(tr_multi("Ambigua malakorda-prefikso: {e}", "Ambiguous disjoint prefix: {e}", "Préfixe disjoint ambigu : {e}").format(e=str(e)))
-            raise typer.Exit(1)
+            arc_errors.append(tr_multi("Ambigua malakorda-prefikso: {e}",
+                "Ambiguous disjoint prefix: {e}", "Préfixe disjoint ambigu : {e}").format(e=str(e)))
     for inv in (invers or []):
         try:
-            target = node_svc.resolve_uuid_prefix(inv)
-            if target:
-                arcs.append({
-                    "subject": node_id_val, "predicate": "owl:inverseOf",
-                    "object": target["node_id"], "object_type": "uri",
-                })
+            target_id = _resolve_arc_target("owl:inverseOf", inv)
+            if target_id:
+                arc_templates.append((target_id, "owl:inverseOf"))
         except AmbiguousUUIDError as e:
-            error(tr_multi("Ambigua inversa-prefikso: {e}", "Ambiguous inverse prefix: {e}", "Préfixe inverse ambigu : {e}").format(e=str(e)))
-            raise typer.Exit(1)
+            arc_errors.append(tr_multi("Ambigua inversa-prefikso: {e}",
+                "Ambiguous inverse prefix: {e}", "Préfixe inverse ambigu : {e}").format(e=str(e)))
+
+    if arc_errors:
+        for msg in arc_errors:
+            error(msg)
+        raise typer.Exit(1)
+
+    # Now create the subject node (safe — all targets resolved successfully)
+    try:
+        node = node_svc.create(data)
+    except ValueError as e:
+        error(str(e))
+        raise typer.Exit(1)
+    node_id_val = node["node_id"]
+
+    # Build full arc dicts with the now-known subject node_id
+    arcs: list[dict] = [
+        {"subject": node_id_val, "predicate": pred, "object": target_id, "object_type": "uri"}
+        for target_id, pred in arc_templates
+    ]
 
     # Show preview and confirm
     if arcs:

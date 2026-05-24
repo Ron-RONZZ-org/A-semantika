@@ -7,6 +7,7 @@ UUID override on create for manual assignment.
 from __future__ import annotations
 
 import json
+import sqlite3
 import uuid as _uuid
 from typing import Any
 
@@ -74,12 +75,8 @@ class NodeService(CRUDService):
         )
 
     # ── Override create to support optional node_id ──────────────────────
-
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Create a node, with optional pre-assigned node_id.
-
-        If data contains a 'node_id' key, use it instead of generating one.
-        """
+        """Create a node with optional pre-assigned node_id."""
         node_id_val = data.get("node_id") or str(_uuid.uuid4())
         timestamp = now()
 
@@ -99,13 +96,11 @@ class NodeService(CRUDService):
                 "VALUES (:node_id, :etikedoj, :label_text, :difinoj, :difin_text, :kreita_je, :modifita_je)",
                 raw,
             )
-        except Exception as e:
-            if "UNIQUE constraint failed" in str(e):
-                raise ValueError(
-                    f"Node with ID '{node_id_val}' already exists. "
-                    f"Use 'A semantika nodo modifi {node_id_val}' to modify it."
-                ) from e
-            raise
+        except sqlite3.IntegrityError as e:
+            raise ValueError(
+                f"Node with ID '{node_id_val}' already exists. "
+                f"Use 'A semantika nodo modifi {node_id_val}' to modify it."
+            ) from e
         # Re-index FTS for the denormalized values
         if self._fts_config:
             self._index_fts(node_id_val)
@@ -127,7 +122,7 @@ class NodeService(CRUDService):
     # ── Override get to use node_id column ───────────────────────────────
 
     def get(self, node_id: str) -> dict[str, Any] | None:
-        """Get a single node by node_id (supports prefix matching)."""
+        """Get a node by node_id (supports prefix matching)."""
         return self.db.execute_one(
             f"SELECT * FROM {self.table} WHERE node_id LIKE ?", (f"{node_id}%",)
         )

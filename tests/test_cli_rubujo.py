@@ -1,6 +1,7 @@
 """CLI tests for rubujo (trash) subcommand group."""
 from __future__ import annotations
 
+import pytest
 from typer.testing import CliRunner
 
 from A_semantika.cli import app
@@ -181,3 +182,117 @@ def test_rubujo_deprecated_aliases(runner: CliRunner) -> None:
     # Also verify it actually restored
     ls_result = runner.invoke(app, ["nodo", "ls"])
     assert node_id in ls_result.stdout
+
+
+def test_rubujo_restore_interactive_confirm(runner: CliRunner) -> None:
+    """restaurigi with multiple items should show confirm prompt (no -y)."""
+    id1 = _create_node(runner, "RestoreConfirm1", "rescon1")
+    id2 = _create_node(runner, "RestoreConfirm2", "rescon2")
+
+    # Delete both
+    runner.invoke(app, ["nodo", "forigi", id1, "--jes"])
+    runner.invoke(app, ["nodo", "forigi", id2, "--jes"])
+
+    # Restore both WITHOUT -y, confirming with "j" (default=True → [J/n])
+    r = runner.invoke(app, ["rubujo", "restaurigi", id1, id2], input="j\n")
+    assert r.exit_code == 0
+    assert "restarigita" in r.stdout.lower() or "restored" in r.stdout.lower()
+
+    # Verify both back
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    assert id1 in ls_result.stdout
+    assert id2 in ls_result.stdout
+
+
+def test_rubujo_restore_interactive_cancel(runner: CliRunner) -> None:
+    """restaurigi with multiple items should cancel on 'n' input."""
+    id1 = _create_node(runner, "RestoreCancel1", "rescan1")
+    id2 = _create_node(runner, "RestoreCancel2", "rescan2")
+
+    # Delete both
+    runner.invoke(app, ["nodo", "forigi", id1, "--jes"])
+    runner.invoke(app, ["nodo", "forigi", id2, "--jes"])
+
+    # Cancel with "n" input (default=True → [J/n], so "n" cancels)
+    r = runner.invoke(app, ["rubujo", "restaurigi", id1, id2], input="n\n")
+    assert r.exit_code == 0
+    assert "Nuligita" in r.stdout or "Cancelled" in r.stdout
+
+    # Nodes should still be in trash (NOT restored)
+    trash_result = runner.invoke(app, ["rubujo", "ls"])
+    assert id1 in trash_result.stdout
+    assert id2 in trash_result.stdout
+
+
+def test_rubujo_permanent_delete_interactive_confirm(runner: CliRunner) -> None:
+    """rubujo forigi with multiple items should show confirm prompt (no -y)."""
+    id1 = _create_node(runner, "PermDelInt1", "perdint1")
+    id2 = _create_node(runner, "PermDelInt2", "perdint2")
+
+    # Delete both
+    runner.invoke(app, ["nodo", "forigi", id1, "--jes"])
+    runner.invoke(app, ["nodo", "forigi", id2, "--jes"])
+
+    # Permanently delete WITHOUT -y, confirming with "j" (default=False → [j/N])
+    r = runner.invoke(app, ["rubujo", "forigi", id1, id2], input="j\n")
+    assert r.exit_code == 0
+    assert "forigita" in r.stdout.lower() or "deleted" in r.stdout.lower()
+
+    # Should be gone from trash
+    trash_result = runner.invoke(app, ["rubujo", "ls"])
+    assert id1 not in trash_result.stdout
+    assert id2 not in trash_result.stdout
+
+
+def test_rubujo_permanent_delete_interactive_cancel(runner: CliRunner) -> None:
+    """rubujo forigi with multiple items should cancel on non-confirm input."""
+    id1 = _create_node(runner, "PermDelIntCan1", "perdinc1")
+    id2 = _create_node(runner, "PermDelIntCan2", "perdinc2")
+
+    # Delete both
+    runner.invoke(app, ["nodo", "forigi", id1, "--jes"])
+    runner.invoke(app, ["nodo", "forigi", id2, "--jes"])
+
+    # Cancel (default=False → [j/N], "n" or newline cancels)
+    r = runner.invoke(app, ["rubujo", "forigi", id1, id2], input="n\n")
+    assert r.exit_code == 0
+    assert "Nuligita" in r.stdout or "Cancelled" in r.stdout
+
+    # Nodes should still be in trash
+    trash_result = runner.invoke(app, ["rubujo", "ls"])
+    assert id1 in trash_result.stdout
+    assert id2 in trash_result.stdout
+
+
+def test_rubujo_malplenigi_interactive_confirm(runner: CliRunner) -> None:
+    """malplenigi should work via interactive confirm (no -y)."""
+    node_id = _create_node(runner, "MalplenigiInt", "malpint")
+
+    # Delete it
+    runner.invoke(app, ["nodo", "forigi", node_id, "--jes"])
+
+    # Empty trash WITHOUT -y, confirming with "j" (default=False → [j/N])
+    r = runner.invoke(app, ["rubujo", "malplenigi"], input="j\n")
+    assert r.exit_code == 0
+    assert "malplenigita" in r.stdout.lower() or "emptied" in r.stdout.lower()
+
+    # Trash should be empty
+    trash_result = runner.invoke(app, ["rubujo", "ls"])
+    assert "malplena" in trash_result.stdout.lower() or "empty" in trash_result.stdout.lower()
+
+
+def test_rubujo_malplenigi_interactive_cancel(runner: CliRunner) -> None:
+    """malplenigi should cancel on non-confirm input."""
+    node_id = _create_node(runner, "MalplenigiCan", "malpcan")
+
+    # Delete it
+    runner.invoke(app, ["nodo", "forigi", node_id, "--jes"])
+
+    # Cancel malplenigi (default=False → [j/N])
+    r = runner.invoke(app, ["rubujo", "malplenigi"], input="n\n")
+    assert r.exit_code == 0
+    assert "Nuligita" in r.stdout or "Cancelled" in r.stdout
+
+    # Node should still be in trash
+    trash_result = runner.invoke(app, ["rubujo", "ls"])
+    assert node_id in trash_result.stdout

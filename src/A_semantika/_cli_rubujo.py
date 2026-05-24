@@ -64,7 +64,7 @@ def ls(
 # ── Shared helpers ──────────────────────────────────────────────────
 
 
-def _resolve_trash_node(node_svc, node_id: str) -> dict | None:
+def _resolve_trash_node(node_id: str) -> dict | None:
     """Resolve a node_id prefix against the trash table (nodes_rubujo)."""
     triple_svc = get_triple_service()
 
@@ -95,13 +95,12 @@ def _batch_resolve_trash_nodes(
     Returns (resolved_nodes, errors) where errors is a list of
     (input, reason) tuples for unresolvable IDs.
     """
-    node_svc = get_node_service()
     resolved: list[dict] = []
     errors: list[tuple[str, str]] = []
 
     for nid in node_ids:
         try:
-            node = _resolve_trash_node(node_svc, nid)
+            node = _resolve_trash_node(nid)
             if node:
                 resolved.append(node)
             else:
