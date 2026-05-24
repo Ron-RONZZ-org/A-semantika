@@ -142,6 +142,41 @@ def test_rubujo_empty_trash(runner: CliRunner) -> None:
     assert "malplena" in trash_result.stdout.lower() or "empty" in trash_result.stdout.lower()
 
 
+def test_rubujo_empty_trash_count_accuracy(runner: CliRunner) -> None:
+    """malplenigi should report the actual count from empty_trash(), not len(items)."""
+    id1 = _create_node(runner, "CountAcc1", "cntacc1")
+    id2 = _create_node(runner, "CountAcc2", "cntacc2")
+
+    # Delete both
+    runner.invoke(app, ["nodo", "forigi", id1, "--jes"])
+    runner.invoke(app, ["nodo", "forigi", id2, "--jes"])
+
+    # Empty trash
+    r = runner.invoke(app, ["rubujo", "malplenigi", "-y"])
+    assert r.exit_code == 0
+    # Should report correct count
+    assert "2" in r.stdout
+
+    # Trash should be empty
+    trash_result = runner.invoke(app, ["rubujo", "ls"])
+    assert "malplena" in trash_result.stdout.lower() or "empty" in trash_result.stdout.lower()
+
+
+def test_rubujo_ls_short_node_id_no_truncation(runner: CliRunner) -> None:
+    """rubujo ls should show short node IDs (< 8 chars) without truncation."""
+    # Create a node with a short (5-char) human-readable ID
+    runner.invoke(app, ["nodo", "aldoni", "SPACO", "-e", "eo::Spaco", "--jes"])
+    runner.invoke(app, ["nodo", "forigi", "SPACO", "--jes"])
+
+    # Check rubujo ls shows the full short ID
+    r = runner.invoke(app, ["rubujo", "ls"])
+    assert r.exit_code == 0
+    # Should show "SPACO" not just "SPACO" - the full ID
+    assert "SPACO" in r.stdout
+    # SPACO is 5 chars, should NOT be truncated
+    assert "SPACO" in r.stdout  # full ID visible
+
+
 def test_rubujo_empty_trash_with_days(runner: CliRunner) -> None:
     """malplenigi --days should filter by age. Fresh items survive 1-day cutoff."""
     node_id = _create_node(runner, "RubujoDays", "rubujodaystest")

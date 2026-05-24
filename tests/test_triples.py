@@ -75,12 +75,32 @@ class TestTripleAdd:
             )
 
     def test_add_invalid_fk_raises(self, triple_svc) -> None:
-        """Adding with invalid subject FK should raise."""
-        with pytest.raises(ValueError):
+        """Adding with invalid subject FK should raise ValueError with accurate message."""
+        with pytest.raises(ValueError, match="Subject node not found"):
             triple_svc.add(
                 subject_uuid="nonexistent-uuid",
                 predicate_id="rdf:type",
                 object_value="o" + "0" * 35,
+                object_type="uri",
+            )
+
+    def test_add_invalid_predicate_raises(self, triple_svc) -> None:
+        """Adding with non-existent predicate should raise ValueError with accurate message."""
+        with pytest.raises(ValueError, match="Predicate not found"):
+            triple_svc.add(
+                subject_uuid="s" + "0" * 35,
+                predicate_id="nonexistent:pred",
+                object_value="o" + "0" * 35,
+                object_type="uri",
+            )
+
+    def test_add_invalid_object_uri_raises(self, triple_svc) -> None:
+        """Adding with non-existent URI object should raise ValueError."""
+        with pytest.raises(ValueError, match="Object node not found"):
+            triple_svc.add(
+                subject_uuid="s" + "0" * 35,
+                predicate_id="rdf:type",
+                object_value="nonexistent-obj",
                 object_type="uri",
             )
 

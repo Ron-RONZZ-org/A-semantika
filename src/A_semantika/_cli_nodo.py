@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from typing import Optional
 
 import typer
 from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
-from A import error, info, tr_multi
+from A import error, info, tr_multi, warning
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import confirm_node_with_arcs, resolve_node_label, resolve_predicate_label
 from A_semantika.data.storage import label_from_json
@@ -134,11 +135,20 @@ def aldoni(
     arc_errors: list[str] = []
 
     def _resolve_arc_target(predicate: str, user_input: str) -> str | None:
-        """Resolve an arc target node_id. Returns node_id or None (not found)."""
+        """Resolve an arc target node_id. Returns node_id or None (not found).
+
+        Warns when an explicitly provided target is not found, so the user
+        is not misled into thinking the arc was created.
+        """
         target = node_svc.resolve_uuid_prefix(user_input)
         if target:
             return target["node_id"]
-        return None  # not found — skip silently (valid for auto-complete)
+        warning(tr_multi(
+            "Arka celo ne trovita: {t} (preterlasita)",
+            "Arc target not found: {t} (skipped)",
+            "Cible d'arc non trouvée : {t} (ignorée)",
+        ).format(t=user_input))
+        return None
 
     for t in (tipo or []):
         try:
@@ -420,7 +430,7 @@ def forigi(
                 triple_svc.remove_by_node(nid)
             node_svc.delete(nid)
             deleted += 1
-        except Exception as e:
+        except sqlite3.IntegrityError as e:
             err_msg = str(e)
             if "UNIQUE constraint failed" in err_msg:
                 err_msg = tr_multi(
@@ -434,12 +444,23 @@ def forigi(
                     "Node {u} has arcs. Delete them first or use the --jes flag.",
                     "Le nœud {u} a des arcs. Supprimez-les d'abord ou utilisez le drapeau --jes.",
                 )
-            elif "malformed" in err_msg:
+            else:
+                err_msg = str(e)
+            error(tr_multi(
+                "Eraro forigante {u}: {e}",
+                "Error deleting {u}: {e}",
+                "Erreur lors de la suppression de {u} : {e}",
+            ).format(u=nid[:8], e=err_msg))
+        except Exception as e:
+            err_msg = str(e)
+            if "malformed" in err_msg:
                 err_msg = tr_multi(
                     "Datumbazo koruptita. Provu 'VACUUM' aŭ restaŭri de sekurkopio.",
                     "Database corrupted. Try 'VACUUM' or restore from backup.",
                     "Base de données corrompue. Essayez 'VACUUM' ou restaurez à partir d'une sauvegarde.",
                 )
+            else:
+                err_msg = str(e)
             error(tr_multi(
                 "Eraro forigante {u}: {e}",
                 "Error deleting {u}: {e}",

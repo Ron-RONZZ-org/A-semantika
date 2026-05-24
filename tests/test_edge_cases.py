@@ -72,6 +72,34 @@ class TestFTS5Sanitization:
         results = node_svc.search("Esperanta***^^^")
         assert len(results) >= 1
 
+    def test_search_with_and_keyword(self, node_svc):
+        """FTS5 keyword 'AND' should be treated as a regular content term."""
+        node_svc.create({"etikedoj": {"eo": "A AND B"}})
+        # "AND" should not be stripped — search should find the node
+        results = node_svc.search("AND")
+        assert len(results) >= 1
+        # Multi-token with AND keyword
+        results = node_svc.search("A AND B")
+        assert len(results) >= 1
+
+    def test_search_with_or_keyword(self, node_svc):
+        """FTS5 keyword 'OR' should be treated as a regular content term."""
+        node_svc.create({"etikedoj": {"eo": "One OR Two"}})
+        results = node_svc.search("OR")
+        assert len(results) >= 1
+
+    def test_search_with_not_keyword(self, node_svc):
+        """FTS5 keyword 'NOT' should be treated as a regular content term."""
+        node_svc.create({"etikedoj": {"eo": "Do NOT do this"}})
+        results = node_svc.search("NOT")
+        assert len(results) >= 1
+
+    def test_search_keyword_does_not_affect_normal_search(self, node_svc):
+        """FTS5 keyword lowercasing should not break normal searches."""
+        node_svc.create({"etikedoj": {"eo": "Normal search term"}})
+        results = node_svc.search("Normal")
+        assert len(results) >= 1
+
 
 # ── UUID Heuristic Edge Cases ─────────────────────────────────────────────────
 
@@ -291,6 +319,30 @@ class TestConfirmNodeWithArcs:
 
 class TestNodeAldoniWithArcs:
     """nodo aldoni with --tipo, --superklaso, --ne, --invers."""
+
+    def test_nodo_aldoni_nonexistent_tipo_warns(self, runner: CliRunner):
+        """Using --tipo with a non-existent target should warn, not silently drop."""
+        runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+        result = runner.invoke(app, [
+            "nodo", "aldoni",
+            "-e", "eo::TestNode",
+            "--tipo", "nonexistent-target",
+            "--jes",
+        ])
+        assert result.exit_code == 0
+        assert "ne trovita" in result.stdout or "not found" in result.stdout
+
+    def test_nodo_aldoni_nonexistent_superklaso_warns(self, runner: CliRunner):
+        """Using --superklaso with a non-existent target should warn."""
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:subClassOf", "-e", "eo::subklaso", "--jes"])
+        result = runner.invoke(app, [
+            "nodo", "aldoni",
+            "-e", "eo::TestNode2",
+            "--superklaso", "nonexistent-target",
+            "--jes",
+        ])
+        assert result.exit_code == 0
+        assert "ne trovita" in result.stdout or "not found" in result.stdout
 
     def test_nodo_aldoni_with_tipo(self, runner: CliRunner):
         """Creating a node with --tipo should add rdf:type arc."""

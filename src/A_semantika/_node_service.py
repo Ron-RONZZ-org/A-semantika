@@ -467,7 +467,9 @@ class NodeService(CRUDService):
             return self.list(limit=limit)
 
         # Try FTS first
-        # Sanitize FTS5 query: strip special characters that can crash MATCH
+        # Sanitize FTS5 query: strip special characters that can crash MATCH,
+        # but treat FTS5 keywords (AND, OR, NOT, NEAR, COLUMN) as regular
+        # content terms by lowercasing them instead of stripping them out.
         _FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR", "COLUMN"}
         safe_tokens = []
         for word in query.strip().split():
@@ -475,7 +477,7 @@ class NodeService(CRUDService):
             if not cleaned:
                 continue
             if cleaned.upper() in _FTS5_KEYWORDS:
-                continue
+                cleaned = cleaned.lower()
             safe_tokens.append(f"{cleaned}*")
         if not safe_tokens:
             return self.list(limit=limit)

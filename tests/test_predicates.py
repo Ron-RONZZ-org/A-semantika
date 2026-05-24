@@ -70,6 +70,40 @@ class TestPredicateSearch:
         results = pred_svc.search("tipo")
         assert len(results) >= 1
 
+    def test_search_case_insensitive(self, pred_svc) -> None:
+        """Search should be case-insensitive via COLLATE NOCASE."""
+        pred_svc.create({"predicate_id": "WDT:P31", "etikedoj": {"eo": "tipo"}})
+        results_lower = pred_svc.search("wdt:p31")
+        assert len(results_lower) >= 1
+        results_mixed = pred_svc.search("Wdt:P")
+        assert len(results_mixed) >= 1
+
+    def test_search_with_percent_escaped(self, pred_svc) -> None:
+        """LIKE wildcard % in query should be escaped, not expanded."""
+        # Create data containing a literal % character
+        pred_svc.create({"predicate_id": "wdt:P100pct", "etikedoj": {"eo": "100% completed"}})
+        # Searching for "100%" should match the literal "100%" in the label
+        results = pred_svc.search("100%")
+        assert len(results) >= 1
+        # Searching for a bare "%" should only match literal "%" in data
+        results_pct = pred_svc.search("%")
+        assert len(results_pct) >= 1  # matches the "%" in "100% completed"
+
+    def test_search_with_underscore_escaped(self, pred_svc) -> None:
+        """LIKE wildcard _ in query should be escaped, not expanded."""
+        pred_svc.create({"predicate_id": "wdt:P_AB", "etikedoj": {"eo": "underscore test"}})
+        # Searching for "P_AB" should match literally (not "P" + any 3 chars)
+        results = pred_svc.search("P_AB")
+        assert len(results) >= 1
+        # Searching for "P_" should only match literal "P_", not
+        # "P" + any single char. "wdt:P_AB" does contain "P_" → 1 match.
+        results_under = pred_svc.search("P_")
+        assert len(results_under) >= 1
+        # Before escaping, "P__" (double wildcard) could also match "P_AB".
+        # Now it only matches literal "P__".
+        results_double = pred_svc.search("P__")
+        assert len(results_double) == 0
+
 
 class TestPredicateUpdate:
     """Predicate update tests."""

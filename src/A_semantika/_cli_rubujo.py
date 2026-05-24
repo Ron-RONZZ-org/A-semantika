@@ -56,7 +56,9 @@ def ls(
     for n in items:
         label = label_from_json(n.get("etikedoj", "{}"))
         deleted_at = n.get("forigita_je", "")[:19]  # Truncate ISO to seconds
-        table.add_row(n.get("node_id", "?")[:8], label, deleted_at)
+        nid = n.get("node_id", "?")
+        display_id = nid[:8] if len(nid) > 8 else nid
+        table.add_row(display_id, label, deleted_at)
 
     info(table)
 
@@ -233,7 +235,9 @@ def _batch_restore(node_ids: list[str], yes: bool) -> None:
         from A.utils.interactive import confirm_action
 
         label_list = ", ".join(
-            label_from_json(n.get("etikedoj", "{}")) or n["node_id"][:8]
+            label_from_json(n.get("etikedoj", "{}")) or (
+                n["node_id"][:8] if len(n["node_id"]) > 8 else n["node_id"]
+            )
             for n in resolved
         )
         if not confirm_action(
@@ -340,7 +344,9 @@ def malplenigi(
         for n in items:
             label = label_from_json(n.get("etikedoj", "{}"))
             deleted_at = n.get("forigita_je", "")[:19]
-            table.add_row(n.get("node_id", "?")[:8], label, deleted_at)
+            nid = n.get("node_id", "?")
+            display_id = nid[:8] if len(nid) > 8 else nid
+            table.add_row(display_id, label, deleted_at)
 
         info(table)
 
@@ -358,15 +364,15 @@ def malplenigi(
             raise typer.Exit(0)
 
     if days is not None:
-        node_svc.empty_trash(days=days)
+        deleted_count = node_svc.empty_trash(days=days)
     else:
-        node_svc.empty_trash(days=0)
+        deleted_count = node_svc.empty_trash(days=0)
 
     info(tr_multi(
         "Rubujo malplenigita: {n} nodoj forigitaj.",
         "Trash emptied: {n} nodes deleted.",
         "Corbeille vidée : {n} nœuds supprimés.",
-    ).format(n=len(items)))
+    ).format(n=deleted_count))
 
 
 # ── forigi (permanent delete from trash) ────────────────────────────
@@ -428,7 +434,9 @@ def forigi(
         for n in resolved:
             label = label_from_json(n.get("etikedoj", "{}"))
             deleted_at = n.get("forigita_je", "")[:19]
-            table.add_row(n.get("node_id", "?")[:8], label, deleted_at)
+            nid = n.get("node_id", "?")
+            display_id = nid[:8] if len(nid) > 8 else nid
+            table.add_row(display_id, label, deleted_at)
 
         info(table)
 

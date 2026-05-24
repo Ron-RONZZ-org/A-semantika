@@ -5,6 +5,7 @@ WITHOUT ROWID — this is standard RDF triple store practice.
 """
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
@@ -44,8 +45,8 @@ class TripleService:
     ) -> dict:
         """Add a triple (subject --predicate--> object).
 
-        Uses INSERT OR IGNORE to handle duplicate PKs atomically,
-        avoiding race conditions from a separate ``exists()`` check.
+        Validates FK references explicitly before INSERT so that FK violations
+        produce accurate error messages (not misleading "already exists").
 
         Args:
             subject_uuid: Full UUID of the subject node.
@@ -60,28 +61,45 @@ class TripleService:
             The created triple dict.
 
         Raises:
-            ValueError: If the triple already exists (duplicate PK),
-                        or if a FK constraint is violated.
+            ValueError: If a FK reference is invalid or the triple already exists.
         """
+        # Validate FK references before INSERT
+        subj = self.db.execute_one(
+            "SELECT node_id FROM nodes WHERE node_id = ?", (subject_uuid,)
+        )
+        if not subj:
+            msg = f"Subject node not found: {subject_uuid}"
+            raise ValueError(msg)
+
+        pred = self.db.execute_one(
+            "SELECT predicate_id FROM predicates WHERE predicate_id = ?",
+            (predicate_id,),
+        )
+        if not pred:
+            msg = f"Predicate not found: {predicate_id}"
+            raise ValueError(msg)
+
+        if object_type == "uri":
+            obj = self.db.execute_one(
+                "SELECT node_id FROM nodes WHERE node_id = ?", (object_value,)
+            )
+            if not obj:
+                msg = f"Object node not found: {object_value}"
+                raise ValueError(msg)
+
         timestamp = now()
         try:
             with self.db.transaction() as conn:
-                cursor = conn.execute(
-                    """INSERT OR IGNORE INTO triples
+                conn.execute(
+                    """INSERT INTO triples
                        (subject_uuid, predicate_id, object_type, object_value,
                         object_lang, object_datatype, object_unit, kreita_je)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (subject_uuid, predicate_id, object_type, object_value,
                      object_lang, object_datatype, object_unit, timestamp),
                 )
-                if cursor.rowcount == 0:
-                    msg = "Triple already exists"
-                    raise ValueError(msg)
-        except ValueError:
-            raise
-        except Exception as exc:
-            # SQLite constraint violation (e.g. FK)
-            msg = f"Failed to add triple: {exc}"
+        except sqlite3.IntegrityError as exc:
+            msg = "Triple already exists"
             raise ValueError(msg) from exc
 
         return self.get_one(subject_uuid, predicate_id, object_value, object_type)

@@ -148,13 +148,14 @@ class PredicateService(CRUDService):
         if not query or not query.strip():
             return self.list(limit=limit)
 
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         like_sql = """
             SELECT * FROM predicates
-            WHERE predicate_id LIKE ?
-               OR etikedoj LIKE ?
-               OR priskriboj LIKE ?
-               OR aliases LIKE ?
+            WHERE predicate_id LIKE ? ESCAPE '\\'
+               OR etikedoj LIKE ? ESCAPE '\\'
+               OR priskriboj LIKE ? ESCAPE '\\'
+               OR aliases LIKE ? ESCAPE '\\'
             LIMIT ?
         """
-        pattern = f"%{query}%"
+        pattern = f"%{escaped}%"
         return self.db.execute(like_sql, (pattern, pattern, pattern, pattern, limit))
