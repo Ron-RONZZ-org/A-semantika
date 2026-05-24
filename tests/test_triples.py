@@ -270,3 +270,28 @@ class TestTripleTurtleExport:
         )
         ttl = triple_svc.export_turtle()
         assert '"Hundo"@eo' in ttl or "Hundo" in ttl
+
+
+class TestTripleServicePrefixIsolation:
+    """register_prefix() must not mutate class-level shared state (Q1)."""
+
+    def test_prefix_isolation(self, db) -> None:
+        """Custom prefix on one instance must not affect another."""
+        from A_semantika._triple_service import TripleService
+
+        svc1 = TripleService(db)
+        svc2 = TripleService(db)
+
+        svc1.register_prefix("foaf", "http://xmlns.com/foaf/0.1/")
+        assert "foaf" in svc1._prefix_uris
+        assert "foaf" not in svc2._prefix_uris
+
+    def test_default_prefixes_present(self, db) -> None:
+        """Each instance should have default RDF/OWL prefixes."""
+        from A_semantika._triple_service import TripleService
+
+        svc = TripleService(db)
+        assert "rdf" in svc._prefix_uris
+        assert "rdfs" in svc._prefix_uris
+        assert "xsd" in svc._prefix_uris
+        assert "owl" in svc._prefix_uris
