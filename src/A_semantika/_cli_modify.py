@@ -11,8 +11,7 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi
-from A_semantika._cli_helpers import pick_triple
-from A_semantika._cli_query import resolve_deprecated
+from A_semantika._cli_helpers import pick_triple, resolve_deprecated
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
 from A_semantika.service import (
@@ -253,7 +252,7 @@ def modifi(
         )
         new_subj_label = resolve_node_label(node_svc, new_subj)
         new_pred_label = resolve_predicate_label(pred_svc, new_pred)
-        new_obj_label = resolve_node_label(node_svc, new_object)
+        new_obj_label = resolve_node_label(node_svc, new_obj)
         table.add_row(
             tr_multi("Nova", "New", "Nouveau"),
             f"{new_subj_label} ({new_subj_uuid[:8]})",

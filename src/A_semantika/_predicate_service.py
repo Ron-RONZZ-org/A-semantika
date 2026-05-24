@@ -129,6 +129,12 @@ class PredicateService(CRUDService):
         The ``soft`` parameter is accepted for API compatibility but
         ignored (deletion is always permanent).
         """
+        if soft:
+            from A import warning as _warn
+            _warn(
+                "PredicateService.delete(soft=True) is ignored — "
+                "predicates are always hard-deleted."
+            )
         self.db.execute(
             "DELETE FROM predicates WHERE predicate_id = ?",
             (predicate_id,),

@@ -11,6 +11,7 @@ from A import tr_multi
 from A_semantika._cli_nodo import nodo_app
 from A_semantika._cli_predikat_grupo import predikat_grupo_app
 from A_semantika._cli_predikato import predikato_app
+from A_semantika._cli_rubujo import rubujo_app
 
 # Root triple commands (defined in _cli_*.py files)
 from A_semantika._cli_modify import modifi
@@ -42,3 +43,4 @@ app.command(name="eksporti")(eksporti)
 app.add_typer(nodo_app)
 app.add_typer(predikato_app)
 app.add_typer(predikat_grupo_app)
+app.add_typer(rubujo_app)

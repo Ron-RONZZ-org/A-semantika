@@ -41,6 +41,7 @@ src/A_semantika/
 ├── _cli_predikato.py      # Predikato subcommand CLI (+ Wikidata flags)
 ├── _cli_predikat_grupo.py # Predikat-grupo subcommand CLI
 ├── _cli_query.py          # Root query commands: serci, vidi, eksporti (Issue #10 EO)
+├── _cli_rubujo.py         # Rubujo (trash) subcommand group: ls, restaŭrigi, malplenigi, forigi
 ├── _cli_triples.py        # Root triple CLI: aldoni, forigi
 ├── _node_service.py       # NodeService (CRUDService + FTS5)
 ├── _predicate_service.py  # PredicateService (CRUDService + LIKE search)
@@ -49,10 +50,13 @@ src/A_semantika/
 ├── _triple_service.py     # TripleService (custom, non-CRUDService)
 ├── _preview.py            # Rich table preview helpers
 └── data/
-    └── storage.py         # Schema DDL, get_db(), init_db(), get_service() singletons
+    ├── storage.py         # Schema DDL, get_db(), init_db(), get_service() singletons
+    └── migrations.py      # DB migrations: uuid→node_id, predicates JSON, UNIQUE constraints
 tests/
 ├── conftest.py               # autouse isolation fixture
 ├── test_cli.py               # CLI integration (includes Wikidata tests)
+├── test_cli_export.py        # eksporti Turtle export tests
+├── test_cli_rubujo.py        # rubujo (trash) CLI tests
 ├── test_nodes.py
 ├── test_predicates.py
 ├── test_predicate_groups.py
@@ -227,6 +231,12 @@ A semantika predikat-grupo importi <file>
 
 # Standard CRUD commands (all subcommand groups):
   ls vidi modifi forigi serci
+
+# Trash commands (rubujo subcommand group):
+  rubujo ls              # List trashed nodes
+  rubujo restaŭrigi       # Restore node from trash (also `restauxrigi`)
+  rubujo malplenigi       # Empty trash (--days N for age filter)
+  rubujo forigi           # Permanently delete specific node from trash
 ```
 
 ## Confirmation Preview
@@ -358,6 +368,64 @@ Use `uv` for development. See A-core AGENTS.md for details.
   - L1-L4: Indent fix, `import uuid` at module level, inline imports lifted, custom Turtle datatypes
   - S1-S4: LIKE COLLATE NOCASE, predicate validation before confirm, consistent DB patterns, `clear_members()` method
   - 40 new edge case tests in `test_edge_cases.py` (195 total)
+
+### Issue #R2: Code Review Round 2 — Critical/Medium Fixes (May 2026)
+
+**Scope:** 14 fixes from a comprehensive code review covering code quality, missing features, test gaps, and monolith splitting.
+
+#### C1: Critical None dereference in `modifi` preview — `_cli_modify.py`
+- `resolve_node_label(node_svc, new_object)` used the raw None-able parameter instead of the resolved `new_obj` value
+- Triggers when `modifi` is called with `--nova-subjekto` but WITHOUT `--nova-objekto` and WITHOUT `-y`
+- **Fix:** `new_object` → `new_obj`
+
+#### C2: Missing `rubujo` subcommand group — `_cli_rubujo.py` (NEW)
+- Added trash management CLI per workspace standard: `ls`, `restaŭrigi`/`restauxrigi`, `malplenigi`, `forigi`
+- Registered as `rubujo_app` in `cli.py`
+- `_resolve_trash_node()` helper searches `nodes_rubujo` table directly
+- 5 new CLI integration tests
+
+#### C3: `NodeService.restore()` did not re-index FTS — `_node_service.py`
+- After restoring a node from trash, FTS was not re-indexed
+- Subsequent `_remove_from_fts()` caused "database disk image is malformed" SQLite error
+- **Fix:** Added `_index_fts(node_id)` call after restore
+
+#### C4: `NodeService.permanent_delete()` not overridden — `_node_service.py`
+- CRUDService base class uses `WHERE uuid = ?` but NodeService uses `node_id` column
+- Caused `OperationalError: no such column: uuid`
+- **Fix:** Added `permanent_delete()` override using `node_id` column
+
+#### M1: Mutating input parameter — `_node_service.py:create()`
+- `data.pop("node_id", None)` mutated the caller's dict
+- **Fix:** Changed to `data.get("node_id")`
+
+#### M2: `PredicateService.delete()` ignores `soft=True` silently — `_predicate_service.py`
+- `soft=True` parameter accepted but always hard-deletes
+- **Fix:** Added `warning()` when `soft=True` is passed
+
+#### M3: Moved `resolve_deprecated()` — `_cli_helpers.py` + `_cli_query.py` + `_cli_modify.py`
+- Cross-module import: `_cli_modify.py` imported from `_cli_query.py`
+- **Fix:** Moved to `_cli_helpers.py` where it logically belongs
+
+#### M4: Dead code in `_cli_nodo.py:vidi()` — `_cli_nodo.py`
+- `for lang, val in labels.items() if isinstance(labels, dict) else []` — the `else []` branch is dead code
+- `labels` is always a `dict` at that point (guaranteed by earlier error handling)
+- **Fix:** Removed dead branch
+
+#### M5: Split `data/storage.py` (< 500 lines) — `data/migrations.py` (NEW)
+- storage.py was 540 lines (> 500 limit)
+- Extracted 3 migration functions to `data/migrations.py`
+- storage.py reduced to 253 lines; migrations.py is 312 lines
+
+#### T1: Migration tests for `migrate_nodes_uuid_to_node_id()` — `test_storage.py`
+- 4 tests: rename, preserve data, idempotent, already-migrated
+- Tests old-schema creation → migration → verification
+
+#### T2: Migration tests for `migrate_predicates_uuid_to_predicate_id()` — `test_storage.py`
+- 4 tests: flat-to-JSON, JSON-preserved, idempotent, already-migrated
+- Tests both legacy schema variants (flat labels + JSON labels with uuid PK)
+
+#### T3: `eksporti -o` file output tests — `test_cli_export.py` (NEW)
+- 4 tests: file output, stdout, custom base URI, valid Turtle structure
 
 ### Issue #19: Code Review Remaining Findings (May 2026)
 **Scope:** 5 remaining findings from the Issue #12 code review that were not covered by the first fix round.

@@ -17,6 +17,40 @@ from A_semantika._preview import resolve_node_label, resolve_predicate_label
 from A_semantika._triple_search import search_triples_by_labels
 
 
+
+
+# ── Deprecated alias resolution ───────────────────────────────────────
+
+
+def resolve_deprecated(new_val: object, old_val: object,
+                       old_name: str, new_name: str) -> object:
+    """Resolve a CLI option renamed from *old_name* to *new_name*.
+
+    If the user passed the old (deprecated) flag, warn and use its value.
+    If both old and new are provided, raise an error.
+    Returns the value to use (or *new_val* if neither is set).
+    """
+    if old_val is not None:
+        if new_val is not None:
+            from A import error as _err
+            from A import tr_multi as _tr
+            _err(_tr(
+                f"Ne eblas uzi samtempe --{old_name} kaj --{new_name}",
+                f"Cannot use both --{old_name} and --{new_name}",
+                f"Impossible d'utiliser --{old_name} et --{new_name} à la fois",
+            ))
+            raise typer.Exit(1)
+        from A import warning as _warn
+        from A import tr_multi as _tr
+        _warn(_tr(
+            f"--{old_name} estas malrekomendita, uzu --{new_name}",
+            f"--{old_name} is deprecated, use --{new_name}",
+            f"--{old_name} est déprécié, utilisez --{new_name}",
+        ))
+        return old_val
+    return new_val
+
+
 def pick_triple(
     triple_svc: TripleService,
     node_svc: NodeService,

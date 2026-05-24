@@ -11,38 +11,11 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi, warning
+from A_semantika._cli_helpers import resolve_deprecated
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
 from A_semantika._triple_search import search_triples_by_labels
 from A_semantika.service import get_node_service, get_predicate_service, get_triple_service
-
-
-# ── Deprecated alias resolution ───────────────────────────────────────
-
-
-def resolve_deprecated(new_val: object, old_val: object,
-                       old_name: str, new_name: str) -> object:
-    """Resolve a CLI option renamed from *old_name* to *new_name*.
-
-    If the user passed the old (deprecated) flag, warn and use its value.
-    If both old and new are provided, raise an error.
-    Returns the value to use (or *new_val* if neither is set).
-    """
-    if old_val is not None:
-        if new_val is not None:
-            error(tr_multi(
-                f"Ne eblas uzi samtempe --{old_name} kaj --{new_name}",
-                f"Cannot use both --{old_name} and --{new_name}",
-                f"Impossible d'utiliser --{old_name} et --{new_name} à la fois",
-            ))
-            raise typer.Exit(1)
-        warning(tr_multi(
-            f"--{old_name} estas malrekomendita, uzu --{new_name}",
-            f"--{old_name} is deprecated, use --{new_name}",
-            f"--{old_name} est déprécié, utilisez --{new_name}",
-        ))
-        return old_val
-    return new_val
 
 
 # ── Commands ──────────────────────────────────────────────────────────

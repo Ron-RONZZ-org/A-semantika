@@ -72,7 +72,7 @@ def vidi(
         defns = {}
 
     info(tr_multi("UUID: {u}", "UUID: {u}", "UUID : {u}").format(u=node["node_id"]))
-    for lang, val in labels.items() if isinstance(labels, dict) else []:
+    for lang, val in labels.items():
         info(f"  {lang}: {val}")
     if defns:
         info(tr_multi("Difinoj:", "Definitions:", "Définitions :"))

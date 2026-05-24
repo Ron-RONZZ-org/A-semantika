@@ -80,7 +80,7 @@ class NodeService(CRUDService):
 
         If data contains a 'node_id' key, use it instead of generating one.
         """
-        node_id_val = data.pop("node_id", None) or str(_uuid.uuid4())
+        node_id_val = data.get("node_id") or str(_uuid.uuid4())
         timestamp = now()
 
         raw = {
@@ -279,7 +279,24 @@ class NodeService(CRUDService):
             conn.execute(insert_sql, values)
             conn.execute(f"DELETE FROM {self._trash_table} WHERE node_id = ?", (node_id,))
 
+        # Re-index FTS for the restored node
+        if self._fts_config:
+            self._index_fts(node_id)
+
         return entry
+
+
+    # ── Override permanent_delete to use node_id column ────────────────────
+
+    def permanent_delete(self, node_id: str) -> bool:
+        """Permanently delete a single entry from trash using node_id.
+
+        Overrides CRUDService.permanent_delete which uses 'uuid' column.
+        """
+        sql = f"DELETE FROM {self._trash_table} WHERE node_id = ?"
+        with self.db.transaction() as conn:
+            cursor = conn.execute(sql, (node_id,))
+            return cursor.rowcount > 0
 
     # ── Override _ensure_fts — use node_id instead of uuid in FTS schema ──
 
