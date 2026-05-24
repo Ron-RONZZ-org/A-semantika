@@ -18,10 +18,10 @@ class TripleService:
     NOT a CRUDService subclass — triples have a compound PK and no UUID.
     """
 
-    # Known RDF/OWL namespace prefixes for Turtle export.
-    # Maps prefix → full URI. Predicates matching these are emitted without
-    # the default ``:`` prefix. Extend via register_prefix().
-    _PREFIX_URIS: dict[str, str] = {
+    # Default RDF/OWL namespace prefixes for Turtle export.
+    # Maps prefix → full URI. Copied to instance-level _prefix_uris on init.
+    # Use register_prefix() on the instance to add custom prefixes.
+    _DEFAULT_PREFIXES: dict[str, str] = {
         "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
         "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
         "xsd": "http://www.w3.org/2001/XMLSchema#",
@@ -30,6 +30,9 @@ class TripleService:
 
     def __init__(self, db: Any) -> None:
         self.db = db
+        # Instance-level copy of prefixes so register_prefix() does not
+        # mutate the shared class-level dict.
+        self._prefix_uris: dict[str, str] = dict(self._DEFAULT_PREFIXES)
 
     # ── Create ──────────────────────────────────────────────────────────
 
@@ -367,11 +370,13 @@ class TripleService:
     def register_prefix(self, prefix: str, uri: str) -> None:
         """Register a custom namespace prefix for Turtle export.
 
+        Only affects this TripleService instance (not class-level shared state).
+
         Args:
             prefix: The prefix (without colon), e.g. 'foaf'.
             uri: The full namespace URI, e.g. 'http://xmlns.com/foaf/0.1/'.
         """
-        self._PREFIX_URIS[prefix] = uri
+        self._prefix_uris[prefix] = uri
 
     def _format_turtle_uri(self, val: str) -> str:
         """Format a URI reference for Turtle, respecting known namespaces.
@@ -381,7 +386,7 @@ class TripleService:
         """
         if ":" in val:
             prefix, _, local = val.partition(":")
-            if prefix in self._PREFIX_URIS:
+            if prefix in self._prefix_uris:
                 return val  # Already a valid prefixed name
         return f":{val}"
 
@@ -403,7 +408,7 @@ class TripleService:
         lines = [
             "@prefix : <{base}> .".format(base=base_uri),
         ]
-        for prefix, uri in sorted(self._PREFIX_URIS.items()):
+        for prefix, uri in sorted(self._prefix_uris.items()):
             lines.append(f"@prefix {prefix}: <{uri}> .")
         lines.append("")
 

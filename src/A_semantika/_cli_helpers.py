@@ -1,7 +1,9 @@
-"""Shared CLI helpers: interactive picker, type flag validation."""
+"""Shared CLI helpers: interactive picker, type flag validation, predicate
+bootstrapping."""
 
 from __future__ import annotations
 
+import sqlite3
 from typing import TYPE_CHECKING
 
 import typer
@@ -164,3 +166,25 @@ def validate_type_flags(
     if bool_:
         return "xsd:boolean"
     return None
+
+
+def ensure_predicate(pred_svc: "PredicateService", predicate_id: str, label_eo: str) -> None:
+    """Ensure a predicate exists, creating it if needed.
+
+    Safe for concurrent operations: only ignores duplicate key errors,
+    not other errors.
+    """
+    existing = pred_svc.get_by_predicate_id(predicate_id)
+    if existing:
+        return
+    try:
+        pred_svc.create({
+            "predicate_id": predicate_id,
+            "etikedoj": {"eo": label_eo},
+            "source": "rdf",
+        })
+    except (ValueError, sqlite3.IntegrityError) as e:
+        # Only ignore duplicate key errors (race condition from concurrent create)
+        err_str = str(e)
+        if "UNIQUE constraint failed" not in err_str and "already exists" not in err_str:
+            raise

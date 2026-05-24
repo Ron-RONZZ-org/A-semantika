@@ -11,6 +11,7 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi, warning
+from A_semantika._cli_helpers import ensure_predicate
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import confirm_node_with_arcs, resolve_node_label, resolve_predicate_label
 from A_semantika.data.storage import label_from_json
@@ -77,7 +78,7 @@ def vidi(
         info(f"  {lang}: {val}")
     if defns:
         info(tr_multi("Difinoj:", "Definitions:", "Définitions :"))
-        for lang, val in defns.items() if isinstance(defns, dict) else []:
+        for lang, val in defns.items():
             info(f"  {lang}: {val}")
     info(tr_multi("Kreita: {d}", "Created: {d}", "Créé : {d}").format(d=node["kreita_je"]))
     info(tr_multi("Modifita: {d}", "Modified: {d}", "Modifié : {d}").format(d=node["modifita_je"]))
@@ -126,10 +127,10 @@ def aldoni(
     # Safety net: these predicates are seeded in init_db() via
     # DEFAULT_PREDICATES in storage.py, but _ensure_predicate is kept
     # for backward compat with databases created before seeding was added.
-    _ensure_predicate(pred_svc, "rdf:type", "type")
-    _ensure_predicate(pred_svc, "rdfs:subClassOf", "subClassOf")
-    _ensure_predicate(pred_svc, "owl:disjointWith", "disjointWith")
-    _ensure_predicate(pred_svc, "owl:inverseOf", "inverseOf")
+    ensure_predicate(pred_svc, "rdf:type", "type")
+    ensure_predicate(pred_svc, "rdfs:subClassOf", "subClassOf")
+    ensure_predicate(pred_svc, "owl:disjointWith", "disjointWith")
+    ensure_predicate(pred_svc, "owl:inverseOf", "inverseOf")
 
     arc_templates: list[dict] = []
     arc_errors: list[str] = []
@@ -496,25 +497,3 @@ def serci(
         table.add_row(n["node_id"][:8], label)
 
     info(table)
-
-
-def _ensure_predicate(pred_svc, predicate_id: str, label_eo: str) -> None:
-    """Ensure a predicate exists, creating it if needed.
-
-    Safe for concurrent operations: only ignores duplicate key errors,
-    not other errors.
-    """
-    existing = pred_svc.get_by_predicate_id(predicate_id)
-    if existing:
-        return
-    try:
-        pred_svc.create({
-            "predicate_id": predicate_id,
-            "etikedoj": {"eo": label_eo},
-            "source": "rdf",
-        })
-    except ValueError as e:
-        # Only ignore duplicate key errors (race condition from concurrent create)
-        if "UNIQUE constraint failed" not in str(e) and "already exists" not in str(e):
-            # Re-raise other errors (validation, FK, etc.)
-            raise
