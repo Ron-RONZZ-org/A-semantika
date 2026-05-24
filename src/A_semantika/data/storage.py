@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from A.core.paths import data_dir
+from A.core.backup_targets import BackupTarget
 
 if TYPE_CHECKING:
     from A.data.base import SQLiteDB
@@ -525,3 +526,15 @@ def defn_from_json(difinoj: str, lang_fallback: tuple[str, ...] = ("eo", "en")) 
     Same fallback logic as label_from_json.
     """
     return label_from_json(difinoj, lang_fallback)
+
+
+def get_backup_targets() -> list[BackupTarget]:
+    """Return backup targets for A-semantika."""
+    return [
+        BackupTarget(
+            path=_get_data_dir() / "semantika.db",
+            category="data",
+            module="semantika",
+            label="Semantika database",
+        ),
+    ]

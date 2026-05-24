@@ -24,6 +24,9 @@ dev = [
 [project.entry-points."A.commands"]
 semantika = "A_semantika.cli:app"
 
+[project.entry-points."A.backup"]
+semantika = "A_semantika.data.storage:get_backup_targets"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/A_semantika"]
 
