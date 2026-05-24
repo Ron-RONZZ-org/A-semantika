@@ -561,6 +561,37 @@ Raw `IntegrityError` tracebacks in `nodo aldoni` and `nodo forigi` are caught an
 | F5 | Low | `_node_service.py` | `create()` now catches `sqlite3.IntegrityError` instead of broad `Exception` with string matching |
 | F6 | Low | `tests/test_cli_rubujo.py` | 6 new tests for interactive confirm paths in `rubujo` commands without `-y` |
 
+### Issue #26: Code Review Round 4 — FK Messages, FTS5 Keywords, LIKE Escaping (May 2026)
+
+**Scope:** 8 fixes from fourth code review round. 266 tests total (243 existing + 23 new).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| F1 | Medium | `_triple_service.py` | FK violation masked as "already exists" — validate FK references explicitly before INSERT so subject/predicate/object errors show accurate messages |
+| F2 | Medium | `_predicate_service.py` | Add COLLATE NOCASE + LIKE escape (%/_) to predicate search for case-insensitive matching and wildcard safety |
+| F3 | Medium | `_node_service.py` | FTS5 keywords (AND/OR/NOT/NEAR/COLUMN) were being stripped — now lowercased and treated as regular content terms |
+| F4 | Low | `_cli_nodo.py` | Non-existent --tipo/--superklaso targets silently dropped — now warns user via `warning()` |
+| F5 | Low | `_cli_rubujo.py` | malplenigi count used `len(items)` from before deletion — now uses actual return value |
+| F6 | Low | `_cli_rubujo.py` | Short node IDs (≤8 chars) were needlessly truncated in rubujo ls output |
+| F7 | Low | `_cli_nodo.py` | Error handling string-matched generic `Exception` — now catches `sqlite3.IntegrityError` specifically |
+| F8 | Low | `_predicate_service.py` | LIKE wildcards `%` and `_` in user queries acted as wildcards — now escaped for literal matching |
+
+### Issue #27: Code Review Round 5 — Prefix Isolation, Dead Code, Exception Handling (May 2026)
+
+**Scope:** 3 fixes + 1 monolith split from fifth code review round. 274 tests total (266 existing + 8 new).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| Q1 | Low | `_triple_service.py` | `_PREFIX_URIS` moved from class-level to instance-level (`self._prefix_uris`) to prevent shared mutable state from `register_prefix()` |
+| Q2 | Low | `_cli_nodo.py` | Removed dead `if isinstance(defns, dict) else []` branch in `vidi()` — `defns` is always a `dict` |
+| Q3 | Med | `_cli_nodo.py` | `_ensure_predicate()` caught broad `ValueError` with string matching — changed to explicit `(ValueError, sqlite3.IntegrityError)` |
+| Split | — | `_cli_nodo.py` → `_cli_helpers.py` | Moved `ensure_predicate()` to `_cli_helpers.py`; `_cli_nodo.py` reduced from 521 to 499 lines |
+
+**Tests added:**
+- `TestTripleServicePrefixIsolation` (2 tests) — custom prefix isolation between instances + default prefixes present
+- `TestNodoVidiDefinitions` (3 tests) — vidi with definitions, without definitions, default empty definitions
+- `TestEnsurePredicate` (3 tests) — creates new predicate, handles duplicate silently, re-raises other errors
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
