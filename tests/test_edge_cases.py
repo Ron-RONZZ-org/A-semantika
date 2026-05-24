@@ -14,6 +14,7 @@ import json
 from unittest.mock import patch
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from A_semantika.cli import app
@@ -183,10 +184,10 @@ class TestValidateTypeFlags:
         assert result == "xsd:boolean"
 
     def test_multiple_flags_raises(self):
-        """Combining multiple type flags should raise."""
+        """Combining multiple type flags should raise typer.Exit."""
         from A_semantika._cli_helpers import validate_type_flags
 
-        with pytest.raises(Exception):
+        with pytest.raises((typer.Exit, SystemExit)):
             validate_type_flags(True, True, False, False, None, None)
 
     def test_lingvo_without_str_warns(self):

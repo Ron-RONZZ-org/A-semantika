@@ -14,7 +14,7 @@ import json
 from typing import Any
 
 from A.core.service import CRUDService
-from A_semantika.data.storage import now
+from A_semantika.data.storage import label_from_json, now
 
 
 def _ensure_json(val: Any) -> str:
@@ -27,22 +27,9 @@ def _ensure_json(val: Any) -> str:
 def _label_from_etikedoj(etikedoj: str | dict, langs: tuple[str, ...] = ("eo", "en")) -> str:
     """Extract a single display label from etikedoj JSON.
 
-    Tries language codes in order, falls back to first available.
+    Delegates to ``storage.label_from_json`` for the canonical implementation.
     """
-    try:
-        labels = json.loads(etikedoj) if isinstance(etikedoj, str) else etikedoj
-    except (json.JSONDecodeError, TypeError):
-        return ""
-    if not isinstance(labels, dict):
-        return ""
-    for lang in langs:
-        val = labels.get(lang)
-        if val and isinstance(val, str):
-            return val
-    for val in labels.values():
-        if val and isinstance(val, str):
-            return val
-    return ""
+    return label_from_json(etikedoj, langs)
 
 
 class PredicateService(CRUDService):

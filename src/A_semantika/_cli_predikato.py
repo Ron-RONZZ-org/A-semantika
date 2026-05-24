@@ -98,8 +98,8 @@ def vidi(
         error(tr_multi("Predikato ne trovita: {p}", "Predicate not found: {p}", "Prédicat non trouvé : {p}").format(p=predicate_id))
         raise typer.Exit(1)
 
-    info(f"ID: {pred['predicate_id']}")
-    info(f"Fonto: {pred.get('source', '')}")
+    info(tr_multi("ID: {id}", "ID: {id}", "ID : {id}").format(id=pred["predicate_id"]))
+    info(tr_multi("Fonto: {s}", "Source: {s}", "Source : {s}").format(s=pred.get("source", "")))
 
     try:
         etikedoj = json.loads(pred.get("etikedoj", "{}"))
@@ -119,9 +119,8 @@ def vidi(
         for lang, val in sorted(priskriboj.items()):
             info(f"  {lang}: {val}")
 
-    from A import info as _info
-    _info(tr_multi("Kreita: {d}", "Created: {d}", "Créé : {d}").format(d=pred["kreita_je"]))
-    _info(tr_multi("Modifita: {d}", "Modified: {d}", "Modifié : {d}").format(d=pred["modifita_je"]))
+    info(tr_multi("Kreita: {d}", "Created: {d}", "Créé : {d}").format(d=pred["kreita_je"]))
+    info(tr_multi("Modifita: {d}", "Modified: {d}", "Modifié : {d}").format(d=pred["modifita_je"]))
 
 
 @predikato_app.command("aldoni")
