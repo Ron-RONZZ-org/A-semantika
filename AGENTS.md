@@ -383,7 +383,7 @@ Use `uv` for development. See A-core AGENTS.md for details.
 #### C2: Missing `rubujo` subcommand group — `_cli_rubujo.py` (NEW)
 - Added trash management CLI per workspace standard: `ls`, `restaŭrigi`/`restauxrigi`, `malplenigi`, `forigi`
 - Registered as `rubujo_app` in `cli.py`
-- `_resolve_trash_node()` helper searches `nodes_rubujo` table directly
+- `_resolve_trash_node()` helper searches `nodes_rubujo` table directly (takes `node_id`, no dead `node_svc` param)
 - 5 new CLI integration tests
 
 #### C3: `NodeService.restore()` did not re-index FTS — `_node_service.py`
@@ -547,6 +547,19 @@ Raw `IntegrityError` tracebacks in `nodo aldoni` and `nodo forigi` are caught an
 - 3 new CLI tests for single-item skip
 
 **Bonus finding:** `A-lien` calls `confirm_action(..., abort=True)` but function has no `abort` param — needs separate issue.
+
+### Issue #25: Code Review Round 3 — Code Quality & Orphan Prevention (May 2026)
+
+**Scope:** 6 fixes from third code review round. 254 tests total (247 existing + 6 new + 1 trim).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| F1 | Medium | `_cli_rubujo.py` | Removed dead `node_svc` parameter from `_resolve_trash_node()` |
+| F2 | Medium | `_cli_nodo.py` | Pre-resolve arc targets before node creation to prevent orphans on ambiguous `--tipo`/`--superklaso` prefixes |
+| F3 | Medium | `_triple_service.py` | Replaced hardcoded `_KNOWN_PREFIXES` tuple with extensible `_PREFIX_URIS` dict; added `register_prefix()`; Turtle export now emits dynamic `@prefix` declarations |
+| F4 | Low | `_cli_modify.py` | No-op modifi (same old/new values) skips delete+insert cycle — preserves `kreita_je` |
+| F5 | Low | `_node_service.py` | `create()` now catches `sqlite3.IntegrityError` instead of broad `Exception` with string matching |
+| F6 | Low | `tests/test_cli_rubujo.py` | 6 new tests for interactive confirm paths in `rubujo` commands without `-y` |
 
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
