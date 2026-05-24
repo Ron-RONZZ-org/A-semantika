@@ -234,7 +234,9 @@ class TestTripleTurtleExport:
         )
         ttl = triple_svc.export_turtle()
         assert ":s0000000" in ttl
-        assert ":rdf:type" in ttl
+        # Namespace-aware: rdf:type emitted without default prefix
+        assert "rdf:type" in ttl
+        assert ":rdf:type" not in ttl
         assert ":o0000000" in ttl
 
     def test_export_turtle_literal(self, triple_svc) -> None:

@@ -99,72 +99,70 @@ def build_triple_preview_table(
     table.add_column(tr_multi("Predikato", "Predicate", "Predicat"), no_wrap=True)
     table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=True)
 
+    # Pre-resolve subject node once to avoid redundant DB calls
     try:
-        subj_label = resolve_node_label(node_svc, subject_uuid)
+        subj_node = node_svc.resolve_uuid_prefix(subject_uuid)
     except AmbiguousUUIDError as e:
         error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
         raise typer.Exit(1) from e
+    subj_id = subj_node["node_id"][:8] if subj_node else subject_uuid[:8]
+
+    # Extract subject label from cached node, to avoid a second DB query
+    subj_label = ""
+    if subj_node:
+        try:
+            labels = json.loads(subj_node["etikedoj"])
+            if isinstance(labels, dict):
+                for lang in ("eo", "en"):
+                    val = labels.get(lang)
+                    if val and isinstance(val, str):
+                        subj_label = val
+                        break
+                if not subj_label:
+                    for val in labels.values():
+                        if val and isinstance(val, str):
+                            subj_label = val
+                            break
+        except (json.JSONDecodeError, TypeError):
+            pass
+    if not subj_label:
+        subj_label = subj_id
     pred_label = resolve_predicate_label(pred_svc, predicate_id)
 
     if object_type == "uri":
-        try:
-            obj_label = resolve_node_label(node_svc, object_value)
-        except AmbiguousUUIDError as e:
-            error(tr_multi("Ambigua objekto-prefikso: {e}", "Ambiguous object prefix: {e}", "Préfixe objet ambigu : {e}").format(e=str(e)))
-            raise typer.Exit(1) from e
-        # Labels row
-        table.add_row(subj_label, pred_label, obj_label)
-        # Raw IDs row
-        try:
-            n = node_svc.resolve_uuid_prefix(subject_uuid)
-        except AmbiguousUUIDError as e:
-            error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
-            raise typer.Exit(1) from e
-        subj_id = n["node_id"][:8] if n else subject_uuid[:8]
-        lang_hint = ""
-        lang_code = ""
-        if n:
-            try:
-                labels = json.loads(n["etikedoj"])
-                for lang in ("eo", "en"):
-                    val = labels.get(lang)
-                    if val:
-                        lang_hint = f" ({lang})"
-                        lang_code = lang
-                        break
-            except (json.JSONDecodeError, TypeError):
-                pass
-        p = pred_svc.get_by_predicate_id(predicate_id)
-        pred_id_display = p["predicate_id"] if p else predicate_id
         try:
             obj_node = node_svc.resolve_uuid_prefix(object_value)
         except AmbiguousUUIDError as e:
             error(tr_multi("Ambigua objekto-prefikso: {e}", "Ambiguous object prefix: {e}", "Préfixe objet ambigu : {e}").format(e=str(e)))
             raise typer.Exit(1) from e
         obj_id = obj_node["node_id"][:8] if obj_node else object_value[:8]
+        # Labels row
+        table.add_row(subj_label, pred_label, resolve_node_label(node_svc, object_value))
+        # Raw IDs row
+        lang_hint = ""
+        if subj_node:
+            try:
+                labels_db = json.loads(subj_node["etikedoj"])
+                for lang in ("eo", "en"):
+                    val = labels_db.get(lang)
+                    if val:
+                        lang_hint = f" ({lang})"
+                        break
+            except (json.JSONDecodeError, TypeError):
+                pass
+        pred_id_display = predicate_id
         table.add_row(f"{subj_id}{lang_hint}", pred_id_display, obj_id)
         footnote = tr_multi("→ URI", "→ URI", "→ URI")
     elif object_type == "literal" and object_datatype:
         # Typed literal
         table.add_row(subj_label, pred_label, "")
-        try:
-            n = node_svc.resolve_uuid_prefix(subject_uuid)
-        except AmbiguousUUIDError as e:
-            error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
-            raise typer.Exit(1) from e
-        subj_id = n["node_id"][:8] if n else subject_uuid[:8]
-        p = pred_svc.get_by_predicate_id(predicate_id)
-        pred_id_display = p["predicate_id"] if p else predicate_id
+        pred_id_display = predicate_id
         table.add_row(subj_id, pred_id_display, object_value)
 
         dtype = object_datatype.split(":")[-1] if ":" in object_datatype else object_datatype
         parts = [f"→ {dtype}"]
         if object_unit:
-            try:
-                unit_label = resolve_node_label(node_svc, object_unit)
-            except AmbiguousUUIDError as e:
-                error(tr_multi("Ambigua unuo-prefikso: {e}", "Ambiguous unit prefix: {e}", "Préfixe unité ambigu : {e}").format(e=str(e)))
-                raise typer.Exit(1) from e
+            unit_label = resolve_node_label(node_svc, object_unit)
             try:
                 unit_node = node_svc.resolve_uuid_prefix(object_unit)
             except AmbiguousUUIDError as e:
@@ -176,14 +174,7 @@ def build_triple_preview_table(
     else:
         # String literal
         table.add_row(subj_label, pred_label, "")
-        try:
-            n = node_svc.resolve_uuid_prefix(subject_uuid)
-        except AmbiguousUUIDError as e:
-            error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
-            raise typer.Exit(1) from e
-        subj_id = n["node_id"][:8] if n else subject_uuid[:8]
-        p = pred_svc.get_by_predicate_id(predicate_id)
-        pred_id_display = p["predicate_id"] if p else predicate_id
+        pred_id_display = predicate_id
         quoted_val = f'"{object_value}"'
         table.add_row(subj_id, pred_id_display, quoted_val)
 

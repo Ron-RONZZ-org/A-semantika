@@ -12,6 +12,7 @@ from rich.table import Table
 from A import error, info, tr_multi
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import confirm_node_with_arcs, resolve_node_label, resolve_predicate_label
+from A_semantika.data.storage import label_from_json
 from A_semantika.service import get_node_service, get_predicate_service, get_triple_service
 
 nodo_app = typer.Typer(
@@ -42,11 +43,7 @@ def ls(
     table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
 
     for n in nodes:
-        try:
-            labels = json.loads(n["etikedoj"])
-            label = labels.get("eo") or labels.get("en") or ""
-        except (json.JSONDecodeError, TypeError):
-            label = ""
+        label = label_from_json(n["etikedoj"])
         table.add_row(n["node_id"][:8], label)
 
     info(table)
@@ -460,15 +457,11 @@ def serci(
         return
 
     table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
-    table.add_column("UUID", no_wrap=True)
+    table.add_column("ID", no_wrap=True)
     table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
 
     for n in results:
-        try:
-            labels = json.loads(n["etikedoj"])
-            label = labels.get("eo") or labels.get("en") or ""
-        except (json.JSONDecodeError, TypeError):
-            label = ""
+        label = label_from_json(n["etikedoj"])
         table.add_row(n["node_id"][:8], label)
 
     info(table)

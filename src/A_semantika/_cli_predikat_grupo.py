@@ -2,7 +2,6 @@
 """
 from __future__ import annotations
 
-import json
 from typing import Optional
 
 import typer
@@ -10,6 +9,7 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi
+from A_semantika.data.storage import label_from_json
 from A_semantika.service import get_predicate_group_service, get_predicate_service
 
 predikat_grupo_app = typer.Typer(
@@ -40,9 +40,20 @@ def ls(
     table.add_column(tr_multi("Grupo", "Group", "Groupe"), no_wrap=True)
     table.add_column(tr_multi("Membroj", "Members", "Membres"), no_wrap=True)
 
+    # Single aggregate query to avoid N+1
+    group_uuids = [g["uuid"] for g in groups]
+    member_counts: dict[str, int] = {}
+    if group_uuids:
+        placeholders = ",".join("?" * len(group_uuids))
+        rows = group_svc.db.execute(
+            f"SELECT group_uuid, COUNT(*) AS cnt FROM predicate_group_members "
+            f"WHERE group_uuid IN ({placeholders}) GROUP BY group_uuid",
+            group_uuids,
+        )
+        member_counts = {r["group_uuid"]: r["cnt"] for r in rows}
+
     for g in groups:
-        members = group_svc.list_members(g["group_name"])
-        member_count = len(members)
+        member_count = member_counts.get(g["uuid"], 0)
         table.add_row(g["group_name"], str(member_count))
 
     info(table)
@@ -70,17 +81,12 @@ def vidi(
     if members:
         info(tr_multi("Membroj:", "Members:", "Membres :"))
         for m in members:
-            try:
-                etikedoj = json.loads(m.get("etikedoj", "{}"))
-                label = etikedoj.get("eo") or etikedoj.get("en") or m["predicate_id"]
-            except (json.JSONDecodeError, TypeError):
-                label = m["predicate_id"]
+            label = label_from_json(m.get("etikedoj", "{}")) or m["predicate_id"]
             info(f"  - {m['predicate_id']} ({label})")
     else:
         info(tr_multi("Neniuj membroj.", "No members.", "Aucun membre."))
 
-    from A import info as _info
-    _info(tr_multi("Kreita: {d}", "Created: {d}", "Créé : {d}").format(d=group["kreita_je"]))
+    info(tr_multi("Kreita: {d}", "Created: {d}", "Créé : {d}").format(d=group["kreita_je"]))
 
 
 @predikat_grupo_app.command("aldoni")

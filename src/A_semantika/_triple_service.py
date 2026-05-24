@@ -17,6 +17,10 @@ class TripleService:
     NOT a CRUDService subclass — triples have a compound PK and no UUID.
     """
 
+    # Known RDF/OWL namespace prefixes for Turtle export.
+    # Predicates matching these are emitted without the default ``:`` prefix.
+    _KNOWN_PREFIXES = ("rdf:", "rdfs:", "xsd:", "owl:")
+
     def __init__(self, db: Any) -> None:
         self.db = db
 
@@ -34,6 +38,9 @@ class TripleService:
     ) -> dict:
         """Add a triple (subject --predicate--> object).
 
+        Uses INSERT OR IGNORE to handle duplicate PKs atomically,
+        avoiding race conditions from a separate ``exists()`` check.
+
         Args:
             subject_uuid: Full UUID of the subject node.
             predicate_id: ID of the predicate.
@@ -47,22 +54,25 @@ class TripleService:
             The created triple dict.
 
         Raises:
-            ValueError: If the triple already exists (duplicate PK).
+            ValueError: If the triple already exists (duplicate PK),
+                        or if a FK constraint is violated.
         """
-        if self.exists(subject_uuid, predicate_id, object_value, object_type):
-            msg = "Triple already exists"
-            raise ValueError(msg)
-
         timestamp = now()
         try:
-            self.db.execute(
-                """INSERT INTO triples
-                   (subject_uuid, predicate_id, object_type, object_value,
-                    object_lang, object_datatype, object_unit, kreita_je)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (subject_uuid, predicate_id, object_type, object_value,
-                 object_lang, object_datatype, object_unit, timestamp),
-            )
+            with self.db.transaction() as conn:
+                cursor = conn.execute(
+                    """INSERT OR IGNORE INTO triples
+                       (subject_uuid, predicate_id, object_type, object_value,
+                        object_lang, object_datatype, object_unit, kreita_je)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (subject_uuid, predicate_id, object_type, object_value,
+                     object_lang, object_datatype, object_unit, timestamp),
+                )
+                if cursor.rowcount == 0:
+                    msg = "Triple already exists"
+                    raise ValueError(msg)
+        except ValueError:
+            raise
         except Exception as exc:
             # SQLite constraint violation (e.g. FK)
             msg = f"Failed to add triple: {exc}"
@@ -133,20 +143,6 @@ class TripleService:
                ORDER BY t.predicate_id""",
             (subject_uuid,),
         )
-
-    def exists(
-        self,
-        subject_uuid: str,
-        predicate_id: str,
-        object_value: str,
-        object_type: str = "uri",
-    ) -> bool:
-        """Check if a triple exists."""
-        row = self.db.execute_one(
-            "SELECT 1 FROM triples WHERE subject_uuid = ? AND predicate_id = ? AND object_value = ? AND object_type = ?",
-            (subject_uuid, predicate_id, object_value, object_type),
-        )
-        return row is not None
 
     # ── Delete ──────────────────────────────────────────────────────────
 
@@ -331,6 +327,30 @@ class TripleService:
 
     # ── Turtle Export ───────────────────────────────────────────────────
 
+    @staticmethod
+    def _escape_turtle_literal(val: str) -> str:
+        """Escape a literal value for Turtle output.
+
+        Escapes backslash, double quote, newline, carriage return, and tab.
+        """
+        val = val.replace("\\", "\\\\")
+        val = val.replace('"', '\\"')
+        val = val.replace("\n", "\\n")
+        val = val.replace("\r", "\\r")
+        val = val.replace("\t", "\\t")
+        return val
+
+    def _format_turtle_uri(self, val: str) -> str:
+        """Format a URI reference for Turtle, respecting known namespaces.
+
+        Known prefixes (rdf:, rdfs:, xsd:, owl:) are emitted as-is.
+        All other values get the default ``:`` prefix.
+        """
+        for namespace in self._KNOWN_PREFIXES:
+            if val.startswith(namespace):
+                return val
+        return f":{val}"
+
     def export_turtle(self, base_uri: str = "https://example.org/") -> str:
         """Export all triples to Turtle (.ttl) format.
 
@@ -351,6 +371,7 @@ class TripleService:
             "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
             "@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .",
             "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .",
+            "@prefix owl: <http://www.w3.org/2002/07/owl#> .",
             "",
         ]
 
@@ -366,14 +387,14 @@ class TripleService:
         subject_lines = []
 
         for t in triples:
-            subj_uri = f":{t['subject_uuid']}"
-            pred_uri = f":{t['predicate_id']}"
+            subj_uri = self._format_turtle_uri(t["subject_uuid"])
+            pred_uri = self._format_turtle_uri(t["predicate_id"])
 
             if t["object_type"] == "uri":
-                obj = f":{t['object_value']}"
+                obj = self._format_turtle_uri(t["object_value"])
             elif t["object_datatype"]:
                 # Typed literal — handle custom datatypes, not only xsd:
-                escaped_val = t["object_value"].replace("\\", "\\\\").replace('"', '\\"')
+                escaped_val = self._escape_turtle_literal(t["object_value"])
                 dtype = t["object_datatype"]
                 if ":" in dtype:
                     ns, _, local = dtype.partition(":")
@@ -385,10 +406,10 @@ class TripleService:
                 else:
                     obj = f'"{escaped_val}"^^<{dtype}>'
             elif t["object_lang"]:
-                escaped_val = t["object_value"].replace("\\", "\\\\").replace('"', '\\"')
+                escaped_val = self._escape_turtle_literal(t["object_value"])
                 obj = f'"{escaped_val}"@{t["object_lang"]}'
             else:
-                escaped_val = t["object_value"].replace("\\", "\\\\").replace('"', '\\"')
+                escaped_val = self._escape_turtle_literal(t["object_value"])
                 obj = f'"{escaped_val}"'
 
             # Subject changed: flush previous subject's triples

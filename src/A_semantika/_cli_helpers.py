@@ -86,17 +86,18 @@ def validate_type_flags(
 ) -> str | None:
     """Validate type flag combinations. Returns datatype string or None for URI.
 
-    Raises typer.BadParameter on invalid combinations.
+    Calls error() and raises typer.Exit(1) on invalid combinations.
     """
     count = count_type_flags(str_, int_, float_, bool_)
     if count > 1:
-        raise typer.BadParameter(
+        error(
             tr_multi(
                 "Ne eblas kombini --str, --int, --float, --bool",
                 "Cannot combine --str, --int, --float, --bool",
                 "Impossible de combiner --str, --int, --float, --bool",
             )
         )
+        raise typer.Exit(1)
     if count == 0:
         if lingvo:
             from A import warning as _warn
