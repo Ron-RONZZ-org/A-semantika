@@ -41,7 +41,7 @@ src/A_semantika/
 ├── _cli_predikato.py      # Predikato subcommand CLI (+ Wikidata flags)
 ├── _cli_predikat_grupo.py # Predikat-grupo subcommand CLI
 ├── _cli_query.py          # Root query commands: serci, vidi, eksporti (Issue #10 EO)
-├── _cli_rubujo.py         # Rubujo (trash) subcommand group: ls, restaŭrigi, malplenigi, forigi
+├── _cli_rubujo.py         # Rubujo (trash) subcommand group: ls, restaurigi, malplenigi, forigi
 ├── _cli_triples.py        # Root triple CLI: aldoni, forigi
 ├── _node_service.py       # NodeService (CRUDService + FTS5)
 ├── _predicate_service.py  # PredicateService (CRUDService + LIKE search)
@@ -234,7 +234,9 @@ A semantika predikat-grupo importi <file>
 
 # Trash commands (rubujo subcommand group):
   rubujo ls              # List trashed nodes
-  rubujo restaŭrigi       # Restore node from trash (also `restauxrigi`)
+  rubujo restaurigi       # Restore node(s) from trash (primary name, no accent)
+  rubujo restaŭrigi       # Deprecated hidden alias
+  rubujo restauxrigi      # Deprecated hidden alias
   rubujo malplenigi       # Empty trash (--days N for age filter)
   rubujo forigi           # Permanently delete specific node from trash
 ```

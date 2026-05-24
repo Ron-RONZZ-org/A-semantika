@@ -298,6 +298,23 @@ class NodeService(CRUDService):
             cursor = conn.execute(sql, (node_id,))
             return cursor.rowcount > 0
 
+
+    # ── Override empty_trash to use correct ISO timestamp comparison ──────
+
+    def empty_trash(self, days: int = 30) -> int:
+        """Permanently delete entries from trash older than days.
+
+        Overrides CRUDService.empty_trash which uses SQLite datetime()
+        function that mangles ISO timestamps with 'T' separators.
+        """
+        from datetime import datetime, timezone, timedelta
+
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        sql = f"DELETE FROM {self._trash_table} WHERE forigita_je < ?"
+        with self.db.transaction() as conn:
+            cursor = conn.execute(sql, (cutoff,))
+            return cursor.rowcount
+
     # ── Override _ensure_fts — use node_id instead of uuid in FTS schema ──
 
     def _ensure_fts(self) -> None:
