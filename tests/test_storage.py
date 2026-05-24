@@ -238,3 +238,136 @@ def test_default_predicates_existing_not_overwritten(tmp_path: Path) -> None:
     assert labels == {"eo": "speco"}, (
         f"Expected custom label 'speco' to survive re-init, got {labels}"
     )
+
+
+class TestPredicateGroupMembersUniqueMigration:
+    """Tests for _migrate_predicate_group_members_unique()."""
+
+    def _create_old_schema(self, db) -> None:
+        """Drop and recreate predicate_group_members WITHOUT the UNIQUE constraint."""
+        db.execute("DROP TABLE IF EXISTS predicate_group_members")
+        db.execute("PRAGMA foreign_keys = OFF")
+        try:
+            db.execute("""
+                CREATE TABLE predicate_group_members (
+                    uuid            TEXT PRIMARY KEY,
+                    group_uuid      TEXT NOT NULL,
+                    predicate_id    TEXT NOT NULL,
+                    kreita_je       TEXT NOT NULL
+                )
+            """)
+        finally:
+            db.execute("PRAGMA foreign_keys = ON")
+
+    def test_migration_adds_unique_constraint(self, db) -> None:
+        """Migration should add UNIQUE(group_uuid, predicate_id)."""
+        # First ensure the base tables exist
+        db.execute("""
+            INSERT OR IGNORE INTO predicate_groups (uuid, group_name, kreita_je, modifita_je)
+            VALUES ('g1', 'test', 'now', 'now')
+        """)
+        db.execute("""
+            INSERT OR IGNORE INTO predicates (predicate_id, kreita_je, modifita_je)
+            VALUES ('p1', 'now', 'now')
+        """)
+
+        # Create old schema without UNIQUE
+        self._create_old_schema(db)
+        db.execute(
+            "INSERT INTO predicate_group_members (uuid, group_uuid, predicate_id, kreita_je) "
+            "VALUES ('m1', 'g1', 'p1', 'now')"
+        )
+
+        # Run migration
+        from A_semantika.data.storage import _migrate_predicate_group_members_unique
+
+        _migrate_predicate_group_members_unique(db)
+
+        # Now inserting a duplicate should fail
+        with pytest.raises(Exception):
+            db.execute(
+                "INSERT INTO predicate_group_members (uuid, group_uuid, predicate_id, kreita_je) "
+                "VALUES ('m2', 'g1', 'p1', 'now')"
+            )
+
+    def test_migration_deduplicates_existing_rows(self, db) -> None:
+        """Migration should deduplicate existing rows with same (group_uuid, predicate_id)."""
+        db.execute("""
+            INSERT OR IGNORE INTO predicate_groups (uuid, group_name, kreita_je, modifita_je)
+            VALUES ('g1', 'test', 'now', 'now')
+        """)
+        db.execute("""
+            INSERT OR IGNORE INTO predicates (predicate_id, kreita_je, modifita_je)
+            VALUES ('p1', 'now', 'now')
+        """)
+
+        self._create_old_schema(db)
+        # Insert two duplicates
+        db.execute(
+            "INSERT INTO predicate_group_members (uuid, group_uuid, predicate_id, kreita_je) "
+            "VALUES ('m1', 'g1', 'p1', 'now')"
+        )
+        db.execute(
+            "INSERT INTO predicate_group_members (uuid, group_uuid, predicate_id, kreita_je) "
+            "VALUES ('m2', 'g1', 'p1', 'now')"
+        )
+
+        from A_semantika.data.storage import _migrate_predicate_group_members_unique
+
+        _migrate_predicate_group_members_unique(db)
+
+        # Only one row should remain
+        count = db.execute_one("SELECT COUNT(*) AS cnt FROM predicate_group_members")
+        assert count is not None
+        assert count["cnt"] == 1
+
+    def test_migration_idempotent(self, db) -> None:
+        """Running migration twice should be safe."""
+        db.execute("""
+            INSERT OR IGNORE INTO predicate_groups (uuid, group_name, kreita_je, modifita_je)
+            VALUES ('g1', 'test', 'now', 'now')
+        """)
+        db.execute("""
+            INSERT OR IGNORE INTO predicates (predicate_id, kreita_je, modifita_je)
+            VALUES ('p1', 'now', 'now')
+        """)
+
+        self._create_old_schema(db)
+        db.execute(
+            "INSERT INTO predicate_group_members (uuid, group_uuid, predicate_id, kreita_je) "
+            "VALUES ('m1', 'g1', 'p1', 'now')"
+        )
+
+        from A_semantika.data.storage import _migrate_predicate_group_members_unique
+
+        _migrate_predicate_group_members_unique(db)
+        # Run a second time
+        _migrate_predicate_group_members_unique(db)
+
+        # Should still have the row
+        count = db.execute_one("SELECT COUNT(*) AS cnt FROM predicate_group_members")
+        assert count is not None
+        assert count["cnt"] == 1
+
+    def test_new_schema_has_unique_constraint(self, db) -> None:
+        """Fresh schema should include UNIQUE constraint."""
+        # The schema is already initialized by the isolate_db fixture
+        db.execute("""
+            INSERT OR IGNORE INTO predicate_groups (uuid, group_name, kreita_je, modifita_je)
+            VALUES ('g1', 'test', 'now', 'now')
+        """)
+        db.execute("""
+            INSERT OR IGNORE INTO predicates (predicate_id, kreita_je, modifita_je)
+            VALUES ('p1', 'now', 'now')
+        """)
+        db.execute(
+            "INSERT INTO predicate_group_members (uuid, group_uuid, predicate_id, kreita_je) "
+            "VALUES ('m1', 'g1', 'p1', 'now')"
+        )
+
+        # Second insert with same (group_uuid, predicate_id) should fail
+        with pytest.raises(Exception):
+            db.execute(
+                "INSERT INTO predicate_group_members (uuid, group_uuid, predicate_id, kreita_je) "
+                "VALUES ('m2', 'g1', 'p1', 'now')"
+            )

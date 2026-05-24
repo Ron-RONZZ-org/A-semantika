@@ -78,8 +78,7 @@ CREATE TABLE nodes (
 
 -- Predicates: semantic properties (rdf:type, wdt:P1082, custom, etc.)
 CREATE TABLE predicates (
-    uuid          TEXT PRIMARY KEY,
-    predicate_id  TEXT NOT NULL UNIQUE,
+    predicate_id  TEXT PRIMARY KEY,  -- content-based ID (e.g. rdf:type, wdt:P31)
     source        TEXT NOT NULL DEFAULT 'manual',  -- 'wikidata' | 'manual' | 'owl' | 'rdfs' | 'rdf'
     etikedoj      TEXT NOT NULL DEFAULT '{}',  -- JSON: {"eo": "...", "en": "...", ...}
     priskriboj    TEXT NOT NULL DEFAULT '{}',  -- JSON: {"eo": "...", "en": "...", ...}
@@ -100,7 +99,8 @@ CREATE TABLE predicate_group_members (
     uuid            TEXT PRIMARY KEY,
     group_uuid      TEXT NOT NULL REFERENCES predicate_groups(uuid),
     predicate_id    TEXT NOT NULL REFERENCES predicates(predicate_id),
-    kreita_je       TEXT NOT NULL
+    kreita_je       TEXT NOT NULL,
+    UNIQUE(group_uuid, predicate_id)
 );
 
 -- Triples: the core semantic arcs (subject-predicate-object)
@@ -358,6 +358,35 @@ Use `uv` for development. See A-core AGENTS.md for details.
   - L1-L4: Indent fix, `import uuid` at module level, inline imports lifted, custom Turtle datatypes
   - S1-S4: LIKE COLLATE NOCASE, predicate validation before confirm, consistent DB patterns, `clear_members()` method
   - 40 new edge case tests in `test_edge_cases.py` (195 total)
+
+### Issue #19: Code Review Remaining Findings (May 2026)
+**Scope:** 5 remaining findings from the Issue #12 code review that were not covered by the first fix round.
+
+#### Fix 1: Bare `except: pass` in NodeService.delete() — #19-V1
+**File:** `_node_service.py:delete()`
+- Replaced bare `except: pass` with `warning()` log of the exception
+- AGENTS.md Rule 11 mandates no bare `except: pass`
+
+#### Fix 2: Dead code in aldoni() after Cancelled — #19-B1
+**File:** `_cli_triples.py:aldoni()`
+- Removed 3 unreachable lines (copy-paste artifact) after `raise typer.Exit(0)`
+
+#### Fix 3: FTS re-index not wrapped in transaction — #19-B4
+**File:** `_node_service.py:update()`
+- `_remove_from_fts()` + `_index_fts()` now run inside a transaction
+- Prevents partial FTS corruption if re-index fails after removal
+
+#### Fix 4: Missing UNIQUE constraint on predicate_group_members — #19-S1
+**File:** `data/storage.py:SCHEMA_SQL` + migration
+- Added `UNIQUE(group_uuid, predicate_id)` to `predicate_group_members` DDL
+- Created `_migrate_predicate_group_members_unique()` for existing databases
+- Migration deduplicates existing rows (first-wins via INSERT OR IGNORE)
+- Swaps tables with pragma foreign_keys=OFF/ON (same pattern as predicates migration)
+
+#### Fix 5: AGENTS.md schema outdated — #19-S3
+**File:** `AGENTS.md`
+- Updated `predicates` schema: removed old `uuid TEXT PRIMARY KEY`, `predicate_id` is now the PK
+- Added `UNIQUE(group_uuid, predicate_id)` to `predicate_group_members` in docs
 
 ### Issue #15: Human-Readable Node IDs + Graceful Error Handling (May 2026)
 

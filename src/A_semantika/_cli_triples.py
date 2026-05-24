@@ -175,12 +175,6 @@ def aldoni(
     ):
         info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
         raise typer.Exit(0)
-        error(tr_multi(
-            "Predikato ne trovita: {p}",
-            "Predicate not found: {p}",
-            "Prédicat non trouvé : {p}",
-        ).format(p=predicate))
-        raise typer.Exit(1)
 
     try:
         triple_svc.add(
