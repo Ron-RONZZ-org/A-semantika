@@ -60,7 +60,8 @@ CREATE TABLE IF NOT EXISTS predicate_group_members (
     uuid            TEXT PRIMARY KEY,
     group_uuid      TEXT NOT NULL REFERENCES predicate_groups(uuid),
     predicate_id    TEXT NOT NULL REFERENCES predicates(predicate_id),
-    kreita_je       TEXT NOT NULL
+    kreita_je       TEXT NOT NULL,
+    UNIQUE(group_uuid, predicate_id)
 );
 
 -- Triples: core semantic arcs (subject-predicate-object)
@@ -393,6 +394,55 @@ def _migrate_predicates_uuid_to_predicate_id(db: "SQLiteDB") -> None:
         pass  # Trash table may not exist
 
 
+def _migrate_predicate_group_members_unique(db: "SQLiteDB") -> None:
+    """Add UNIQUE(group_uuid, predicate_id) to predicate_group_members.
+
+    SQLite does not support ALTER TABLE ADD CONSTRAINT, so we recreate
+    the table. Existing rows with duplicate (group_uuid, predicate_id)
+    are deduplicated (first row wins via INSERT OR IGNORE).
+
+    Safe to call repeatedly — detects the constraint by checking the
+    table's schema SQL.
+    """
+    try:
+        # Check if UNIQUE constraint already exists on this table
+        create_sql = db.execute_one(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='predicate_group_members'"
+        )
+        if create_sql and "UNIQUE(" in create_sql.get("sql", ""):
+            return  # Already has the constraint
+    except Exception:
+        return  # Table doesn't exist yet
+
+    # ── Step 1: Create new table with UNIQUE constraint ────────────
+    db.execute("DROP TABLE IF EXISTS predicate_group_members_new")
+    db.execute("""
+        CREATE TABLE predicate_group_members_new (
+            uuid            TEXT PRIMARY KEY,
+            group_uuid      TEXT NOT NULL REFERENCES predicate_groups(uuid),
+            predicate_id    TEXT NOT NULL REFERENCES predicates(predicate_id),
+            kreita_je       TEXT NOT NULL,
+            UNIQUE(group_uuid, predicate_id)
+        )
+    """)
+
+    # ── Step 2: Copy existing data (deduplicate via INSERT OR IGNORE) ──
+    db.execute("""
+        INSERT OR IGNORE INTO predicate_group_members_new
+            (uuid, group_uuid, predicate_id, kreita_je)
+        SELECT uuid, group_uuid, predicate_id, kreita_je
+        FROM predicate_group_members
+    """)
+
+    # ── Step 3: Swap tables ────────────────────────────────────────
+    db.execute("PRAGMA foreign_keys = OFF")
+    try:
+        db.execute("DROP TABLE predicate_group_members")
+        db.execute("ALTER TABLE predicate_group_members_new RENAME TO predicate_group_members")
+    finally:
+        db.execute("PRAGMA foreign_keys = ON")
+
+
 def _seed_default_predicates(db: "SQLiteDB") -> None:
     """Insert default RDF/OWL semantic predicates into the predicates table.
 
@@ -426,6 +476,7 @@ def init_db(db: "SQLiteDB | None" = None) -> None:
     # Run column-rename migrations for existing databases
     _migrate_nodes_uuid_to_node_id(db)
     _migrate_predicates_uuid_to_predicate_id(db)
+    _migrate_predicate_group_members_unique(db)
     # Seed built-in RDF/OWL predicates (must be AFTER migrations)
     _seed_default_predicates(db)
 

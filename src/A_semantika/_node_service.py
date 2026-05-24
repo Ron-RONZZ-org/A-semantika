@@ -10,6 +10,7 @@ import json
 import uuid as _uuid
 from typing import Any
 
+from A import warning as _warning
 from A.core.service import CRUDService
 from A.data.search import FTSConfig
 from A_semantika.data.storage import now
@@ -171,10 +172,11 @@ class NodeService(CRUDService):
         sql = f"UPDATE nodes SET {', '.join(set_parts)} WHERE node_id = ?"
         self.db.execute(sql, params)
 
-        # Re-index FTS
+        # Re-index FTS (wrapped in transaction so partial failure doesn't orphan FTS entries)
         if self._fts_config:
-            self._remove_from_fts(node_id)
-            self._index_fts(node_id)
+            with self.db.transaction():
+                self._remove_from_fts(node_id)
+                self._index_fts(node_id)
 
         # Track for undo
         if self._undo_manager is not None and old:
@@ -224,7 +226,7 @@ class NodeService(CRUDService):
         try:
             self._post_delete(node_id, old_data, soft)
         except Exception:
-            pass
+            _warning(f"Post-delete cleanup failed for node: {node_id}")
 
     # ── Override _move_to_trash to use node_id column ────────────────────
 
