@@ -43,6 +43,7 @@ src/A_semantika/
 ├── _cli_query.py          # Root query commands: serci, vidi, eksporti (Issue #10 EO)
 ├── _cli_rubujo.py         # Rubujo (trash) subcommand group: ls, restaurigi, malplenigi, forigi
 ├── _cli_triples.py        # Root triple CLI: aldoni, forigi
+├── _node_helpers.py       # Shared helpers: label/difin extraction, FTS5 keywords
 ├── _node_service.py       # NodeService (CRUDService + FTS5)
 ├── _predicate_service.py  # PredicateService (CRUDService + LIKE search)
 ├── _predicate_group_service.py  # PredicateGroupService (CRUDService + member mgmt)
@@ -51,6 +52,7 @@ src/A_semantika/
 ├── _triple_turtle.py      # Turtle (.ttl) export (extracted from _triple_service.py for < 500 lines)
 ├── _preview.py            # Rich table preview helpers
 └── data/
+    ├── __init__.py        # Package marker
     ├── storage.py         # Schema DDL, get_db(), init_db(), get_service() singletons
     └── migrations.py      # DB migrations: uuid→node_id, predicates JSON, UNIQUE constraints
 tests/
@@ -766,6 +768,22 @@ This is not valid RDF — consumers can't parse labels programmatically.
 | `test_predikat_grupo_forigi_prefix_ambiguous` | B2 | test_cli_predikat_grupo.py |
 | `test_predikat_grupo_forigi_prefix_not_found` | B2 | test_cli_predikat_grupo.py |
 | `test_predikat_grupo_forigi_mixed_resolution` | B2 | test_cli_predikat_grupo.py |
+
+### Issue #34: Code Review Round 10 — Monolith Split, Exception Cleanup, empty_all_trash (May 2026)
+
+**Scope:** 8 fixes from the code reviewer's analysis. 310 tests remain (count unchanged).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| M1 | Low | `_node_service.py` → `_node_helpers.py` | Extracted `_extract_label_text()`, `_extract_difin_text()`, and `FTS5_KEYWORDS` to new `_node_helpers.py` — reduces `_node_service.py` from 519→494 lines, and `FTS5_KEYWORDS` is now a module-level constant (not rebuilt on every `search()` call) |
+| L1 | Low | `_node_service.py` | Removed 22 lines of duplicated helper code (now imported from `_node_helpers`) |
+| L2 | Low | `data/storage.py` | Trimmed 11 blank lines between `get_db()` and `_seed_default_predicates()` |
+| M2 | Medium | `_cli_nodo.py:forigi()` | Replaced `except Exception` with `except sqlite3.DatabaseError` for database corruption detection — avoids catching unintended non-DB errors |
+| L3 | Low | `_cli_nodo.py` | Added consistent `raise typer.Exit(1) from e` in 3 exception handlers (`vidi`, `aldoni`, `modifi`) for proper exception chaining |
+| M3 | Medium | `_cli_modify.py` | Replaced 2-line `if new_obj is None: new_obj = object or ""` with single-line `new_obj = new_obj if new_obj is not None else (object or "")` for clarity |
+| L4 | Low | `_triple_service.py` | Improved `IntegrityError` message from `"Triple already exists"` → `"Triple already exists: subject=..., predicate=..., object=..."` for better debugging |
+| L5 | Low | `_node_service.py`, `_cli_rubujo.py` | Added `NodeService.empty_all_trash()` method with explicit full-empty semantics — replaces confusing `empty_trash(days=0)` call in `rubujo malplenigi` |
+| L6 | Low | `data/__init__.py` | Added explicit package init file for proper Python package marking |
 
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
