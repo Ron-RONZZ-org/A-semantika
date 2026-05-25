@@ -663,6 +663,30 @@ Raw `IntegrityError` tracebacks in `nodo aldoni` and `nodo forigi` are caught an
 | `test_modifi_prefix_ambiguous` | M1 | test_predicate_groups.py |
 | `test_modifi_nonexistent_prefix` | M1 | test_predicate_groups.py |
 
+### Issue #31: Code Review Round 8 — B3/B2/Q1 Fixes (May 2026)
+
+**Scope:** 3 fixes from eighth code review round. 295 tests total (285 existing + 10 new).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| B3 | Medium | `_cli_rubujo.py` | Added `COLLATE NOCASE` to `_resolve_trash_node()` for case-insensitive trash lookup |
+| B2 | Low | `_triple_search.py` | Suppressed spurious fallback warning for obvious literals (numeric, multi-word, quoted strings) |
+| Q1 | Low | `_preview.py` | De-duplicated `resolve_predicate_label()` by delegating to `storage.label_from_json()` — removed ~15 lines of duplicated eo→en→first fallback logic |
+
+**Tests added (10):**
+| Test | Fix | File |
+|------|-----|------|
+| `test_rubujo_restore_case_insensitive` | B3 | test_cli_rubujo.py |
+| `test_rubujo_forigi_case_insensitive` | B3 | test_cli_rubujo.py |
+| `test_numeric_literal_suppresses_warning` | B2 | test_triple_search.py |
+| `test_multi_word_literal_suppresses_warning` | B2 | test_triple_search.py |
+| `test_quoted_string_suppresses_warning` | B2 | test_triple_search.py |
+| `test_single_word_non_numeric_still_warns` | B2 | test_triple_search.py |
+| `test_returns_eo_label` | Q1 | test_preview_helpers.py |
+| `test_returns_predicate_id_when_no_label` | Q1 | test_preview_helpers.py |
+| `test_returns_predicate_id_when_not_found` | Q1 | test_preview_helpers.py |
+| `test_falls_back_to_en_when_no_eo` | Q1 | test_preview_helpers.py |
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
