@@ -390,10 +390,14 @@ def create_node_arcs(
     node_id_val: str,
     arcs: list[dict],
 ) -> None:
-    """Create arcs for a node, rolling back the node on failure.
+    """Create arcs for a node, rolling back on failure.
 
-    This ensures atomicity: either all arcs are created, or the node
-    is deleted so no orphan node with partial arcs remains.
+    This ensures atomicity: either all arcs are created, or any
+    already-created arcs and the node are removed so no orphan node
+    with partial arcs remains.
+
+    The rollback first deletes arcs referencing ``node_id_val`` (FK
+    constraint), then soft-deletes the node.
     """
     try:
         for arc in arcs:
@@ -407,6 +411,8 @@ def create_node_arcs(
             except DuplicateTripleError:
                 pass  # Silently skip — triple already exists, no harm
     except ValueError:
-        # Rollback: delete the node to prevent orphan with partial arcs
+        # Rollback: remove already-created arcs first (FK constraint),
+        # then delete the node to prevent orphan with partial arcs.
+        triple_svc.remove_by_node(node_id_val)
         node_svc.delete(node_id_val)
         raise

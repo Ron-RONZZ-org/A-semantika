@@ -15,6 +15,7 @@ from typing import Any
 
 from A.core.service import CRUDService
 from A_semantika._constants import FTS5_KEYWORDS as _FTS5_KEYWORDS
+from A_semantika._node_helpers import extract_label_text
 from A_semantika.data.storage import label_from_json, now
 
 
@@ -32,23 +33,6 @@ def _label_from_etikedoj(etikedoj: str | dict, langs: tuple[str, ...] = ("eo", "
     """
     return label_from_json(etikedoj, langs)
 
-
-def _extract_label_text(etikedoj: str | dict) -> str:
-    """Extract a plain-text search string from etikedoj JSON.
-
-    Concatenates all label values into a space-separated string for FTS indexing.
-    """
-    try:
-        labels = json.loads(etikedoj) if isinstance(etikedoj, str) else etikedoj
-    except (json.JSONDecodeError, TypeError):
-        return ""
-    if not isinstance(labels, dict):
-        return ""
-    texts: list[str] = []
-    for val in labels.values():
-        if val and isinstance(val, str):
-            texts.append(val)
-    return " ".join(texts)
 
 
 
@@ -158,7 +142,7 @@ class PredicateService(CRUDService):
             "predicate_id": predicate_id,
             "source": data.get("source", "manual"),
             "etikedoj": etikedoj,
-            "label_text": _extract_label_text(data.get("etikedoj", {})),
+            "label_text": extract_label_text(data.get("etikedoj", {})),
             "priskriboj": _ensure_json(data.get("priskriboj", {})),
             "aliases": _ensure_json(data.get("aliases", [])),
             "kreita_je": now(),
@@ -194,7 +178,7 @@ class PredicateService(CRUDService):
             if isinstance(etikedoj_val, dict):
                 etikedoj_val = json.dumps(etikedoj_val)
             updates["etikedoj"] = etikedoj_val
-            updates["label_text"] = _extract_label_text(etikedoj_val)
+            updates["label_text"] = extract_label_text(etikedoj_val)
         if "priskriboj" in updates:
             updates["priskriboj"] = _ensure_json(updates["priskriboj"])
         if "aliases" in updates:

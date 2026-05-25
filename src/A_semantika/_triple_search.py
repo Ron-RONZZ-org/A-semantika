@@ -10,6 +10,7 @@ import re
 from typing import TYPE_CHECKING
 
 from A import warning as _warning
+from A_semantika._node_service import AmbiguousUUIDError
 
 if TYPE_CHECKING:
     from A_semantika._node_service import NodeService
@@ -65,8 +66,13 @@ def resolve_subjects(node_svc: NodeService, text: str) -> list[str]:
             node = node_svc.resolve_uuid_prefix(text)
             if node:
                 return [node["node_id"]]
+        except AmbiguousUUIDError:
+            _warning(
+                f"Ambiguous prefix '{text}' — multiple nodes match"
+            )
+            return []  # Don't fall through to FTS5 — ambiguous prefix
         except ValueError:
-            pass  # Ambiguous or not found — fall through to label search
+            pass  # Not found — fall through to label search
 
     # Step 2: FTS5 label search
     results = node_svc.search(text, limit=50)
@@ -126,8 +132,13 @@ def resolve_objects(node_svc: NodeService, text: str) -> list[str]:
             node = node_svc.resolve_uuid_prefix(text)
             if node:
                 return [node["node_id"]]
+        except AmbiguousUUIDError:
+            _warning(
+                f"Ambiguous prefix '{text}' — multiple nodes match"
+            )
+            return []  # Don't fall through to FTS5 — ambiguous prefix
         except ValueError:
-            pass  # Ambiguous or not found
+            pass  # Not found
 
     # Step 2: FTS5 label search — match node labels (for URI objects)
     results = node_svc.search(text, limit=50)

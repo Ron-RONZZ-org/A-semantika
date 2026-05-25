@@ -857,6 +857,33 @@ This is not valid RDF — consumers can't parse labels programmatically.
 | `test_falls_back_to_id_when_etikedoj_invalid` (from_node) | Q4 | test_preview_helpers.py |
 | `test_works_with_already_parsed_labels` (from_node) | Q4 | test_preview_helpers.py |
 
+### Issue #39: Code Review Round 15 — Orphan Arc Rollback, AmbiguousUUIDError, Exception Narrowing, Dedup (May 2026)
+
+**Scope:** 4 fixes from a thorough code review. 365 tests total (353 existing + 12 new).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| F1 | High | `_cli_helpers.py` | **Orphan arc rollback.** When `create_node_arcs()` raised `ValueError` after some arcs were created, the rollback `node_svc.delete()` failed with FK violation (already-created arcs reference the node). The node survived as an orphan with partial arcs. **Fix:** Delete arcs via `triple_svc.remove_by_node()` before deleting node. |
+| F2 | Med | `_triple_search.py` | **AmbiguousUUIDError silently swallowed.** `except ValueError` caught `AmbiguousUUIDError` (a subclass) in `resolve_subjects()` and `resolve_objects()`, silently falling through to FTS5 label search which could return unrelated results. **Fix:** Catch `AmbiguousUUIDError` first with user-visible warning, return `[]` instead of misleading fallback. |
+| F3 | Med | `_predicate_service.py` | **Duplicate `_extract_label_text()`** function (16 lines) duplicated the identical logic in `_node_helpers.py:extract_label_text()`. **Fix:** Imported and reused `extract_label_text` from `_node_helpers`; removed duplicate. |
+| F4 | Med | `_node_service.py` | **`except Exception:` too broad** in `NodeService.delete()` post-delete cleanup handler caught type errors, attribute errors, etc. **Fix:** Narrowed to `except (sqlite3.Error, OSError)`. |
+
+**Tests added (12):**
+| Test | Fix | File |
+|------|-----|------|
+| `test_orphan_cleanup_on_partial_failure` | F1 | test_review_round15.py |
+| `test_rollback_with_duplicate_triple` | F1 | test_review_round15.py |
+| `test_resolve_subjects_ambiguous_warns` | F2 | test_review_round15.py |
+| `test_resolve_objects_ambiguous_warns` | F2 | test_review_round15.py |
+| `test_resolve_subjects_not_found_falls_through` | F2 | test_review_round15.py |
+| `test_extract_from_dict` | F3 | test_review_round15.py |
+| `test_extract_from_json_string` | F3 | test_review_round15.py |
+| `test_extract_empty_dict` | F3 | test_review_round15.py |
+| `test_extract_empty_string` | F3 | test_review_round15.py |
+| `test_delete_with_post_delete_failure` | F4 | test_review_round15.py |
+| `test_delete_with_oserror_post_delete` | F4 | test_review_round15.py |
+| `test_delete_with_unexpected_error_raises` | F4 | test_review_round15.py |
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
