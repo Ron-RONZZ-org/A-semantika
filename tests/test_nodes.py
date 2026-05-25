@@ -163,21 +163,21 @@ class TestNodeIdPrefix:
         """Resolving a node_id prefix should find the node."""
         node = node_svc.create({"etikedoj": {"eo": "Hundo"}})
         prefix = node["node_id"][:16]
-        resolved = node_svc.resolve_uuid_prefix(prefix)
+        resolved = node_svc.resolve_node_id_prefix(prefix)
         assert resolved is not None
         assert resolved["node_id"] == node["node_id"]
 
     def test_resolve_exact_human_id(self, node_svc) -> None:
         """A human-readable ID like SPACO should be resolvable directly."""
         node_svc.create({"node_id": "SPACO", "etikedoj": {"eo": "Spaco"}})
-        resolved = node_svc.resolve_uuid_prefix("SPACO")
+        resolved = node_svc.resolve_node_id_prefix("SPACO")
         assert resolved is not None
         assert resolved["node_id"] == "SPACO"
 
     def test_resolve_prefix_human_id(self, node_svc) -> None:
         """Prefix resolution should work for human-readable IDs too."""
         node_svc.create({"node_id": "HOMOTEST", "etikedoj": {"eo": "Homo"}})
-        resolved = node_svc.resolve_uuid_prefix("HOMO")
+        resolved = node_svc.resolve_node_id_prefix("HOMO")
         assert resolved is not None
         assert resolved["node_id"] == "HOMOTEST"
 
@@ -187,26 +187,26 @@ class TestNodeIdPrefix:
         node_svc.create({"node_id": "AAAB", "etikedoj": {"eo": "B"}})
         import pytest
         with pytest.raises(ValueError, match="ambiguous"):
-            node_svc.resolve_uuid_prefix("AAA")
+            node_svc.resolve_node_id_prefix("AAA")
 
     def test_resolve_nonexistent_prefix(self, node_svc) -> None:
         """Nonexistent prefix should return None."""
-        resolved = node_svc.resolve_uuid_prefix("ZZZZZZZZ")
+        resolved = node_svc.resolve_node_id_prefix("ZZZZZZZZ")
         assert resolved is None
 
     # ── Issue #1: Case-insensitive resolution ───────────────────────────
 
     def test_resolve_case_insensitive_exact(self, node_svc) -> None:
-        """resolve_uuid_prefix should find exact match case-insensitively."""
+        """resolve_node_id_prefix should find exact match case-insensitively."""
         node_svc.create({"node_id": "SPACO", "etikedoj": {"eo": "Spaco"}})
-        resolved = node_svc.resolve_uuid_prefix("spaco")
+        resolved = node_svc.resolve_node_id_prefix("spaco")
         assert resolved is not None
         assert resolved["node_id"] == "SPACO"
 
     def test_resolve_case_insensitive_prefix(self, node_svc) -> None:
-        """resolve_uuid_prefix should find prefix match case-insensitively."""
+        """resolve_node_id_prefix should find prefix match case-insensitively."""
         node_svc.create({"node_id": "MAMULO", "etikedoj": {"eo": "Mamulo"}})
-        resolved = node_svc.resolve_uuid_prefix("mam")
+        resolved = node_svc.resolve_node_id_prefix("mam")
         assert resolved is not None
         assert resolved["node_id"] == "MAMULO"
 
@@ -218,7 +218,7 @@ class TestNodeIdPrefix:
         import pytest
         # "aa" matches "AAA", "aaa", "AAb" case-insensitively → ambiguous
         with pytest.raises(ValueError, match="ambiguous"):
-            node_svc.resolve_uuid_prefix("aa")
+            node_svc.resolve_node_id_prefix("aa")
 
     # ── Issue #3: LIKE wildcard escaping ────────────────────────────────
 
@@ -227,7 +227,7 @@ class TestNodeIdPrefix:
         node_svc.create({"node_id": "test_1", "etikedoj": {"eo": "Test1"}})
         node_svc.create({"node_id": "testX1", "etikedoj": {"eo": "TestX1"}})
         # "test_" should match ONLY "test_1", NOT "testX1" (if _ is escaped)
-        resolved = node_svc.resolve_uuid_prefix("test_")
+        resolved = node_svc.resolve_node_id_prefix("test_")
         assert resolved is not None
         assert resolved["node_id"] == "test_1"
 
@@ -235,9 +235,23 @@ class TestNodeIdPrefix:
         """Prefix with '%' must not act as LIKE wildcard."""
         node_svc.create({"node_id": "test%1", "etikedoj": {"eo": "TestPct1"}})
         node_svc.create({"node_id": "testX1", "etikedoj": {"eo": "TestX1"}})
-        resolved = node_svc.resolve_uuid_prefix("test%")
+        resolved = node_svc.resolve_node_id_prefix("test%")
         assert resolved is not None
         assert resolved["node_id"] == "test%1"
+
+    def test_deprecated_resolve_uuid_prefix_alias(self, node_svc) -> None:
+        """Deprecated resolve_uuid_prefix should still work and delegate to resolve_node_id_prefix."""
+        import warnings
+        node_svc.create({"node_id": "ALIAS_TEST", "etikedoj": {"eo": "Alias"}})
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            resolved = node_svc.resolve_uuid_prefix("ALIAS_TEST")
+            assert resolved is not None
+            assert resolved["node_id"] == "ALIAS_TEST"
+            # Should emit deprecation warning
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "resolve_uuid_prefix" in str(w[0].message)
 
 
 class TestNodeTrashOlderThan:
@@ -283,26 +297,26 @@ class TestNodeDisplayLabel:
     def test_get_display_label_eo(self, node_svc) -> None:
         """Display label should prefer eo."""
         node = node_svc.create({"etikedoj": {"eo": "Hundo", "en": "Dog"}})
-        label, lang = get_display_label(node_svc.resolve_uuid_prefix, node["node_id"])
+        label, lang = get_display_label(node_svc.resolve_node_id_prefix, node["node_id"])
         assert label == "Hundo"
         assert lang == "eo"
 
     def test_get_display_label_en_fallback(self, node_svc) -> None:
         """Display label should fall back to en."""
         node = node_svc.create({"etikedoj": {"en": "Dog"}})
-        label, lang = get_display_label(node_svc.resolve_uuid_prefix, node["node_id"])
+        label, lang = get_display_label(node_svc.resolve_node_id_prefix, node["node_id"])
         assert label == "Dog"
         assert lang == "en"
 
     def test_get_display_label_fallback_id(self, node_svc) -> None:
         """Display label with no labels should return node_id prefix."""
         node = node_svc.create({"etikedoj": {}})
-        label, lang = get_display_label(node_svc.resolve_uuid_prefix, node["node_id"])
+        label, lang = get_display_label(node_svc.resolve_node_id_prefix, node["node_id"])
         assert label == node["node_id"][:16]
         assert lang == ""
 
     def test_get_display_label_nonexistent(self, node_svc) -> None:
         """Nonexistent node_id should return the input as-is."""
-        label, lang = get_display_label(node_svc.resolve_uuid_prefix, "nonexistent")
+        label, lang = get_display_label(node_svc.resolve_node_id_prefix, "nonexistent")
         assert label == "nonexistent"
         assert lang == ""

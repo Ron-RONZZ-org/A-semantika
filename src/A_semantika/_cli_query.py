@@ -153,7 +153,7 @@ def vidi(
     triple_svc = get_triple_service()
 
     try:
-        subj_node = node_svc.resolve_uuid_prefix(subject_uuid)
+        subj_node = node_svc.resolve_node_id_prefix(subject_uuid)
     except AmbiguousUUIDError as e:
         error(tr_multi(
             "Ambigua subjekto-prefikso: {e}",

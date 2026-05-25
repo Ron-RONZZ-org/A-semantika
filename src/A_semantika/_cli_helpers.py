@@ -270,7 +270,7 @@ def _find_triple_by_spo(
     """
     # Try URI: resolve object as node
     try:
-        obj_node = node_svc.resolve_uuid_prefix(object_raw)
+        obj_node = node_svc.resolve_node_id_prefix(object_raw)
     except AmbiguousUUIDError:
         obj_node = None
 
@@ -342,7 +342,7 @@ def resolve_arc_targets(
     arc_errors: list[str] = []
 
     def _resolve_one(predicate: str, user_input: str) -> str | None:
-        target = node_svc.resolve_uuid_prefix(user_input)
+        target = node_svc.resolve_node_id_prefix(user_input)
         if target:
             return target["node_id"]
         warning(tr_multi(
@@ -413,6 +413,17 @@ def create_node_arcs(
     except ValueError:
         # Rollback: remove already-created arcs first (FK constraint),
         # then delete the node to prevent orphan with partial arcs.
-        triple_svc.remove_by_node(node_id_val)
-        node_svc.delete(node_id_val)
+        # Wrap rollback in try/except so a rollback failure doesn't mask
+        # the original ValueError that triggered it.
+        try:
+            triple_svc.remove_by_node(node_id_val)
+            node_svc.delete(node_id_val)
+        except (sqlite3.Error, ValueError) as rollback_err:
+            warning(
+                tr_multi(
+                    "Enrulumbo malsukcesis por nodo {n}: {e}",
+                    "Rollback failed for node {n}: {e}",
+                    "Rétablissement échoué pour le nœud {n} : {e}",
+                ).format(n=node_id_val, e=str(rollback_err))
+            )
         raise

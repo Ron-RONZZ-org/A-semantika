@@ -63,7 +63,7 @@ class TestUUIDHeuristic:
         assert _looks_like_uuid_prefix("a1b2c3d4e5f6789a")  # 16 hex chars = OK (boundary)
         assert not _looks_like_uuid_prefix("a1b2c3d4e5f6789ab")  # 17 hex chars = too long
 
-    def test_resolve_uuid_prefix_with_hyphenated(self, node_svc):
+    def test_resolve_node_id_prefix_with_hyphenated(self, node_svc):
         """UUID prefix with hyphens should resolve correctly."""
         uuid = "c0ffeec0-0000-0000-0000-000000000001"
         node_svc.create({"node_id": uuid, "etikedoj": {"eo": "Kafo"}})

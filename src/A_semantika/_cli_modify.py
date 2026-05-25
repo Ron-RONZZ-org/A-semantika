@@ -201,7 +201,7 @@ def modifi(
 
         # Resolve old subject
         try:
-            subj_node = node_svc.resolve_uuid_prefix(subject)
+            subj_node = node_svc.resolve_node_id_prefix(subject)
         except AmbiguousUUIDError as e:
             error(tr_multi(
                 "Ambigua subjekto-prefikso: {e}",
@@ -226,7 +226,7 @@ def modifi(
         # ── Direct mode: full triplet provided ────────────────────
         # Resolve subject
         try:
-            subj_node = node_svc.resolve_uuid_prefix(subject)
+            subj_node = node_svc.resolve_node_id_prefix(subject)
         except AmbiguousUUIDError as e:
             error(tr_multi(
                 "Ambigua subjekto-prefikso: {e}",
@@ -265,7 +265,7 @@ def modifi(
 
     # Resolve new subject UUID
     try:
-        new_subj_node = node_svc.resolve_uuid_prefix(new_subj)
+        new_subj_node = node_svc.resolve_node_id_prefix(new_subj)
     except AmbiguousUUIDError as e:
         error(tr_multi(
             "Ambigua nova subjekto-prefikso: {e}",
@@ -288,7 +288,7 @@ def modifi(
     if new_object_type == "uri":
         new_obj_raw_clean = new_obj_raw if new_obj_raw is not None else (old_object_value or "")
         try:
-            new_obj_node = node_svc.resolve_uuid_prefix(new_obj_raw_clean)
+            new_obj_node = node_svc.resolve_node_id_prefix(new_obj_raw_clean)
         except AmbiguousUUIDError as e:
             error(tr_multi(
                 "Ambigua nova objekto-prefikso: {e}",

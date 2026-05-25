@@ -93,7 +93,7 @@ def vidi(
     """Vidi detalojn de nodo."""
     node_svc = get_node_service()
     try:
-        node = node_svc.resolve_uuid_prefix(node_id)
+        node = node_svc.resolve_node_id_prefix(node_id)
     except AmbiguousUUIDError as e:
         error(tr_multi("Ambigua prefikso: {e}", "Ambiguous prefix: {e}", "Préfixe ambigu : {e}").format(e=str(e)))
         raise typer.Exit(1) from e
@@ -236,7 +236,7 @@ def modifi(
     """Modifi nodon."""
     node_svc = get_node_service()
     try:
-        node = node_svc.resolve_uuid_prefix(node_id)
+        node = node_svc.resolve_node_id_prefix(node_id)
     except AmbiguousUUIDError as e:
         error(tr_multi("Ambigua prefikso: {e}", "Ambiguous prefix: {e}", "Préfixe ambigu : {e}").format(e=str(e)))
         raise typer.Exit(1) from e
@@ -311,7 +311,7 @@ def forigi(
 
     for nid in node_ids:
         try:
-            node = node_svc.resolve_uuid_prefix(nid)
+            node = node_svc.resolve_node_id_prefix(nid)
             if node:
                 resolved.append(node)
             else:

@@ -124,7 +124,7 @@ def aldoni(
 
     # Resolve subject UUID
     try:
-        subj_node = node_svc.resolve_uuid_prefix(subject)
+        subj_node = node_svc.resolve_node_id_prefix(subject)
     except AmbiguousUUIDError as e:
         error(tr_multi(
             "Ambigua subjekto-prefikso: {e}",
@@ -145,7 +145,7 @@ def aldoni(
     object_uuid = object
     if object_type == "uri":
         try:
-            obj_node = node_svc.resolve_uuid_prefix(object)
+            obj_node = node_svc.resolve_node_id_prefix(object)
         except AmbiguousUUIDError as e:
             error(tr_multi(
                 "Ambigua objekto-prefikso: {e}",
@@ -299,7 +299,7 @@ def forigi(
 
     # ── Direct mode: full triplet provided (backward compat) ──────
     try:
-        subj_node = node_svc.resolve_uuid_prefix(subject)
+        subj_node = node_svc.resolve_node_id_prefix(subject)
     except AmbiguousUUIDError as e:
         error(tr_multi(
             "Ambigua subjekto-prefikso: {e}",
