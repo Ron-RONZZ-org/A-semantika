@@ -490,6 +490,7 @@ class NodeService(CRUDService):
             return results
 
         # Fallback: LIKE on label_text (case-insensitive)
-        like_sql = "SELECT * FROM nodes WHERE label_text LIKE ? COLLATE NOCASE LIMIT ?"
-        pattern = f"%{query}%"
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like_sql = "SELECT * FROM nodes WHERE label_text LIKE ? ESCAPE '\\' COLLATE NOCASE LIMIT ?"
+        pattern = f"%{escaped}%"
         return self.db.execute(like_sql, (pattern, limit))

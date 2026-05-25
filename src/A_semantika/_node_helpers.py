@@ -71,6 +71,8 @@ def get_display_label(
         if val and isinstance(val, str):
             return (val, lang)
 
+    # Fall back to first non-empty label in any language.
+    # isinstance(val, str) guard skips non-string values (e.g. null, numeric).
     for val in labels.values():
         if val and isinstance(val, str):
             return (val, "")

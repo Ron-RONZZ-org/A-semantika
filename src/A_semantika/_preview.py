@@ -37,6 +37,8 @@ def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
     except AmbiguousUUIDError:
         raise
     except ValueError:
+        # ValueError comes from get_display_label when UUID format is
+        # invalid (not a prefix either). Falls back to raw prefix.
         return uuid_or_prefix[:16]
 
 
