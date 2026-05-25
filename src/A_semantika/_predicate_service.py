@@ -11,6 +11,7 @@ are identified by their URI/ID, not by an artifact.
 from __future__ import annotations
 
 import json
+import sqlite3
 from typing import Any
 
 from A.core.service import CRUDService
