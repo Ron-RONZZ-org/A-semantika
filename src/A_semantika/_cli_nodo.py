@@ -132,7 +132,7 @@ def aldoni(
     ensure_predicate(pred_svc, "owl:disjointWith", "disjointWith")
     ensure_predicate(pred_svc, "owl:inverseOf", "inverseOf")
 
-    arc_templates: list[dict] = []
+    arc_templates: list[tuple[str, str]] = []
     arc_errors: list[str] = []
 
     def _resolve_arc_target(predicate: str, user_input: str) -> str | None:

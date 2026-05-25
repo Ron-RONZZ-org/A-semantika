@@ -4,6 +4,7 @@ Groups are named collections of predicates. No undo/trash needed.
 """
 from __future__ import annotations
 
+import sqlite3
 import uuid as _uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -84,22 +85,17 @@ class PredicateGroupService(CRUDService):
             msg = f"Predicate not found: {predicate_id}"
             raise ValueError(msg)
 
-        # Check duplicate
-        existing = self.db.execute_one(
-            "SELECT uuid FROM predicate_group_members WHERE group_uuid = ? AND predicate_id = ?",
-            (group["uuid"], predicate_id),
-        )
-        if existing:
-            msg = f"Predicate '{predicate_id}' is already in group '{group_name}'"
-            raise ValueError(msg)
-
         member_uuid = str(_uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
-        self.db.execute(
-            "INSERT INTO predicate_group_members (uuid, group_uuid, predicate_id, kreita_je) "
-            "VALUES (?, ?, ?, ?)",
-            (member_uuid, group["uuid"], predicate_id, now),
-        )
+        try:
+            self.db.execute(
+                "INSERT INTO predicate_group_members (uuid, group_uuid, predicate_id, kreita_je) "
+                "VALUES (?, ?, ?, ?)",
+                (member_uuid, group["uuid"], predicate_id, now),
+            )
+        except sqlite3.IntegrityError as exc:
+            msg = f"Predicate '{predicate_id}' is already in group '{group_name}'"
+            raise ValueError(msg) from exc
         return {
             "uuid": member_uuid,
             "group_uuid": group["uuid"],

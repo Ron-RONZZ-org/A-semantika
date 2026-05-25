@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from A import warning as _warning
+
 if TYPE_CHECKING:
     from A_semantika._node_service import NodeService
     from A_semantika._predicate_service import PredicateService
@@ -124,6 +126,11 @@ def resolve_objects(node_svc: NodeService, text: str) -> list[str]:
         return [r["node_id"] for r in results]
 
     # Step 3: Return raw text as literal value match candidate
+    # Inform user that no node match was found — falling back to literal search.
+    # This prevents confusion when a mistyped label silently becomes a literal query.
+    _warning(
+        f"No node found for '{text[:60]}' — searching as literal value"
+    )
     return [text]
 
 

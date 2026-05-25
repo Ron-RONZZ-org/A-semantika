@@ -48,6 +48,7 @@ src/A_semantika/
 ├── _predicate_group_service.py  # PredicateGroupService (CRUDService + member mgmt)
 ├── _triple_search.py      # Triple search by partial labels (Issue #8 R2)
 ├── _triple_service.py     # TripleService (custom, non-CRUDService)
+├── _triple_turtle.py      # Turtle (.ttl) export (extracted from _triple_service.py for < 500 lines)
 ├── _preview.py            # Rich table preview helpers
 └── data/
     ├── storage.py         # Schema DDL, get_db(), init_db(), get_service() singletons
@@ -591,6 +592,29 @@ Raw `IntegrityError` tracebacks in `nodo aldoni` and `nodo forigi` are caught an
 - `TestTripleServicePrefixIsolation` (2 tests) — custom prefix isolation between instances + default prefixes present
 - `TestNodoVidiDefinitions` (3 tests) — vidi with definitions, without definitions, default empty definitions
 - `TestEnsurePredicate` (3 tests) — creates new predicate, handles duplicate silently, re-raises other errors
+
+### Issue #28: Code Review Round 6 — Turtle Export, Code Quality & Monolith Split (May 2026)
+
+**Scope:** 8 fixes from sixth code review round. 277 tests total (274 existing + 3 new).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| R1a | High | `_triple_service.py` → `_triple_turtle.py` | Turtle export now includes nodes without triples as comments (instead of silently omitting them) |
+| R1b | High | `_triple_turtle.py` | Node IDs starting with digits now emit full URIs `<...>` instead of invalid Turtle prefixed names like `:1234` |
+| R1c | Low | `_triple_turtle.py` | Removed trailing blank lines from Turtle output |
+| A2/A3 | High | `_preview.py` | Consolidated `resolve_node_label()` with `NodeService.get_display_label()` — eliminated 30 lines of duplicate eo→en→first fallback logic |
+| Q5 | Med | `_cli_nodo.py` | Fixed type annotation: `arc_templates: list[dict]` → `list[tuple[str, str]]` |
+| Q3 | Med | `_triple_service.py` | `params.append(str(limit))` → `params.append(limit)` — avoid fragile string coercion |
+| B4 | Med | `_triple_search.py` | Added `warning()` when `resolve_objects()` falls back to literal mode (prevents silent mistyped-label confusion) |
+| Q2 | Med | `_cli_predikato.py` | Consolidated nested `if not results` checks to clarify control flow |
+| Q4 | Low | `_cli_rubujo.py` | `_resolve_trash_node()` now imports `get_db()` directly instead of accessing via `triple_svc.db` (layering fix) |
+| Q6 | Low | `_predicate_group_service.py` | Removed manual duplicate check in `add_member()` — now relies on UNIQUE constraint + `IntegrityError` catch |
+| Split | — | `_triple_service.py` → `_triple_turtle.py` | Extracted Turtle export logic (165 lines) to keep `_triple_service.py` under 500 lines (516→388) |
+
+**Tests added:**
+- `test_export_turtle_nodes_without_triples_in_comments` — orphan nodes appear as Turtle comments
+- `test_export_turtle_digit_prefix_uses_full_uri` — digit-prefixed node IDs use `<...>` syntax
+- `test_export_turtle_no_trailing_blank_lines` — output does not end with blank lines
 
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9

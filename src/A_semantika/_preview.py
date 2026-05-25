@@ -21,33 +21,21 @@ from A_semantika._predicate_service import PredicateService
 def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
     """Resolve a node UUID/prefix to a display label.
 
+    Delegates to NodeService.get_display_label() to avoid duplicating
+    the eo→en→first fallback logic.
+
     Returns the label if found, the UUID prefix as fallback.
 
     Raises:
         AmbiguousUUIDError: If the prefix matches multiple nodes.
     """
     try:
-        node = node_svc.resolve_uuid_prefix(uuid_or_prefix)
+        label, _ = node_svc.get_display_label(uuid_or_prefix)
+        return label
     except AmbiguousUUIDError:
         raise
     except ValueError:
         return uuid_or_prefix[:8]
-    if not node:
-        return uuid_or_prefix[:8]
-    try:
-        labels = json.loads(node["etikedoj"])
-    except (json.JSONDecodeError, TypeError):
-        return node["node_id"][:8]
-    if not isinstance(labels, dict):
-        return node["node_id"][:8]
-    for lang in ("eo", "en"):
-        val = labels.get(lang)
-        if val and isinstance(val, str):
-            return val
-    for val in labels.values():
-        if val and isinstance(val, str):
-            return val
-    return node["node_id"][:8]
 
 
 def resolve_predicate_label(pred_svc: PredicateService, predicate_id: str) -> str:
@@ -107,26 +95,8 @@ def build_triple_preview_table(
         raise typer.Exit(1) from e
     subj_id = subj_node["node_id"][:8] if subj_node else subject_uuid[:8]
 
-    # Extract subject label from cached node, to avoid a second DB query
-    subj_label = ""
-    if subj_node:
-        try:
-            labels = json.loads(subj_node["etikedoj"])
-            if isinstance(labels, dict):
-                for lang in ("eo", "en"):
-                    val = labels.get(lang)
-                    if val and isinstance(val, str):
-                        subj_label = val
-                        break
-                if not subj_label:
-                    for val in labels.values():
-                        if val and isinstance(val, str):
-                            subj_label = val
-                            break
-        except (json.JSONDecodeError, TypeError):
-            pass
-    if not subj_label:
-        subj_label = subj_id
+    # Use resolve_node_label for subject display label
+    subj_label = resolve_node_label(node_svc, subject_uuid)
     pred_label = resolve_predicate_label(pred_svc, predicate_id)
 
     if object_type == "uri":

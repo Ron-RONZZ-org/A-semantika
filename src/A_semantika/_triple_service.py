@@ -326,7 +326,7 @@ class TripleService:
 
         where_clause = " AND ".join(clauses) if clauses else "1=1"
         sql = f"SELECT * FROM triples WHERE {where_clause} ORDER BY subject_uuid, predicate_id LIMIT ?"
-        params.append(str(limit))
+        params.append(limit)
 
         return self.db.execute(sql, params)
 
@@ -354,19 +354,6 @@ class TripleService:
 
     # ── Turtle Export ───────────────────────────────────────────────────
 
-    @staticmethod
-    def _escape_turtle_literal(val: str) -> str:
-        """Escape a literal value for Turtle output.
-
-        Escapes backslash, double quote, newline, carriage return, and tab.
-        """
-        val = val.replace("\\", "\\\\")
-        val = val.replace('"', '\\"')
-        val = val.replace("\n", "\\n")
-        val = val.replace("\r", "\\r")
-        val = val.replace("\t", "\\t")
-        return val
-
     def register_prefix(self, prefix: str, uri: str) -> None:
         """Register a custom namespace prefix for Turtle export.
 
@@ -378,18 +365,6 @@ class TripleService:
         """
         self._prefix_uris[prefix] = uri
 
-    def _format_turtle_uri(self, val: str) -> str:
-        """Format a URI reference for Turtle, respecting known namespaces.
-
-        Known prefixes (rdf:, rdfs:, xsd:, owl:) are emitted as prefixed names.
-        All other values get the default ``:`` prefix.
-        """
-        if ":" in val:
-            prefix, _, local = val.partition(":")
-            if prefix in self._prefix_uris:
-                return val  # Already a valid prefixed name
-        return f":{val}"
-
     def export_turtle(self, base_uri: str = "https://example.org/") -> str:
         """Export all triples to Turtle (.ttl) format.
 
@@ -399,72 +374,15 @@ class TripleService:
               predicate2 object2 ;
               predicate3 object3 .
 
+        Nodes that have no outgoing triples are listed as Turtle comments
+        at the end of the output so they are not silently lost.
+
         Args:
             base_uri: Base URI for node references.
 
         Returns:
             Turtle formatted string.
         """
-        lines = [
-            "@prefix : <{base}> .".format(base=base_uri),
-        ]
-        for prefix, uri in sorted(self._prefix_uris.items()):
-            lines.append(f"@prefix {prefix}: <{uri}> .")
-        lines.append("")
+        from A_semantika._triple_turtle import export_turtle as _export_turtle
 
-        triples = self.db.execute(
-            """SELECT t.*, n.etikedoj AS subj_label, p.etikedoj AS pred_etikedoj
-               FROM triples t
-               JOIN nodes n ON t.subject_uuid = n.node_id
-               JOIN predicates p ON t.predicate_id = p.predicate_id
-               ORDER BY t.subject_uuid, t.predicate_id"""
-        )
-
-        current_subject = None
-        subject_lines = []
-
-        for t in triples:
-            subj_uri = self._format_turtle_uri(t["subject_uuid"])
-            pred_uri = self._format_turtle_uri(t["predicate_id"])
-
-            if t["object_type"] == "uri":
-                obj = self._format_turtle_uri(t["object_value"])
-            elif t["object_datatype"]:
-                # Typed literal — handle custom datatypes, not only xsd:
-                escaped_val = self._escape_turtle_literal(t["object_value"])
-                dtype = t["object_datatype"]
-                if ":" in dtype:
-                    ns, _, local = dtype.partition(":")
-                    if ns == "xsd":
-                        obj = f'"{escaped_val}"^^xsd:{local}'
-                    else:
-                        # Custom datatype — emit full URI or prefixed form
-                        obj = f'"{escaped_val}"^^<{dtype}>'
-                else:
-                    obj = f'"{escaped_val}"^^<{dtype}>'
-            elif t["object_lang"]:
-                escaped_val = self._escape_turtle_literal(t["object_value"])
-                obj = f'"{escaped_val}"@{t["object_lang"]}'
-            else:
-                escaped_val = self._escape_turtle_literal(t["object_value"])
-                obj = f'"{escaped_val}"'
-
-            # Subject changed: flush previous subject's triples
-            if t["subject_uuid"] != current_subject:
-                if subject_lines:
-                    # Replace last semicolon with period on the last predicate
-                    subject_lines[-1] = subject_lines[-1].rstrip(";") + " ."
-                    lines.extend(subject_lines)
-                    lines.append("")  # Blank line between subjects
-
-                current_subject = t["subject_uuid"]
-                subject_lines = [f"{subj_uri}"]
-
-            subject_lines.append(f"    {pred_uri} {obj} ;")
-
-        # Flush last subject
-        if subject_lines:
-            subject_lines[-1] = subject_lines[-1].rstrip(";") + " ."
-            lines.extend(subject_lines)
-
-        return "\n".join(lines)
+        return _export_turtle(self.db, self._prefix_uris, base_uri)

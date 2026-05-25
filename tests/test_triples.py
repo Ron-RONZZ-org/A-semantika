@@ -271,6 +271,57 @@ class TestTripleTurtleExport:
         ttl = triple_svc.export_turtle()
         assert '"Hundo"@eo' in ttl or "Hundo" in ttl
 
+    def test_export_turtle_nodes_without_triples_in_comments(self, node_svc, triple_svc) -> None:
+        """Nodes without outgoing triples should appear as comments in Turtle output."""
+        # Create a node with no triples
+        node_svc.create({"node_id": "orphan_node", "etikedoj": {"eo": "Orfa nodo"}})
+        # Create a node WITH triples
+        node_svc.create({"node_id": "parent_node", "etikedoj": {"eo": "Patra nodo"}})
+        triple_svc.add(
+            subject_uuid="parent_node",
+            predicate_id="rdf:type",
+            object_value="s" + "0" * 35,
+            object_type="uri",
+        )
+        ttl = triple_svc.export_turtle()
+
+        # The orphan node should appear as a comment
+        assert "orphan_node" in ttl
+        assert "#" in ttl
+        # The parent node should have proper triples
+        assert ":parent_node" in ttl
+        assert "rdf:type" in ttl
+
+    def test_export_turtle_digit_prefix_uses_full_uri(self, node_svc, triple_svc) -> None:
+        """Node IDs starting with digits should use full URI instead of invalid prefixed name."""
+        # Create a node with a digit-prefixed ID
+        node_svc.create({"node_id": "1234-entity", "etikedoj": {"eo": "Cifereca"}})
+        triple_svc.add(
+            subject_uuid="1234-entity",
+            predicate_id="rdf:type",
+            object_value="s" + "0" * 35,
+            object_type="uri",
+        )
+        ttl = triple_svc.export_turtle()
+
+        # Must NOT have an invalid prefixed name starting with digit
+        assert ":1234" not in ttl
+        # Must have full URI instead
+        assert "<https://example.org/1234" in ttl
+
+    def test_export_turtle_no_trailing_blank_lines(self, triple_svc) -> None:
+        """Turtle export should not end with blank lines."""
+        triple_svc.add(
+            subject_uuid="s" + "0" * 35,
+            predicate_id="rdf:type",
+            object_value="o" + "0" * 35,
+            object_type="uri",
+        )
+        ttl = triple_svc.export_turtle()
+        # Should not end with a newline or blank line
+        assert ttl != ""
+        assert not ttl.endswith("\n\n")
+
 
 class TestTripleServicePrefixIsolation:
     """register_prefix() must not mutate class-level shared state (Q1)."""

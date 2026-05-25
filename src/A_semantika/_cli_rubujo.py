@@ -14,8 +14,8 @@ from rich.table import Table
 
 from A import error, info, tr_multi, warning
 from A_semantika._node_service import AmbiguousUUIDError
-from A_semantika.data.storage import label_from_json
-from A_semantika.service import get_node_service, get_triple_service
+from A_semantika.data.storage import get_db, label_from_json
+from A_semantika.service import get_node_service
 
 rubujo_app = typer.Typer(
     name="rubujo",
@@ -68,17 +68,17 @@ def ls(
 
 def _resolve_trash_node(node_id: str) -> dict | None:
     """Resolve a node_id prefix against the trash table (nodes_rubujo)."""
-    triple_svc = get_triple_service()
+    db = get_db()
 
     # Full match first
-    entry = triple_svc.db.execute_one(
+    entry = db.execute_one(
         "SELECT * FROM nodes_rubujo WHERE node_id = ?", (node_id,)
     )
     if entry:
         return entry
 
     # Prefix match (LIKE)
-    entries = triple_svc.db.execute(
+    entries = db.execute(
         "SELECT * FROM nodes_rubujo WHERE node_id LIKE ?", (f"{node_id}%",)
     )
     if not entries:

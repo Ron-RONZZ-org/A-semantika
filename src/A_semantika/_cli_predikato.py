@@ -393,17 +393,18 @@ def serci(
                 if len(wikidata_results) >= limit:
                     break
 
-    # Show hint when local search is empty and --wikidata was not used
-    if not results and not wikidata:
-        info(tr_multi(
-            "Neniuj lokaj rezultoj. Provu: predikato serci -w <query>",
-            "No local results. Try: predikato serci -w <query>",
-            "Aucun résultat local. Essayez : predikato serci -w <query>",
-        ))
-        return
-    if not results and not wikidata_results:
-        info(tr_multi("Neniuj rezultoj.", "No results.", "Aucun résultat."))
-        return
+    # Show hint when local search is empty
+    if not results:
+        if not wikidata:
+            info(tr_multi(
+                "Neniuj lokaj rezultoj. Provu: predikato serci -w <query>",
+                "No local results. Try: predikato serci -w <query>",
+                "Aucun résultat local. Essayez : predikato serci -w <query>",
+            ))
+            return
+        if not wikidata_results:
+            info(tr_multi("Neniuj rezultoj.", "No results.", "Aucun résultat."))
+            return
 
     table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
     table.add_column(tr_multi("ID", "ID", "ID"), no_wrap=True)
