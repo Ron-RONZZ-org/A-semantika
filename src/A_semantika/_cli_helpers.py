@@ -13,10 +13,15 @@ if TYPE_CHECKING:
     from A_semantika._predicate_service import PredicateService
     from A_semantika._triple_service import TripleService
 
-from A import error, tr_multi
+from rich.box import SIMPLE as BOX_SIMPLE
+from rich.table import Table
+
+from A import error, tr_multi, warning
 from A.utils.interactive import select_candidate
+from A_semantika._node_service import AmbiguousUUIDError, NodeService
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
 from A_semantika._triple_search import search_triples_by_labels
+from A_semantika._triple_service import DuplicateTripleError, TripleService
 
 
 
@@ -186,3 +191,202 @@ def ensure_predicate(pred_svc: "PredicateService", predicate_id: str, label_eo: 
         err_str = str(e)
         if "UNIQUE constraint failed" not in err_str and "already exists" not in err_str:
             raise
+
+
+# ── Modify preview helpers ──────────────────────────────────────────────
+
+
+def build_modify_preview(
+    node_svc,
+    pred_svc,
+    subject_uuid: str,
+    predicate: str,
+    object_value: str,
+    object_type: str,
+    object_lang: str | None,
+    new_subj_uuid: str,
+    new_pred: str,
+    new_obj_value: str,
+    new_obj_type: str,
+    new_obj_lang: str | None,
+) -> Table:
+    """Build a preview table for modifi showing old → new values.
+
+    Handles both URI and literal object types.
+    """
+    table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
+    table.add_column("", no_wrap=True)
+    table.add_column(tr_multi("Subjekto", "Subject", "Sujet"), no_wrap=True)
+    table.add_column(tr_multi("Predikato", "Predicate", "Predicat"), no_wrap=True)
+    table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=True)
+
+    old_subj_label = resolve_node_label(node_svc, subject_uuid)
+
+    def _obj_display(val: str, typ: str, lang: str | None) -> str:
+        if typ == "uri":
+            return f"{resolve_node_label(node_svc, val)} ({val[:16]})"
+        if lang:
+            return f'"{val}"@{lang}'
+        return f'"{val}"'
+
+    old_pred_label = resolve_predicate_label(pred_svc, predicate)
+    old_obj_display = _obj_display(object_value, object_type, object_lang)
+    table.add_row(
+        tr_multi("Malnova", "Old", "Ancien"),
+        f"{old_subj_label} ({subject_uuid[:16]})",
+        old_pred_label,
+        old_obj_display,
+    )
+
+    new_subj_label = resolve_node_label(node_svc, new_subj_uuid)
+    new_pred_label = resolve_predicate_label(pred_svc, new_pred)
+    new_obj_display = _obj_display(new_obj_value, new_obj_type, new_obj_lang)
+    table.add_row(
+        tr_multi("Nova", "New", "Nouveau"),
+        f"{new_subj_label} ({new_subj_uuid[:16]})",
+        new_pred_label,
+        new_obj_display,
+    )
+
+    return table
+
+
+def find_triple_direct(
+    triple_svc, node_svc, subject_uuid: str, predicate: str, object: str,
+) -> tuple[dict | None, str, str | None]:
+    """Find an existing triple in direct mode (full SPO specified).
+
+    Tries URI match first (resolving object as a node reference), then
+    literal match.
+
+    Returns:
+        Tuple of (triple_dict or None, resolved_object_type, resolved_object_lang).
+    """
+    # Try URI: resolve object as node
+    try:
+        obj_node = node_svc.resolve_uuid_prefix(object)
+    except AmbiguousUUIDError:
+        obj_node = None
+
+    if obj_node:
+        existing = triple_svc.get_one(subject_uuid, predicate, obj_node["node_id"], "uri")
+        if existing:
+            return existing, "uri", None
+    else:
+        obj_node = None
+
+    # Try literal match by subject + predicate + object_value
+    results = triple_svc.search_triples(
+        subject_uuids=[subject_uuid],
+        predicate_ids=[predicate],
+        object_values=[object],
+        limit=2,
+    )
+    if results:
+        t = results[0]
+        return t, t.get("object_type", "literal"), t.get("object_lang")
+
+    # Last resort: try with raw object as URI (for object that matched UUID
+    # but was not a triple with object_type='uri')
+    if obj_node:
+        results = triple_svc.search_triples(
+            subject_uuids=[subject_uuid],
+            predicate_ids=[predicate],
+            object_values=[obj_node["node_id"]],
+            limit=2,
+        )
+        if results:
+            t = results[0]
+            return t, t.get("object_type", "uri"), t.get("object_lang")
+
+    return None, "uri", None
+
+
+# ── Arc resolution helpers (Issue #35/R12) ─────────────────────────────
+
+
+def resolve_arc_targets(
+    node_svc: NodeService,
+    tipo: list[str] | None,
+    superklaso: list[str] | None,
+    ne: list[str] | None,
+    invers: list[str] | None,
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """Resolve arc target node IDs from CLI shortcut flags.
+
+    Returns (arc_templates, errors) where each template is
+    (target_node_id, predicate_id). Invalid/ambiguous inputs
+    produce error messages instead of creating arcs.
+    """
+    arc_templates: list[tuple[str, str]] = []
+    arc_errors: list[str] = []
+
+    def _resolve_one(predicate: str, user_input: str) -> str | None:
+        target = node_svc.resolve_uuid_prefix(user_input)
+        if target:
+            return target["node_id"]
+        warning(tr_multi(
+            "Arka celo ne trovita: {t} (preterlasita)",
+            "Arc target not found: {t} (skipped)",
+            "Cible d'arc non trouvée : {t} (ignorée)",
+        ).format(t=user_input))
+        return None
+
+    _ARC_DEFS: list[tuple[str, str, str, str, str, str]] = [
+        ("tipo", "rdf:type", "tipo", "type", "type",
+         "Ambigua tipo-prefikso: {e}|Ambiguous type prefix: {e}|Préfixe type ambigu : {e}"),
+        ("superklaso", "rdfs:subClassOf", "superklaso", "superclass", "superclasse",
+         "Ambigua superklaso-prefikso: {e}|Ambiguous superclass prefix: {e}|Préfixe superclasse ambigu : {e}"),
+        ("ne", "owl:disjointWith", "malakorda", "disjoint", "disjoint",
+         "Ambigua malakorda-prefikso: {e}|Ambiguous disjoint prefix: {e}|Préfixe disjoint ambigu : {e}"),
+        ("invers", "owl:inverseOf", "inversa", "inverse", "inverse",
+         "Ambigua inversa-prefikso: {e}|Ambiguous inverse prefix: {e}|Préfixe inverse ambigu : {e}"),
+    ]
+
+    inputs_map = {
+        "tipo": tipo,
+        "superklaso": superklaso,
+        "ne": ne,
+        "invers": invers,
+    }
+
+    for key, predicate, _eo_label, _en_label, _fr_label, err_tmpl in _ARC_DEFS:
+        inputs = inputs_map.get(key) or []
+        for val in inputs:
+            try:
+                target_id = _resolve_one(predicate, val)
+                if target_id:
+                    arc_templates.append((target_id, predicate))
+            except AmbiguousUUIDError as e:
+                parts = err_tmpl.split("|")
+                arc_errors.append(tr_multi(parts[0], parts[1], parts[2]).format(e=str(e)))
+
+    return arc_templates, arc_errors
+
+
+def create_node_arcs(
+    triple_svc: TripleService,
+    node_svc: NodeService,
+    node_id_val: str,
+    arcs: list[dict],
+) -> None:
+    """Create arcs for a node, rolling back the node on failure.
+
+    This ensures atomicity: either all arcs are created, or the node
+    is deleted so no orphan node with partial arcs remains.
+    """
+    try:
+        for arc in arcs:
+            try:
+                triple_svc.add(
+                    subject_uuid=arc["subject"],
+                    predicate_id=arc["predicate"],
+                    object_value=arc["object"],
+                    object_type=arc["object_type"],
+                )
+            except DuplicateTripleError:
+                pass  # Silently skip — triple already exists, no harm
+    except ValueError:
+        # Rollback: delete the node to prevent orphan with partial arcs
+        node_svc.delete(node_id_val)
+        raise

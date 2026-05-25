@@ -4,6 +4,7 @@ Extracted from _cli_triples.py to keep each file under 500 lines.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -234,20 +235,21 @@ def eksporti(
         raise typer.Exit(1) from e
 
     if output:
+        output_path = Path(output).resolve()
         try:
-            with open(output, "w", encoding="utf-8") as f:
+            with open(output_path, "w", encoding="utf-8") as f:
                 f.write(ttl)
             info(tr_multi(
                 "Eksportita al {path}",
                 "Exported to {path}",
                 "Exporté vers {path}",
-            ).format(path=output))
+            ).format(path=str(output_path)))
         except OSError as e:
             error(tr_multi(
                 "Ne povis skribi al {path}: {e}",
                 "Could not write to {path}: {e}",
                 "Impossible d'écrire dans {path} : {e}",
-            ).format(path=output, e=str(e)))
+            ).format(path=str(output_path), e=str(e)))
             raise typer.Exit(1) from e
     else:
         print(ttl)  # noqa: T201 — intentional stdout output for pipe/redirect

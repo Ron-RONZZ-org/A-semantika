@@ -310,3 +310,66 @@ def migrate_predicate_group_members_unique(db: "SQLiteDB") -> None:
         db.execute("ALTER TABLE predicate_group_members_new RENAME TO predicate_group_members")
     finally:
         db.execute("PRAGMA foreign_keys = ON")
+
+
+def migrate_predicates_fts(db: "SQLiteDB") -> None:
+    """Add FTS5 support and ``label_text`` column to the predicates table.
+
+    For databases created before the FTS migration:
+    1. Adds ``label_text`` column (denormalized from ``etikedoj``)
+    2. Backfills ``label_text`` for existing rows
+    3. Creates ``predicates_fts`` virtual table
+    4. Rebuilds FTS index
+
+    Safe to call repeatedly (idempotent).
+    """
+    try:
+        columns = {
+            row["name"]
+            for row in db.execute("PRAGMA table_info(predicates)")
+        }
+    except Exception:
+        return  # Table does not exist yet
+
+    if "label_text" not in columns:
+        try:
+            db.execute("ALTER TABLE predicates ADD COLUMN label_text TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            return  # Table doesn't exist
+
+    # Backfill label_text for rows where it is still empty
+    db.execute("""
+        UPDATE predicates SET label_text =
+            CASE
+                WHEN etikedoj IS NOT NULL AND etikedoj != '{}'
+                THEN (
+                    SELECT group_concat(value, ' ')
+                    FROM json_each(etikedoj)
+                    WHERE value IS NOT NULL AND value != ''
+                )
+                ELSE ''
+            END
+        WHERE label_text = '' OR label_text IS NULL
+    """)
+
+    # Drop stale FTS table if it exists (e.g., from a partial run or old schema)
+    db.execute("DROP TABLE IF EXISTS predicates_fts")
+
+    # Create fresh FTS5 virtual table matching the current predicates schema
+    db.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS predicates_fts"
+        " USING fts5("
+        "  predicate_id UNINDEXED,"
+        "  etikedoj,"
+        "  priskriboj,"
+        "  aliases,"
+        "  content=predicates,"
+        "  content_rowid=rowid,"
+        "  tokenize='unicode61'"
+        ")"
+    )
+
+    # Rebuild FTS index
+    count = db.execute_one("SELECT COUNT(*) AS cnt FROM predicates_fts")
+    if count and count["cnt"] == 0:
+        db.execute("INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')")

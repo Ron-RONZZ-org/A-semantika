@@ -14,13 +14,14 @@ from typing import Any
 from A import warning as _warning
 from A.core.service import CRUDService
 from A.data.search import FTSConfig
-from A_semantika._node_helpers import FTS5_KEYWORDS, extract_difin_text, extract_label_text
+from A_semantika._node_helpers import (
+    AmbiguousUUIDError,
+    FTS5_KEYWORDS,
+    extract_difin_text,
+    extract_label_text,
+    get_display_label,
+)
 from A_semantika.data.storage import now
-
-
-class AmbiguousUUIDError(ValueError):
-    """Raised when a UUID prefix matches multiple nodes."""
-    pass
 
 
 def _fts_config() -> FTSConfig:
@@ -100,10 +101,16 @@ class NodeService(CRUDService):
     def get(self, node_id: str) -> dict[str, Any] | None:
         """Get a node by exact node_id.
 
-        Uses exact match (not LIKE prefix matching) to avoid silent
-        ambiguity.  For prefix resolution, use
-        :meth:`resolve_uuid_prefix` which detects ambiguous matches.
+        Tries case-sensitive match first to avoid non-deterministic
+        results when case collisions exist (e.g. ``ABC`` vs ``abc``).
+        Falls back to NOCASE only if no case-sensitive match found.
+        For prefix resolution, use :meth:`resolve_uuid_prefix`.
         """
+        node = self.db.execute_one(
+            f"SELECT * FROM {self.table} WHERE node_id = ?", (node_id,)
+        )
+        if node:
+            return node
         return self.db.execute_one(
             f"SELECT * FROM {self.table} WHERE node_id = ? COLLATE NOCASE", (node_id,)
         )
@@ -435,35 +442,6 @@ class NodeService(CRUDService):
             msg = f"Node ID prefix '{prefix}' is ambiguous ({len(matches)} matches)"
             raise AmbiguousUUIDError(msg)
         return matches[0]
-
-    def get_display_label(self, node_id_or_prefix: str) -> tuple[str, str]:
-        """Get (display_label, language_code) for a node.
-
-        Returns label in eo, falling back to en, then to the first available,
-        then to the node_id prefix as last resort.
-        """
-        node = self.resolve_uuid_prefix(node_id_or_prefix)
-        if not node:
-            return (node_id_or_prefix, "")
-
-        try:
-            labels = json.loads(node["etikedoj"])
-        except (json.JSONDecodeError, TypeError):
-            return (node["node_id"][:16], "")
-
-        if not isinstance(labels, dict):
-            return (node["node_id"][:16], "")
-
-        for lang in ("eo", "en"):
-            val = labels.get(lang)
-            if val and isinstance(val, str):
-                return (val, lang)
-
-        # First non-empty
-        for val in labels.values():
-            if val and isinstance(val, str):
-                return (val, "")
-        return (node["node_id"][:16], "")
 
     # ── Search ──────────────────────────────────────────────────────────
 

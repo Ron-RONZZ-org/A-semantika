@@ -11,9 +11,9 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi, warning
-from A_semantika._cli_helpers import ensure_predicate
-from A_semantika._triple_service import DuplicateTripleError
+from A_semantika._cli_helpers import create_node_arcs, ensure_predicate, resolve_arc_targets
 from A_semantika._node_service import AmbiguousUUIDError
+from A_semantika._triple_service import DuplicateTripleError
 from A_semantika._preview import confirm_node_with_arcs, resolve_node_label, resolve_predicate_label
 from A_semantika.data.storage import label_from_json
 from A_semantika.service import get_node_service, get_predicate_service, get_triple_service
@@ -133,57 +133,9 @@ def aldoni(
     ensure_predicate(pred_svc, "owl:disjointWith", "disjointWith")
     ensure_predicate(pred_svc, "owl:inverseOf", "inverseOf")
 
-    arc_templates: list[tuple[str, str]] = []
-    arc_errors: list[str] = []
-
-    def _resolve_arc_target(predicate: str, user_input: str) -> str | None:
-        """Resolve an arc target node_id. Returns node_id or None (not found).
-
-        Warns when an explicitly provided target is not found, so the user
-        is not misled into thinking the arc was created.
-        """
-        target = node_svc.resolve_uuid_prefix(user_input)
-        if target:
-            return target["node_id"]
-        warning(tr_multi(
-            "Arka celo ne trovita: {t} (preterlasita)",
-            "Arc target not found: {t} (skipped)",
-            "Cible d'arc non trouvée : {t} (ignorée)",
-        ).format(t=user_input))
-        return None
-
-    for t in (tipo or []):
-        try:
-            target_id = _resolve_arc_target("rdf:type", t)
-            if target_id:
-                arc_templates.append((target_id, "rdf:type"))
-        except AmbiguousUUIDError as e:
-            arc_errors.append(tr_multi("Ambigua tipo-prefikso: {e}",
-                "Ambiguous type prefix: {e}", "Préfixe type ambigu : {e}").format(e=str(e)))
-    for s in (superklaso or []):
-        try:
-            target_id = _resolve_arc_target("rdfs:subClassOf", s)
-            if target_id:
-                arc_templates.append((target_id, "rdfs:subClassOf"))
-        except AmbiguousUUIDError as e:
-            arc_errors.append(tr_multi("Ambigua superklaso-prefikso: {e}",
-                "Ambiguous superclass prefix: {e}", "Préfixe superclasse ambigu : {e}").format(e=str(e)))
-    for n in (ne or []):
-        try:
-            target_id = _resolve_arc_target("owl:disjointWith", n)
-            if target_id:
-                arc_templates.append((target_id, "owl:disjointWith"))
-        except AmbiguousUUIDError as e:
-            arc_errors.append(tr_multi("Ambigua malakorda-prefikso: {e}",
-                "Ambiguous disjoint prefix: {e}", "Préfixe disjoint ambigu : {e}").format(e=str(e)))
-    for inv in (invers or []):
-        try:
-            target_id = _resolve_arc_target("owl:inverseOf", inv)
-            if target_id:
-                arc_templates.append((target_id, "owl:inverseOf"))
-        except AmbiguousUUIDError as e:
-            arc_errors.append(tr_multi("Ambigua inversa-prefikso: {e}",
-                "Ambiguous inverse prefix: {e}", "Préfixe inverse ambigu : {e}").format(e=str(e)))
+    arc_templates, arc_errors = resolve_arc_targets(
+        node_svc, tipo, superklaso, ne, invers,
+    )
 
     if arc_errors:
         for msg in arc_errors:
@@ -213,18 +165,11 @@ def aldoni(
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
             raise typer.Exit(0)
 
-        for arc in arcs:
-            try:
-                triple_svc.add(
-                    subject_uuid=arc["subject"],
-                    predicate_id=arc["predicate"],
-                    object_value=arc["object"],
-                    object_type=arc["object_type"],
-                )
-            except DuplicateTripleError:
-                pass  # Silently skip — triple already exists, no harm
-            except ValueError as e:
-                raise  # Re-raise genuine errors
+        try:
+            create_node_arcs(triple_svc, node_svc, node_id_val, arcs)
+        except ValueError as e:
+            error(str(e))
+            raise typer.Exit(1) from e
     elif not yes:
         from A.utils.interactive import confirm_action
 
