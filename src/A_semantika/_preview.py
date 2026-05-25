@@ -16,6 +16,7 @@ from A import error, info, tr_multi
 from A.utils.interactive import confirm_action
 from A_semantika._node_service import AmbiguousUUIDError, NodeService
 from A_semantika._predicate_service import PredicateService
+from A_semantika.data.storage import label_from_json
 
 
 def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
@@ -41,25 +42,17 @@ def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
 def resolve_predicate_label(pred_svc: PredicateService, predicate_id: str) -> str:
     """Resolve a predicate ID to a display label.
 
-    Returns eo/en label from etikedoj JSON, falling back to predicate_id.
+    Returns eo/en label from etikedoj JSON via label_from_json(),
+    falling back to predicate_id if no label is available.
+    Delegates to storage.label_from_json() to avoid duplicating
+    the eo→en→first fallback logic.
     """
     pred = pred_svc.get_by_predicate_id(predicate_id)
     if not pred:
         return predicate_id
-    try:
-        etikedoj = json.loads(pred.get("etikedoj", "{}"))
-    except (json.JSONDecodeError, TypeError):
-        etikedoj = {}
-    if not isinstance(etikedoj, dict):
-        return predicate_id
-    for lang in ("eo", "en"):
-        val = etikedoj.get(lang)
-        if val and isinstance(val, str):
-            return val
-    for val in etikedoj.values():
-        if val and isinstance(val, str):
-            return val
-    return predicate_id
+    etikedoj = pred.get("etikedoj", "{}")
+    label = label_from_json(etikedoj)
+    return label if label else predicate_id
 
 
 def build_triple_preview_table(
