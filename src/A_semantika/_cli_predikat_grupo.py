@@ -13,6 +13,22 @@ from A_semantika.data.storage import label_from_json
 from A_semantika.service import get_predicate_group_service, get_predicate_service
 
 
+def _match_groups_by_prefix(group_svc: Any, prefix: str) -> list[dict]:
+    """Find groups whose name starts with *prefix* (LIKE search).
+
+    Args:
+        group_svc: PredicateGroupService instance.
+        prefix: The prefix to match against group names.
+
+    Returns:
+        List of matching group dicts (may be empty).
+    """
+    return group_svc.db.execute(
+        "SELECT * FROM predicate_groups WHERE group_name LIKE ?",
+        (prefix + "%",),
+    )
+
+
 def _resolve_group_name(group_svc: Any, name: str) -> dict | None:
     """Resolve a group name, supporting prefix matching.
 
@@ -32,10 +48,7 @@ def _resolve_group_name(group_svc: Any, name: str) -> dict | None:
         return group
 
     # Prefix match: search for groups where group_name starts with name
-    candidates = group_svc.db.execute(
-        "SELECT * FROM predicate_groups WHERE group_name LIKE ?",
-        (name + "%",),
-    )
+    candidates = _match_groups_by_prefix(group_svc, name)
     if not candidates:
         return None
     if len(candidates) == 1:
@@ -112,7 +125,7 @@ def vidi(
     ).format(g=group["group_name"]))
     info(tr_multi(
         "UUID: {u}", "UUID: {u}", "UUID : {u}",
-    ).format(u=group["uuid"][:8]))
+    ).format(u=group["uuid"][:16]))
 
     members = group_svc.list_members(group_name)
     if members:
@@ -239,10 +252,7 @@ def forigi(
             continue
 
         # Prefix match: search for groups where group_name starts with gname
-        candidates = group_svc.db.execute(
-            "SELECT * FROM predicate_groups WHERE group_name LIKE ?",
-            (gname + "%",),
-        )
+        candidates = _match_groups_by_prefix(group_svc, gname)
         if not candidates:
             errors.append((gname, tr_multi("ne trovita", "not found", "non trouvé")))
             continue
@@ -275,7 +285,7 @@ def forigi(
         table.add_column(tr_multi("Grupo", "Group", "Groupe"), no_wrap=True)
         table.add_column("UUID", no_wrap=True)
         for group in resolved:
-            table.add_row(group["group_name"], group["uuid"][:8])
+            table.add_row(group["group_name"], group["uuid"][:16])
         info(table)
 
         from A.utils.interactive import confirm_action
@@ -332,7 +342,7 @@ def serci(
     table.add_column(tr_multi("UUID", "UUID", "UUID"), no_wrap=True)
 
     for g in results:
-        table.add_row(g["group_name"], g["uuid"][:8])
+        table.add_row(g["group_name"], g["uuid"][:16])
 
     info(table)
 

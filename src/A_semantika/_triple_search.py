@@ -26,14 +26,14 @@ def _looks_like_uuid_prefix(text: str) -> bool:
     """Check if text looks like a UUID prefix.
 
     A text looks like a UUID prefix if it is:
-    - Between 8 and 12 characters long (UUID prefix typical length)
+    - Between 8 and 16 characters long (UUID prefix typical length)
     - Contains only hex digits [0-9a-fA-F] and hyphens
 
     Short alphanumeric strings that are not hex (like 'Hundo' at 5 chars,
     'tipo' at 4 chars) won't match because they're too short or contain
     non-hex characters, preventing pointless DB lookups.
     """
-    return 8 <= len(text) <= 12 and bool(_UUID_PREFIX_RE.match(text))
+    return 8 <= len(text) <= 16 and bool(_UUID_PREFIX_RE.match(text))
 
 
 def _is_numeric(text: str) -> bool:

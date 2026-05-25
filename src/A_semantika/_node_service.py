@@ -449,10 +449,10 @@ class NodeService(CRUDService):
         try:
             labels = json.loads(node["etikedoj"])
         except (json.JSONDecodeError, TypeError):
-            return (node["node_id"][:8], "")
+            return (node["node_id"][:16], "")
 
         if not isinstance(labels, dict):
-            return (node["node_id"][:8], "")
+            return (node["node_id"][:16], "")
 
         for lang in ("eo", "en"):
             val = labels.get(lang)
@@ -463,7 +463,7 @@ class NodeService(CRUDService):
         for val in labels.values():
             if val and isinstance(val, str):
                 return (val, "")
-        return (node["node_id"][:8], "")
+        return (node["node_id"][:16], "")
 
     # ── Search ──────────────────────────────────────────────────────────
 

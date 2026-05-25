@@ -36,7 +36,7 @@ def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
     except AmbiguousUUIDError:
         raise
     except ValueError:
-        return uuid_or_prefix[:8]
+        return uuid_or_prefix[:16]
 
 
 def resolve_predicate_label(pred_svc: PredicateService, predicate_id: str) -> str:
@@ -86,7 +86,7 @@ def build_triple_preview_table(
     except AmbiguousUUIDError as e:
         error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
         raise typer.Exit(1) from e
-    subj_id = subj_node["node_id"][:8] if subj_node else subject_uuid[:8]
+    subj_id = subj_node["node_id"][:16] if subj_node else subject_uuid[:16]
 
     # Use resolve_node_label for subject display label
     subj_label = resolve_node_label(node_svc, subject_uuid)
@@ -98,7 +98,7 @@ def build_triple_preview_table(
         except AmbiguousUUIDError as e:
             error(tr_multi("Ambigua objekto-prefikso: {e}", "Ambiguous object prefix: {e}", "Préfixe objet ambigu : {e}").format(e=str(e)))
             raise typer.Exit(1) from e
-        obj_id = obj_node["node_id"][:8] if obj_node else object_value[:8]
+        obj_id = obj_node["node_id"][:16] if obj_node else object_value[:16]
         # Labels row
         table.add_row(subj_label, pred_label, resolve_node_label(node_svc, object_value))
         # Raw IDs row
@@ -131,7 +131,7 @@ def build_triple_preview_table(
             except AmbiguousUUIDError as e:
                 error(tr_multi("Ambigua unuo-prefikso: {e}", "Ambiguous unit prefix: {e}", "Préfixe unité ambigu : {e}").format(e=str(e)))
                 raise typer.Exit(1) from e
-            unit_id = unit_node["node_id"][:8] if unit_node else object_unit[:8]
+            unit_id = unit_node["node_id"][:16] if unit_node else object_unit[:16]
             parts.append(f"unit: {unit_label} ({unit_id})")
         footnote = ", ".join(parts)
     else:
@@ -226,7 +226,7 @@ def confirm_node_with_arcs(
     # Node summary row
     table.add_row(
         tr_multi("Nodo", "Node", "Noeud"),
-        f"{node_label} ({node_uuid[:8]})",
+        f"{node_label} ({node_uuid[:16]})",
         "",
     )
 
@@ -240,7 +240,7 @@ def confirm_node_with_arcs(
                 obj_label,
             )
             raw_pred = arc["predicate"]
-            raw_obj = arc["object"][:8]
+            raw_obj = arc["object"][:16]
             table.add_row(
                 "",
                 raw_pred,

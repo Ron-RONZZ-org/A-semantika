@@ -121,7 +121,7 @@ def serci(
         else:
             o_label = r["object_value"]
         table.add_row(
-            f"{s_label} ({r['subject_uuid'][:8]})",
+            f"{s_label} ({r['subject_uuid'][:16]})",
             p_label,
             o_label,
             r["object_type"],
@@ -175,7 +175,7 @@ def vidi(
         "Nodo: {label} ({uuid})",
         "Node: {label} ({uuid})",
         "Nœud : {label} ({uuid})",
-    ).format(label=subj_label, uuid=subj_node["node_id"][:8]))
+    ).format(label=subj_label, uuid=subj_node["node_id"][:16]))
 
     results = triple_svc.get_subject_objects(subj_node["node_id"])
     if not results:

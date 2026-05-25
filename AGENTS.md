@@ -785,6 +785,25 @@ This is not valid RDF — consumers can't parse labels programmatically.
 | L5 | Low | `_node_service.py`, `_cli_rubujo.py` | Added `NodeService.empty_all_trash()` method with explicit full-empty semantics — replaces confusing `empty_trash(days=0)` call in `rubujo malplenigi` |
 | L6 | Low | `data/__init__.py` | Added explicit package init file for proper Python package marking |
 
+### Issue #35: Code Review Round 11 — Literal Modifi, UUID Truncation, Exception Narrowing (May 2026)
+
+**Scope:** 4 fixes from the code reviewer's second-round analysis. 314 tests total (310 existing + 4 new).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| Q2 | Low | `_cli_predikato.py` | Narrowed `except Exception` → `except ValueError` in `modifi()` — consistent with Issue #25 F5 pattern. `update()` only raises `ValueError`. |
+| Q1 | Low | `_cli_predikat_grupo.py` | Extracted `_match_groups_by_prefix()` helper to consolidate duplicate SQL logic between `_resolve_group_name()` and `forigi()`. |
+| B4 | Medium | `_cli_modify.py` | **Literal triple modifi support.** Previously modifi hardcoded `object_type='uri'` and rejected non-URI triples in interactive mode. Now: (1) interactive mode works with any object_type, (2) direct mode auto-detects URI/literal via `_find_triple_direct()`, (3) `--str`/`--int`/`--float`/`--bool` flags set new object type, (4) no-op detection compares type+value, (5) DELETE/INSERT use correct types. |
+| F1 | Low | All CLI + `_node_service.py` | Changed UUID display truncation from 8 → 16 chars across all `ls`/`vidi`/`forigi`/`modifi` previews and error messages. Updated `_looks_like_uuid_prefix()` heuristic from `12` → `16` max length. Conditional truncation in `_cli_rubujo.py` updated from `> 8` → `> 16`. |
+
+**Tests added (4):**
+| Test | Fix | File |
+|------|-----|------|
+| `test_modifi_string_literal_direct` | B4 | test_triple_modifi_edge.py |
+| `test_modifi_integer_literal_direct` | B4 | test_triple_modifi_edge.py |
+| `test_modifi_uri_to_literal` | B4 | test_triple_modifi_edge.py |
+| `test_modifi_literal_noop` | B4 | test_triple_modifi_edge.py |
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82

@@ -57,7 +57,7 @@ def ls(
         label = label_from_json(n.get("etikedoj", "{}"))
         deleted_at = n.get("forigita_je", "")[:19]  # Truncate ISO to seconds
         nid = n.get("node_id", "?")
-        display_id = nid[:8] if len(nid) > 8 else nid
+        display_id = nid[:16] if len(nid) > 16 else nid
         table.add_row(display_id, label, deleted_at)
 
     info(table)
@@ -236,7 +236,7 @@ def _batch_restore(node_ids: list[str], yes: bool) -> None:
 
         label_list = ", ".join(
             label_from_json(n.get("etikedoj", "{}")) or (
-                n["node_id"][:8] if len(n["node_id"]) > 8 else n["node_id"]
+                n["node_id"][:16] if len(n["node_id"]) > 16 else n["node_id"]
             )
             for n in resolved
         )
@@ -261,13 +261,13 @@ def _batch_restore(node_ids: list[str], yes: bool) -> None:
                     "Restarigita: {u}",
                     "Restored: {u}",
                     "Restauré : {u}",
-                ).format(u=node["node_id"][:8]))
+                ).format(u=node["node_id"][:16]))
         except Exception as e:
             error(tr_multi(
                 "Eraro restarigante {u}: {e}",
                 "Error restoring {u}: {e}",
                 "Erreur lors de la restauration de {u} : {e}",
-            ).format(u=node["node_id"][:8], e=str(e)))
+            ).format(u=node["node_id"][:16], e=str(e)))
 
     info(tr_multi(
         "Restarigis {r} el {t} nodoj.",
@@ -341,7 +341,7 @@ def malplenigi(
             label = label_from_json(n.get("etikedoj", "{}"))
             deleted_at = n.get("forigita_je", "")[:19]
             nid = n.get("node_id", "?")
-            display_id = nid[:8] if len(nid) > 8 else nid
+            display_id = nid[:16] if len(nid) > 16 else nid
             table.add_row(display_id, label, deleted_at)
 
         info(table)
@@ -431,7 +431,7 @@ def forigi(
             label = label_from_json(n.get("etikedoj", "{}"))
             deleted_at = n.get("forigita_je", "")[:19]
             nid = n.get("node_id", "?")
-            display_id = nid[:8] if len(nid) > 8 else nid
+            display_id = nid[:16] if len(nid) > 16 else nid
             table.add_row(display_id, label, deleted_at)
 
         info(table)
@@ -458,13 +458,13 @@ def forigi(
                 "Permanente forigita: {u}",
                 "Permanently deleted: {u}",
                 "Définitivement supprimé : {u}",
-            ).format(u=node["node_id"][:8]))
+            ).format(u=node["node_id"][:16]))
         except Exception as e:
             error(tr_multi(
                 "Eraro forigante {u}: {e}",
                 "Error deleting {u}: {e}",
                 "Erreur lors de la suppression de {u} : {e}",
-            ).format(u=node["node_id"][:8], e=str(e)))
+            ).format(u=node["node_id"][:16], e=str(e)))
 
     info(tr_multi(
         "Permanente forigis {d} el {t} nodoj.",

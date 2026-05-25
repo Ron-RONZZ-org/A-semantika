@@ -57,11 +57,11 @@ class TestUUIDHeuristic:
             assert not _looks_like_uuid_prefix(text), f"'{text}' should not look like UUID"
 
     def test_uuid_prefix_too_long_not_uuid(self):
-        """Strings > 12 chars should NOT look like UUID prefix."""
+        """Strings > 16 chars should NOT look like UUID prefix."""
         from A_semantika._triple_search import _looks_like_uuid_prefix
 
-        assert _looks_like_uuid_prefix("a1b2c3d4e5f6")  # 12 hex chars = OK (boundary)
-        assert not _looks_like_uuid_prefix("a1b2c3d4e5f67")  # 13 hex chars = too long
+        assert _looks_like_uuid_prefix("a1b2c3d4e5f6789a")  # 16 hex chars = OK (boundary)
+        assert not _looks_like_uuid_prefix("a1b2c3d4e5f6789ab")  # 17 hex chars = too long
 
     def test_resolve_uuid_prefix_with_hyphenated(self, node_svc):
         """UUID prefix with hyphens should resolve correctly."""
@@ -70,7 +70,7 @@ class TestUUIDHeuristic:
 
         # Prefix without trailing hyphen
         from A_semantika._triple_search import resolve_subjects
-        uuids = resolve_subjects(node_svc, uuid[:8])
+        uuids = resolve_subjects(node_svc, uuid[:16])
         assert uuids == [uuid]
 
 

@@ -47,7 +47,7 @@ def ls(
 
     for n in nodes:
         label = label_from_json(n["etikedoj"])
-        table.add_row(n["node_id"][:8], label)
+        table.add_row(n["node_id"][:16], label)
 
     info(table)
 
@@ -244,7 +244,7 @@ def aldoni(
         "Nodo kreita: {label} ({node_id})",
         "Node created: {label} ({node_id})",
         "Nœud créé : {label} ({node_id})",
-    ).format(label=resolve_node_label(node_svc, node_id_val), node_id=node_id_val[:8]))
+    ).format(label=resolve_node_label(node_svc, node_id_val), node_id=node_id_val[:16]))
 
 
 @nodo_app.command("modifi")
@@ -293,14 +293,14 @@ def modifi(
                 "Ĉu modifi nodon {u}?",
                 "Modify node {u}?",
                 "Modifier le nœud {u}?",
-            ).format(u=node["node_id"][:8]),
+            ).format(u=node["node_id"][:16]),
             default=True,
         ):
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
             raise typer.Exit(0)
 
     updated = node_svc.update(node["node_id"], updates)
-    info(tr_multi("Nodo modifita: {u}", "Node modified: {u}", "Nœud modifié : {u}").format(u=updated["node_id"][:8]))
+    info(tr_multi("Nodo modifita: {u}", "Node modified: {u}", "Nœud modifié : {u}").format(u=updated["node_id"][:16]))
 
 
 @nodo_app.command("forigi")
@@ -376,7 +376,7 @@ def forigi(
 
         for node in resolved:
             label = resolve_node_label(node_svc, node["node_id"])
-            table.add_row(node["node_id"][:8], label)
+            table.add_row(node["node_id"][:16], label)
         info(table)
 
         # Triples to be deleted
@@ -439,7 +439,7 @@ def forigi(
                     "Nodo {u} jam estas en la rubujo.",
                     "Node {u} is already in the trash.",
                     "Le nœud {u} est déjà dans la corbeille.",
-                ).format(u=nid[:8])
+                ).format(u=nid[:16])
             elif "FOREIGN KEY constraint failed" in err_msg:
                 err_msg = tr_multi(
                     "Nodo {u} havas arkojn. Forigu ilin unue aŭ uzu la flagon --jes.",
@@ -452,7 +452,7 @@ def forigi(
                 "Eraro forigante {u}: {e}",
                 "Error deleting {u}: {e}",
                 "Erreur lors de la suppression de {u} : {e}",
-            ).format(u=nid[:8], e=err_msg))
+            ).format(u=nid[:16], e=err_msg))
         except sqlite3.DatabaseError as e:
             err_msg = str(e)
             if "malformed" in err_msg:
@@ -467,7 +467,7 @@ def forigi(
                 "Eraro forigante {u}: {e}",
                 "Error deleting {u}: {e}",
                 "Erreur lors de la suppression de {u} : {e}",
-            ).format(u=nid[:8], e=err_msg))
+            ).format(u=nid[:16], e=err_msg))
 
     info(tr_multi(
         "Forigis {d} el {t} nodoj.",
@@ -495,6 +495,6 @@ def serci(
 
     for n in results:
         label = label_from_json(n["etikedoj"])
-        table.add_row(n["node_id"][:8], label)
+        table.add_row(n["node_id"][:16], label)
 
     info(table)

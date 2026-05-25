@@ -53,6 +53,97 @@ class TestTripleModifiEdgeCases:
         assert result.exit_code == 1
         assert "ne trovita" in result.stdout or "not found" in result.stdout
 
+    def test_modifi_string_literal_direct(self, runner: CliRunner):
+        """modifi a string-literal triple in direct mode should work."""
+        subj_uuid = "f4000000-0000-0000-0000-000000000004"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::LitSubj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:label", "-e", "eo::etikedo", "--jes"])
+
+        # Create string literal triple
+        result = runner.invoke(app, [
+            "aldoni", subj_uuid, "rdfs:label", "Hundo",
+            "--str", "-l", "eo", "--jes",
+        ])
+        assert result.exit_code == 0, f"aldoni failed: {result.stdout}"
+
+        # Modify it — change the literal value
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "rdfs:label", "Hundo",
+            "--nova-objekto", "Doggo",
+            "--str", "-l", "en",
+            "--jes",
+        ])
+        assert result.exit_code == 0, f"modifi literal failed: {result.stdout}"
+        assert "modifita" in result.stdout or "modified" in result.stdout
+
+    def test_modifi_integer_literal_direct(self, runner: CliRunner):
+        """modifi an integer-literal triple in direct mode should work."""
+        subj_uuid = "f5000000-0000-0000-0000-000000000005"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::IntSubj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "wdt:P1082", "-e", "eo::loĝantaro", "--jes"])
+
+        # Create integer literal triple
+        result = runner.invoke(app, [
+            "aldoni", subj_uuid, "wdt:P1082", "1000",
+            "--int", "--jes",
+        ])
+        assert result.exit_code == 0, f"aldoni failed: {result.stdout}"
+
+        # Modify it — change the value
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "wdt:P1082", "1000",
+            "--nova-objekto", "2000",
+            "--int",
+            "--jes",
+        ])
+        assert result.exit_code == 0, f"modifi int literal failed: {result.stdout}"
+        assert "modifita" in result.stdout or "modified" in result.stdout
+
+    def test_modifi_uri_to_literal(self, runner: CliRunner):
+        """modifi changing a URI triple to a literal should work."""
+        subj_uuid = "f7000000-0000-0000-0000-000000000007"
+        obj_uuid = "f8000000-0000-0000-0000-000000000008"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::ConvSubj", "--jes"])
+        runner.invoke(app, ["nodo", "aldoni", obj_uuid, "-e", "eo::ConvObj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+        # Create URI triple
+        result = runner.invoke(app, [
+            "aldoni", subj_uuid, "rdf:type", obj_uuid, "--jes",
+        ])
+        assert result.exit_code == 0, f"aldoni URI failed: {result.stdout}"
+
+        # Change URI object to string literal
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "rdf:type", obj_uuid,
+            "--nova-objekto", "custom-type",
+            "--str",
+            "--jes",
+        ])
+        assert result.exit_code == 0, f"modifi URI→literal failed: {result.stdout}"
+        assert "modifita" in result.stdout or "modified" in result.stdout
+
+    def test_modifi_literal_noop(self, runner: CliRunner):
+        """modifi a literal triple with same values should be a no-op."""
+        subj_uuid = "f9000000-0000-0000-0000-000000000009"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::NoopSubj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:comment", "-e", "eo::komento", "--jes"])
+
+        runner.invoke(app, [
+            "aldoni", subj_uuid, "rdfs:comment", "testo",
+            "--str", "-l", "eo", "--jes",
+        ])
+
+        # Modify with same values → no-op
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "rdfs:comment", "testo",
+            "--nova-objekto", "testo",
+            "--str", "-l", "eo",
+            "--jes",
+        ])
+        assert result.exit_code == 0
+        assert "neŝanĝita" in result.stdout or "unchanged" in result.stdout
+
     def test_modifi_nonexistent_object(self, runner: CliRunner):
         """modifi with nonexistent object should exit with error."""
         subj_uuid = "f6000000-0000-0000-0000-000000000006"

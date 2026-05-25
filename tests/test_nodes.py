@@ -160,7 +160,7 @@ class TestNodeIdPrefix:
     def test_resolve_prefix(self, node_svc) -> None:
         """Resolving a node_id prefix should find the node."""
         node = node_svc.create({"etikedoj": {"eo": "Hundo"}})
-        prefix = node["node_id"][:8]
+        prefix = node["node_id"][:16]
         resolved = node_svc.resolve_uuid_prefix(prefix)
         assert resolved is not None
         assert resolved["node_id"] == node["node_id"]
@@ -296,7 +296,7 @@ class TestNodeDisplayLabel:
         """Display label with no labels should return node_id prefix."""
         node = node_svc.create({"etikedoj": {}})
         label, lang = node_svc.get_display_label(node["node_id"])
-        assert label == node["node_id"][:8]
+        assert label == node["node_id"][:16]
         assert lang == ""
 
     def test_get_display_label_nonexistent(self, node_svc) -> None:

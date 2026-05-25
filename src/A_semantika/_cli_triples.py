@@ -191,7 +191,7 @@ def aldoni(
             "Arc created: {s} --{p}--> {o}",
             "Arc créé : {s} --{p}--> {o}",
         ).format(
-            s=subject_uuid[:8], p=predicate, o=object_uuid[:8],
+            s=subject_uuid[:16], p=predicate, o=object_uuid[:16],
         ))
     except ValueError as e:
         error(tr_multi(
