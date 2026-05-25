@@ -61,7 +61,7 @@ def vidi(
         node = node_svc.resolve_uuid_prefix(node_id)
     except AmbiguousUUIDError as e:
         error(tr_multi("Ambigua prefikso: {e}", "Ambiguous prefix: {e}", "Préfixe ambigu : {e}").format(e=str(e)))
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     if not node:
         error(tr_multi("Nodo ne trovita: {u}", "Node not found: {u}", "Nœud non trouvé : {u}").format(u=node_id))
         raise typer.Exit(1)
@@ -194,7 +194,7 @@ def aldoni(
         node = node_svc.create(data)
     except ValueError as e:
         error(str(e))
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     node_id_val = node["node_id"]
 
     # Build full arc dicts with the now-known subject node_id
@@ -259,7 +259,7 @@ def modifi(
         node = node_svc.resolve_uuid_prefix(node_id)
     except AmbiguousUUIDError as e:
         error(tr_multi("Ambigua prefikso: {e}", "Ambiguous prefix: {e}", "Préfixe ambigu : {e}").format(e=str(e)))
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     if not node:
         error(tr_multi("Nodo ne trovita: {u}", "Node not found: {u}", "Nœud non trouvé : {u}").format(u=node_id))
         raise typer.Exit(1)
@@ -452,7 +452,7 @@ def forigi(
                 "Error deleting {u}: {e}",
                 "Erreur lors de la suppression de {u} : {e}",
             ).format(u=nid[:8], e=err_msg))
-        except Exception as e:
+        except sqlite3.DatabaseError as e:
             err_msg = str(e)
             if "malformed" in err_msg:
                 err_msg = tr_multi(

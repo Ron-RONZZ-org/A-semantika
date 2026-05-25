@@ -102,7 +102,7 @@ class TripleService:
                      object_lang, object_datatype, object_unit, timestamp),
                 )
         except sqlite3.IntegrityError as exc:
-            msg = "Triple already exists"
+            msg = f"Triple already exists: subject={subject_uuid}, predicate={predicate_id}, object={object_value}"
             raise ValueError(msg) from exc
 
         return self.get_one(subject_uuid, predicate_id, object_value, object_type)

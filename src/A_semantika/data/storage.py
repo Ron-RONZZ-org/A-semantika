@@ -148,15 +148,6 @@ def get_db() -> "SQLiteDB":
     return _DB
 
 
-
-
-
-
-
-
-
-
-
 def _seed_default_predicates(db: "SQLiteDB") -> None:
     """Insert default RDF/OWL semantic predicates into the predicates table.
 

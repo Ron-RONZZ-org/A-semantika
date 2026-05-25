@@ -14,6 +14,7 @@ from typing import Any
 from A import warning as _warning
 from A.core.service import CRUDService
 from A.data.search import FTSConfig
+from A_semantika._node_helpers import FTS5_KEYWORDS, extract_difin_text, extract_label_text
 from A_semantika.data.storage import now
 
 
@@ -28,31 +29,6 @@ def _fts_config() -> FTSConfig:
         table="nodes",
         fts_columns=["label_text", "difin_text"],
     )
-
-
-def _extract_label_text(etikedoj: str | dict) -> str:
-    """Denormalize etikedoj JSON into a flat searchable string.
-
-    Concatenates all label values separated by spaces.
-    """
-    try:
-        labels = json.loads(etikedoj) if isinstance(etikedoj, str) else etikedoj
-    except (json.JSONDecodeError, TypeError):
-        return ""
-    if not isinstance(labels, dict):
-        return ""
-    return " ".join(str(v) for v in labels.values() if v)
-
-
-def _extract_difin_text(difinoj: str | dict) -> str:
-    """Denormalize difinoj JSON into a flat searchable string."""
-    try:
-        defns = json.loads(difinoj) if isinstance(difinoj, str) else difinoj
-    except (json.JSONDecodeError, TypeError):
-        return ""
-    if not isinstance(defns, dict):
-        return ""
-    return " ".join(str(v) for v in defns.values() if v)
 
 
 class NodeService(CRUDService):
@@ -83,9 +59,9 @@ class NodeService(CRUDService):
         raw = {
             "node_id": node_id_val,
             "etikedoj": json.dumps(data.get("etikedoj", {})),
-            "label_text": _extract_label_text(data.get("etikedoj", {})),
+            "label_text": extract_label_text(data.get("etikedoj", {})),
             "difinoj": json.dumps(data.get("difinoj", {})),
-            "difin_text": _extract_difin_text(data.get("difinoj", {})),
+            "difin_text": extract_difin_text(data.get("difinoj", {})),
             "kreita_je": timestamp,
             "modifita_je": timestamp,
         }
@@ -150,14 +126,14 @@ class NodeService(CRUDService):
             if isinstance(etikedoj, dict):
                 etikedoj = json.dumps(etikedoj)
             updates["etikedoj"] = etikedoj
-            updates["label_text"] = _extract_label_text(etikedoj)
+            updates["label_text"] = extract_label_text(etikedoj)
 
         if "difinoj" in updates:
             difinoj = updates["difinoj"]
             if isinstance(difinoj, dict):
                 difinoj = json.dumps(difinoj)
             updates["difinoj"] = difinoj
-            updates["difin_text"] = _extract_difin_text(difinoj)
+            updates["difin_text"] = extract_difin_text(difinoj)
 
         updates["modifita_je"] = now_ts
 
@@ -329,6 +305,18 @@ class NodeService(CRUDService):
             cursor = conn.execute(sql, (cutoff,))
             return cursor.rowcount
 
+    def empty_all_trash(self) -> int:
+        """Permanently delete ALL entries from the trash table.
+
+        Unlike ``empty_trash()`` which filters by age, this deletes
+        everything regardless of when it was deleted.  Used by
+        ``rubujo malplenigi`` without ``--days``.
+        """
+        sql = f"DELETE FROM {self._trash_table}"
+        with self.db.transaction() as conn:
+            cursor = conn.execute(sql)
+            return cursor.rowcount
+
     # ── Override _ensure_fts — use node_id instead of uuid in FTS schema ──
 
     def _ensure_fts(self) -> None:
@@ -491,13 +479,12 @@ class NodeService(CRUDService):
         # Sanitize FTS5 query: strip special characters that can crash MATCH,
         # but treat FTS5 keywords (AND, OR, NOT, NEAR, COLUMN) as regular
         # content terms by lowercasing them instead of stripping them out.
-        _FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR", "COLUMN"}
         safe_tokens = []
         for word in query.strip().split():
             cleaned = "".join(c for c in word if c.isalnum() or c in ("_", "."))
             if not cleaned:
                 continue
-            if cleaned.upper() in _FTS5_KEYWORDS:
+            if cleaned.upper() in FTS5_KEYWORDS:
                 cleaned = cleaned.lower()
             safe_tokens.append(f"{cleaned}*")
         if not safe_tokens:
