@@ -892,6 +892,20 @@ This is not valid RDF — consumers can't parse labels programmatically.
 | `test_rollback_remove_by_node_failure_preserves_original_error` | Q2 | test_review_round15.py |
 | `test_deprecated_resolve_uuid_prefix_alias` | Q3 | test_nodes.py |
 
+### Issue #40: Code Review Round 16 — FTS Conditional Rebuild, COLLATE NOCASE, validate_type_flags Tuple, sys.stdout.write, Redundant FK Check Removal (May 2026)
+
+**Scope:** 5 fixes from Review Round 16. 370 tests total (existing, unchanged).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| F1 | Medium | `data/storage.py` | **Conditional FTS rebuild.** `init_db()` unconditionally rebuilt `predicates_fts` on every call (including read-only CLI callbacks). Now checks which default predicates already exist before seeding via a single `SELECT` query, and only rebuilds FTS if new rows were actually inserted. |
+| F2 | Low | `_node_service.py` | **Single COLLATE NOCASE query.** `NodeService.get()` ran a case-sensitive query first, then a NOCASE fallback — doubling DB roundtrips on every `get()` call. Now uses a single `COLLATE NOCASE` query consistent with `resolve_node_id_prefix()` and all other node lookups. |
+| F3 | Low | `_cli_helpers.py`, `_cli_triples.py`, `_cli_modify.py` | **validate_type_flags() returns tuple.** Previously returned only `datatype`, forcing each caller to re-derive `object_type` from the same boolean flags — a latent divergence risk. Now returns `(datatype, object_type)` tuple, eliminating redundant computation at both call sites. |
+| F4 | Low | `_cli_query.py` | **sys.stdout.write instead of print().** `eksporti()` used bare `print()` with a `# noqa: T201` suppression comment. Changed to `sys.stdout.write()` for explicitness. |
+| F5 | Low | `_cli_modify.py` | **Removed redundant FK re-validation.** `modifi()` re-queried `nodes` and `predicates` tables for subject/object/predicate FK references that were already validated by `resolve_node_id_prefix()` earlier in the flow. Removed 2 redundant DB queries (subject, object) — kept the predicate check since it is the only FK not pre-validated. |
+
+**Tests:** All 370 existing tests pass. `TestValidateTypeFlags` tests updated to match the new tuple return type.
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
