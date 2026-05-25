@@ -988,6 +988,29 @@ This is not valid RDF — consumers can't parse labels programmatically.
 
 **Tests:** All 390 tests pass (377 existing + 13 new regression tests).
 
+### Issue #42: Code Review Round 18 — Transaction, Exception Narrowing, Duplication Extraction, Modifi Split, Coverage (May 2026)
+
+**Scope:** 6 fixes from comprehensive code review + 9 new tests. 399 tests total (390 existing + 9 new).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| F1 | Med | `_predicate_service.py` | **Missing transaction in `PredicateService.update()`**. FTS re-index (`_remove_from_fts` + `_index_fts`) was not wrapped in a transaction — a failure mid-way could leave FTS/data inconsistent. Added `with self.db.transaction()`. |
+| F2 | Med | `_cli_query.py` | **Broad `except Exception` in `eksporti()`** narrowed to `except (sqlite3.Error, ValueError)`. Added `import sqlite3`. |
+| F3 | Low | `_triple_search.py` | **Duplicated UUID resolution logic.** Extracted `_resolve_node_by_label()` helper returning `(node_ids, ambiguous)` tuple, used by both `resolve_subjects()` and `resolve_objects()`. Eliminated ~15 lines of near-identical code. |
+| F4 | Low | `_cli_modify.py` | **Monolith `modifi()` split.** Extracted `_resolve_subject_id()` and `_resolve_new_object_value()` helpers. `modifi()` body shrunk from ~362 to ~160 lines. Removed 3×12-line duplicated subject resolution blocks. |
+| F5 | Low | `_predicate_service.py` | **PEP 8 blank lines.** Trimmed extra blank lines between `_label_from_etikedoj` and `PredicateService` class. |
+| F6 | Low | `tests/` (4 files) | **Coverage tests** for `get_subject_objects()`, `build_modify_preview()`, `resolve_deprecated()`, `empty_all_trash()`. |
+
+**Tests added (9):**
+| Test | File |
+|------|------|
+| `test_get_subject_objects` / `test_get_subject_objects_empty` | `test_triples.py` |
+| `test_build_uri_preview` / `test_build_literal_preview` | `test_preview_helpers.py` |
+| `test_new_val_used` / `test_old_val_used_with_warning` / `test_both_none_returns_new_val` | `test_cli_deprecated.py` |
+| `test_empty_all_trash` / `test_empty_all_trash_empty_db` | `test_nodes.py` |
+
+**Tests:** All 399 tests pass (390 existing + 9 new coverage tests).
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
