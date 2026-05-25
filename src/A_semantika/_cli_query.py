@@ -4,6 +4,7 @@ Extracted from _cli_triples.py to keep each file under 500 lines.
 """
 from __future__ import annotations
 
+import sqlite3
 import sys
 from pathlib import Path
 from typing import Optional
@@ -227,7 +228,7 @@ def eksporti(
 
     try:
         ttl = triple_svc.export_turtle(base_uri=base_uri)
-    except Exception as e:
+    except (sqlite3.Error, ValueError) as e:
         error(tr_multi(
             "Eksporta eraro: {e}",
             "Export error: {e}",

@@ -47,3 +47,31 @@ def test_serci_object_deprecated_alias(runner: CliRunner) -> None:
         runner.invoke(app, ["aldoni", uuids[0], "rdf:type", uuids[1], "--jes"])
         result = runner.invoke(app, ["serci", "--object", uuids[1]])
         assert result.exit_code == 0
+
+
+# ── resolve_deprecated unit tests ─────────────────────────────────────
+
+
+class TestResolveDeprecated:
+    """Direct unit tests for _cli_helpers.resolve_deprecated()."""
+
+    def test_new_val_used(self) -> None:
+        """When only new_val is provided, it should be returned."""
+        from A_semantika._cli_helpers import resolve_deprecated
+
+        result = resolve_deprecated("new_val", None, "old-name", "new-name")
+        assert result == "new_val"
+
+    def test_old_val_used_with_warning(self) -> None:
+        """When only old_val is provided, it should be returned."""
+        from A_semantika._cli_helpers import resolve_deprecated
+
+        result = resolve_deprecated(None, "old_val", "old-name", "new-name")
+        assert result == "old_val"
+
+    def test_both_none_returns_new_val(self) -> None:
+        """When neither is provided, new_val should be returned."""
+        from A_semantika._cli_helpers import resolve_deprecated
+
+        result = resolve_deprecated(None, None, "old-name", "new-name")
+        assert result is None

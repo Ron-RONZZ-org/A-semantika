@@ -34,10 +34,6 @@ def _label_from_etikedoj(etikedoj: str | dict, langs: tuple[str, ...] = ("eo", "
     return label_from_json(etikedoj, langs)
 
 
-
-
-
-
 class PredicateService(CRUDService):
     """Service for managing semantic predicates.
 
@@ -193,12 +189,16 @@ class PredicateService(CRUDService):
             params.append(val)
         params.append(predicate_id)
 
+        
         sql = f"UPDATE predicates SET {', '.join(set_parts)} WHERE predicate_id = ?"
-        self.db.execute(sql, params)
 
-        # Re-index FTS (remove old, insert new)
-        self._remove_from_fts(predicate_id)
-        self._index_fts(predicate_id)
+        # Wrap UPDATE + FTS re-index in a single transaction to prevent
+        # data/FTS inconsistency if either operation fails.
+        with self.db.transaction():
+            self.db.execute(sql, params)
+            # Re-index FTS (remove old, insert new)
+            self._remove_from_fts(predicate_id)
+            self._index_fts(predicate_id)
 
         return self.get_by_predicate_id(predicate_id)
 
