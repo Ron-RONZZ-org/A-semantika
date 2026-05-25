@@ -12,6 +12,16 @@ from typing import Any
 from A_semantika.data.storage import now
 
 
+class DuplicateTripleError(ValueError):
+    """Raised when attempting to add a triple that already exists.
+
+    Subclass of ValueError so existing ``except ValueError`` handlers
+    still catch it by default, but callers that want to distinguish
+    duplicates from other errors can catch this type specifically.
+    """
+    pass
+
+
 class TripleService:
     """Custom service for semantic triple CRUD and query operations.
 
@@ -103,7 +113,7 @@ class TripleService:
                 )
         except sqlite3.IntegrityError as exc:
             msg = f"Triple already exists: subject={subject_uuid}, predicate={predicate_id}, object={object_value}"
-            raise ValueError(msg) from exc
+            raise DuplicateTripleError(msg) from exc
 
         return self.get_one(subject_uuid, predicate_id, object_value, object_type)
 

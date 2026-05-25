@@ -12,6 +12,7 @@ from rich.table import Table
 
 from A import error, info, tr_multi, warning
 from A_semantika._cli_helpers import ensure_predicate
+from A_semantika._triple_service import DuplicateTripleError
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import confirm_node_with_arcs, resolve_node_label, resolve_predicate_label
 from A_semantika.data.storage import label_from_json
@@ -220,10 +221,10 @@ def aldoni(
                     object_value=arc["object"],
                     object_type=arc["object_type"],
                 )
+            except DuplicateTripleError:
+                pass  # Silently skip — triple already exists, no harm
             except ValueError as e:
-                # Only suppress "already exists" — re-raise other errors
-                if "already exists" not in str(e):
-                    raise
+                raise  # Re-raise genuine errors
     elif not yes:
         from A.utils.interactive import confirm_action
 
