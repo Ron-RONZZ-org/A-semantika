@@ -859,7 +859,7 @@ This is not valid RDF — consumers can't parse labels programmatically.
 
 ### Issue #39: Code Review Round 15 — Orphan Arc Rollback, AmbiguousUUIDError, Exception Narrowing, Dedup (May 2026)
 
-**Scope:** 4 fixes from a thorough code review. 365 tests total (353 existing + 12 new).
+**Scope:** 7 fixes from a thorough code review. 370 tests total (353 existing + 17 new).
 
 | Fix | Severity | File | Description |
 |-----|----------|------|-------------|
@@ -867,8 +867,11 @@ This is not valid RDF — consumers can't parse labels programmatically.
 | F2 | Med | `_triple_search.py` | **AmbiguousUUIDError silently swallowed.** `except ValueError` caught `AmbiguousUUIDError` (a subclass) in `resolve_subjects()` and `resolve_objects()`, silently falling through to FTS5 label search which could return unrelated results. **Fix:** Catch `AmbiguousUUIDError` first with user-visible warning, return `[]` instead of misleading fallback. |
 | F3 | Med | `_predicate_service.py` | **Duplicate `_extract_label_text()`** function (16 lines) duplicated the identical logic in `_node_helpers.py:extract_label_text()`. **Fix:** Imported and reused `extract_label_text` from `_node_helpers`; removed duplicate. |
 | F4 | Med | `_node_service.py` | **`except Exception:` too broad** in `NodeService.delete()` post-delete cleanup handler caught type errors, attribute errors, etc. **Fix:** Narrowed to `except (sqlite3.Error, OSError)`. |
+| Q1 | Low | `_cli_rubujo.py` | **LIKE wildcard escaping in `_resolve_trash_node()`.** Node IDs containing `_` or `%` were treated as LIKE wildcards when searching the trash table. `test_1` could match `testX1` on prefix search. **Fix:** Escaped `\`, `%`, `_` before LIKE query, added `ESCAPE '\\'` clause — consistent with `resolve_node_id_prefix()` pattern. |
+| Q2 | Low | `_cli_helpers.py` | **Rollback error masking in `create_node_arcs()`.** When `triple_svc.remove_by_node()` or `node_svc.delete()` raised during rollback, the original `ValueError` (e.g. "Predicate not found") was masked. **Fix:** Wrap rollback operations in `try/except (sqlite3.Error, ValueError)` with `warning()` logging to preserve the original exception. |
+| Q3 | Low | `_node_service.py` + 9 files | **Renamed `resolve_uuid_prefix` → `resolve_node_id_prefix`.** Column was renamed from `uuid` to `node_id` in Issue #15 but the method name was never updated. 15+ call sites across 10 source files updated. Backward-compat alias with `DeprecationWarning` kept for external callers. |
 
-**Tests added (12):**
+**Tests added (17):**
 | Test | Fix | File |
 |------|-----|------|
 | `test_orphan_cleanup_on_partial_failure` | F1 | test_review_round15.py |
@@ -883,6 +886,11 @@ This is not valid RDF — consumers can't parse labels programmatically.
 | `test_delete_with_post_delete_failure` | F4 | test_review_round15.py |
 | `test_delete_with_oserror_post_delete` | F4 | test_review_round15.py |
 | `test_delete_with_unexpected_error_raises` | F4 | test_review_round15.py |
+| `test_rubujo_resolve_trash_node_underscore_matched_literally` | Q1 | test_cli_rubujo.py |
+| `test_rubujo_resolve_trash_node_percent_matched_literally` | Q1 | test_cli_rubujo.py |
+| `test_rollback_delete_failure_preserves_original_error` | Q2 | test_review_round15.py |
+| `test_rollback_remove_by_node_failure_preserves_original_error` | Q2 | test_review_round15.py |
+| `test_deprecated_resolve_uuid_prefix_alias` | Q3 | test_nodes.py |
 
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
