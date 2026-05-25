@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from A import warning as _warning
+from A import tr_multi, warning as _warning
 from A_semantika._node_service import AmbiguousUUIDError
 
 if TYPE_CHECKING:
@@ -79,9 +79,11 @@ def _resolve_node_by_label(
             if node:
                 return ([node["node_id"]], False)
         except AmbiguousUUIDError:
-            _warning(
-                f"Ambiguous prefix '{text}' — multiple nodes match"
-            )
+            _warning(tr_multi(
+                "Ambigua prefikso '{t}' — pluraj nodoj kongruas",
+                "Ambiguous prefix '{t}' — multiple nodes match",
+                "Préfixe ambigu '{t}' — plusieurs nœuds correspondent",
+            ).format(t=text))
             return ([], True)  # Don't fall through to FTS5 — ambiguous prefix
         except ValueError:
             pass  # Not found — fall through to label search

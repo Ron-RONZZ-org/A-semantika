@@ -79,9 +79,19 @@ def ls(
     table.add_column("ID", no_wrap=True)
     table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
 
+    # Detect ambiguous 16-char prefixes and show full UUIDs if needed
+    prefixes: set[str] = set()
+    ambiguous: set[str] = set()
+    for n in nodes:
+        pref = n["node_id"][:16]
+        if pref in prefixes:
+            ambiguous.add(pref)
+        prefixes.add(pref)
+
     for n in nodes:
         label = label_from_json(n["etikedoj"])
-        table.add_row(n["node_id"][:16], label)
+        disp = n["node_id"] if n["node_id"][:16] in ambiguous else n["node_id"][:16]
+        table.add_row(disp, label)
 
     info(table)
 
@@ -321,8 +331,12 @@ def forigi(
                 resolved.append(node)
             else:
                 errors.append((nid, tr_multi("ne trovita", "not found", "non trouvé")))
-        except AmbiguousUUIDError:
-            errors.append((nid, tr_multi("ambigua prefikso", "ambiguous prefix", "préfixe ambigu")))
+        except AmbiguousUUIDError as e:
+            errors.append((nid, tr_multi(
+                "ambigua prefikso: {e}",
+                "ambiguous prefix: {e}",
+                "préfixe ambigu : {e}",
+            ).format(e=str(e))))
 
     # Report resolution errors
     for input_val, reason in errors:

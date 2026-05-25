@@ -62,7 +62,7 @@ class TestNodoForigiAmbiguousPrefix:
     """Ambiguous node_id prefix in multi-forigi should report per-item."""
 
     def test_ambiguous_prefix_reported(self, runner: CliRunner, node_svc):
-        """Ambiguous prefix should report error and not block other deletions."""
+        """Ambiguous prefix should report error with match count and not block other deletions."""
         node_svc.create({"node_id": "bbbbbbbb-0000-0000-0000-000000000001", "etikedoj": {"eo": "AmbA"}})
         node_svc.create({"node_id": "bbbbbbba-0000-0000-0000-000000000001", "etikedoj": {"eo": "AmbB"}})
         node_svc.create({"node_id": "cccccccc-0000-0000-0000-000000000001", "etikedoj": {"eo": "Clear"}})
@@ -73,4 +73,23 @@ class TestNodoForigiAmbiguousPrefix:
         ])
         assert result.exit_code == 0
         assert "ambigua" in result.stdout or "ambiguous" in result.stdout
+        # Must show match count in error (fix for dropped exception detail)
+        assert "2" in result.stdout
+        assert "matches" in result.stdout
+        assert "Forigis 1 el" in result.stdout or "Deleted 1 of" in result.stdout
+
+    def test_ambiguous_prefix_mixed_errors(self, runner: CliRunner, node_svc):
+        """Mixed ambiguous + not-found + valid IDs should report all error types."""
+        node_svc.create({"node_id": "dddddddd-0000-0000-0000-000000000001", "etikedoj": {"eo": "AmbC"}})
+        node_svc.create({"node_id": "dddddddc-0000-0000-0000-000000000001", "etikedoj": {"eo": "AmbD"}})
+        node_svc.create({"node_id": "eeeeeeee-0000-0000-0000-000000000001", "etikedoj": {"eo": "Valid"}})
+
+        result = runner.invoke(app, [
+            "nodo", "forigi", "dddd", "zzzz-nonexistent", "eeeeeeee", "-y",
+        ])
+        assert result.exit_code == 0
+        assert "ambigua" in result.stdout or "ambiguous" in result.stdout
+        assert "ne trovita" in result.stdout or "not found" in result.stdout
+        assert "2" in result.stdout
+        assert "matches" in result.stdout
         assert "Forigis 1 el" in result.stdout or "Deleted 1 of" in result.stdout

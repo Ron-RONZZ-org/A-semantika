@@ -361,6 +361,29 @@ def test_rubujo_restore_case_insensitive(runner: CliRunner) -> None:
     assert "SPACO" in ls_r.stdout
 
 
+def test_rubujo_forigi_ambiguous_prefix_shows_detail(runner: CliRunner) -> None:
+    """rubujo forigi with ambiguous prefix must show match count in error."""
+    runner.invoke(app, ["nodo", "aldoni", "rubambig1", "-e", "eo::RubAmb1", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", "rubambig2", "-e", "eo::RubAmb2", "--jes"])
+
+    # Trash both
+    r = runner.invoke(app, ["nodo", "forigi", "rubambig1", "--jes"])
+    assert r.exit_code == 0
+    r = runner.invoke(app, ["nodo", "forigi", "rubambig2", "--jes"])
+    assert r.exit_code == 0
+
+    # Try permanent delete with ambiguous prefix "rubambig" → matches both
+    r = runner.invoke(app, ["rubujo", "forigi", "rubambig", "-y"])
+    assert r.exit_code == 1
+    assert "ambigua" in r.stdout.lower() or "ambiguous" in r.stdout.lower()
+    assert "matches" in r.stdout
+
+    # Both should still be in trash (neither was deleted)
+    trash_r = runner.invoke(app, ["rubujo", "ls"])
+    assert "rubambig1" in trash_r.stdout
+    assert "rubambig2" in trash_r.stdout
+
+
 def test_rubujo_forigi_case_insensitive(runner: CliRunner) -> None:
     """rubujo forigi should find trash nodes case‑insensitively."""
     runner.invoke(app, ["nodo", "aldoni", "MAMULO", "-e", "eo::Mamulo", "--jes"])

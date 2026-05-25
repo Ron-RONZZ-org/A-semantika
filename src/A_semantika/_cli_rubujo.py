@@ -54,12 +54,25 @@ def ls(
     table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
     table.add_column(tr_multi("Forigita", "Deleted", "Supprimé"), no_wrap=True)
 
+    # Detect ambiguous 16-char prefixes and show full UUIDs if needed
+    prefixes: set[str] = set()
+    ambiguous: set[str] = set()
+    for n in items:
+        nid = n.get("node_id", "?")
+        pref = nid[:16] if len(nid) > 16 else nid
+        if pref in prefixes:
+            ambiguous.add(pref)
+        prefixes.add(pref)
+
     for n in items:
         label = label_from_json(n.get("etikedoj", "{}"))
         deleted_at = (n.get("forigita_je") or "?")[:19]  # Truncate ISO to seconds; "?" for None
         nid = n.get("node_id", "?")
-        display_id = nid[:16] if len(nid) > 16 else nid
-        table.add_row(display_id, label, deleted_at)
+        if nid[:16] in ambiguous and len(nid) > 16:
+            disp = nid
+        else:
+            disp = nid[:16] if len(nid) > 16 else nid
+        table.add_row(disp, label, deleted_at)
 
     info(table)
 
@@ -115,12 +128,12 @@ def _batch_resolve_trash_nodes(
                     "not found in trash",
                     "non trouvé dans la corbeille",
                 )))
-        except AmbiguousUUIDError:
+        except AmbiguousUUIDError as e:
             errors.append((nid, tr_multi(
-                "ambigua prefikso",
-                "ambiguous prefix",
-                "préfixe ambigu",
-            )))
+                "ambigua prefikso: {e}",
+                "ambiguous prefix: {e}",
+                "préfixe ambigu : {e}",
+            ).format(e=str(e))))
 
     return resolved, errors
 
