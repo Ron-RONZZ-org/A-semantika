@@ -7,21 +7,14 @@ and display label resolution.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    pass
+from A_semantika._constants import FTS5_KEYWORDS
 
 
 class AmbiguousUUIDError(ValueError):
     """Raised when a UUID prefix matches multiple nodes."""
     pass
-
-
-# FTS5 keywords that need to be lowercased (not stripped) when they
-# appear in user search queries, so they are treated as content terms
-# rather than FTS5 operators.
-FTS5_KEYWORDS = {"AND", "OR", "NOT", "NEAR", "COLUMN"}
 
 
 def extract_label_text(etikedoj: str | dict) -> str:

@@ -262,6 +262,32 @@ class TripleService:
             (node_id, node_id),
         )
 
+    def get_by_nodes(self, node_ids: list[str]) -> list[dict]:
+        """Get all triples referencing any of the given nodes (as subject or URI object).
+
+        Uses a single bulk query instead of N individual ``get_by_node()``
+        calls, which is significantly faster for batch operations like
+        ``nodo forigi`` with multiple node IDs.
+
+        Args:
+            node_ids: Node IDs to fetch triples for.
+
+        Returns:
+            List of triple dicts.
+        """
+        if not node_ids:
+            return []
+        placeholders = ",".join("?" * len(node_ids))
+        return self.db.execute(
+            f"""SELECT t.*, n.etikedoj AS object_node_etikedoj
+               FROM triples t
+               LEFT JOIN nodes n ON t.object_node_uuid = n.node_id
+               WHERE t.subject_uuid IN ({placeholders})
+                  OR (t.object_type = 'uri' AND t.object_value IN ({placeholders}))
+               ORDER BY t.predicate_id""",
+            (*node_ids, *node_ids),
+        )
+
     def count_by_subject_or_object(self, node_id: str) -> int:
         """Count triples referencing a node (as subject or URI object).
 

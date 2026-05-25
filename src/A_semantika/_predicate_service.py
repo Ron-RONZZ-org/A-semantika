@@ -14,6 +14,7 @@ import json
 from typing import Any
 
 from A.core.service import CRUDService
+from A_semantika._constants import FTS5_KEYWORDS as _FTS5_KEYWORDS
 from A_semantika.data.storage import label_from_json, now
 
 
@@ -50,11 +51,7 @@ def _extract_label_text(etikedoj: str | dict) -> str:
     return " ".join(texts)
 
 
-# FTS5 keyword set — same as _node_helpers.FTS5_KEYWORDS, duplicated
-# intentionally to keep each module self-contained and < 500 lines.
-_FTS5_KEYWORDS: frozenset[str] = frozenset({
-    "AND", "OR", "NOT", "NEAR", "COLUMN",
-})
+
 
 
 class PredicateService(CRUDService):

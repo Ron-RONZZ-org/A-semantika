@@ -117,3 +117,50 @@ class TestResolvePredicateLabel:
         pred_svc.create({"predicate_id": "ex:enonly", "etikedoj": {"en": "English Only"}})
         label = resolve_predicate_label(pred_svc, "ex:enonly")
         assert label == "English Only"
+
+
+# ── Q4: resolve_node_label_from_node cached helper ───────────────────────
+
+
+class TestResolveNodeLabelFromNode:
+    """resolve_node_label_from_node() should extract labels from pre-resolved nodes."""
+
+    def test_returns_eo_label(self):
+        """Should return eo label from node dict."""
+        from A_semantika._preview import resolve_node_label_from_node
+
+        node = {"node_id": "abc123", "etikedoj": '{"eo": "Hundo", "en": "Dog"}'}
+        label = resolve_node_label_from_node(node)
+        assert label == "Hundo"
+
+    def test_falls_back_to_en_when_no_eo(self):
+        """Should fall back to en when eo is missing."""
+        from A_semantika._preview import resolve_node_label_from_node
+
+        node = {"node_id": "abc123", "etikedoj": '{"en": "Dog"}'}
+        label = resolve_node_label_from_node(node)
+        assert label == "Dog"
+
+    def test_falls_back_to_id_when_no_labels(self):
+        """Should fall back to node_id prefix when no labels."""
+        from A_semantika._preview import resolve_node_label_from_node
+
+        node = {"node_id": "abc123-def-456", "etikedoj": "{}"}
+        label = resolve_node_label_from_node(node)
+        assert label == "abc123-def-456"[:16]
+
+    def test_falls_back_to_id_when_etikedoj_invalid(self):
+        """Should fall back to node_id when etikedoj is invalid JSON."""
+        from A_semantika._preview import resolve_node_label_from_node
+
+        node = {"node_id": "abc123", "etikedoj": "not-json"}
+        label = resolve_node_label_from_node(node)
+        assert label == "abc123"
+
+    def test_works_with_already_parsed_labels(self):
+        """Should handle already-parsed dict as etikedoj."""
+        from A_semantika._preview import resolve_node_label_from_node
+
+        node = {"node_id": "abc123", "etikedoj": {"eo": "Hundo"}}
+        label = resolve_node_label_from_node(node)
+        assert label == "Hundo"
