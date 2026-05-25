@@ -13,10 +13,44 @@ from rich.table import Table
 from A import error, info, tr_multi, warning
 from A_semantika._cli_helpers import create_node_arcs, ensure_predicate, resolve_arc_targets
 from A_semantika._node_service import AmbiguousUUIDError
-from A_semantika._triple_service import DuplicateTripleError
 from A_semantika._preview import confirm_node_with_arcs, resolve_node_label, resolve_predicate_label
 from A_semantika.data.storage import label_from_json
 from A_semantika.service import get_node_service, get_predicate_service, get_triple_service
+
+
+def _format_delete_error(nid: str, error: Exception) -> str:
+    """Format a human-readable delete error from an IntegrityError or DatabaseError.
+
+    Args:
+        nid: Node ID (for reference in the message).
+        error: The caught exception.
+
+    Returns:
+        A user-facing error message string (already localized via tr_multi).
+    """
+    err_msg = str(error)
+    if isinstance(error, sqlite3.IntegrityError):
+        if "UNIQUE constraint failed" in err_msg:
+            return tr_multi(
+                "Nodo {u} jam estas en la rubujo.",
+                "Node {u} is already in the trash.",
+                "Le nœud {u} est déjà dans la corbeille.",
+            ).format(u=nid[:16])
+        if "FOREIGN KEY constraint failed" in err_msg:
+            return tr_multi(
+                "Nodo {u} havas arkojn. Forigu ilin unue aŭ uzu la flagon --jes.",
+                "Node {u} has arcs. Delete them first or use the --jes flag.",
+                "Le nœud {u} a des arcs. Supprimez-les d'abord ou utilisez le drapeau --jes.",
+            )
+        return err_msg
+    if "malformed" in err_msg:
+        return tr_multi(
+            "Datumbazo koruptita. Provu 'VACUUM' aŭ restaŭri de sekurkopio.",
+            "Database corrupted. Try 'VACUUM' or restore from backup.",
+            "Base de données corrompue. Essayez 'VACUUM' ou restaurez à partir d'une sauvegarde.",
+        )
+    return err_msg
+
 
 nodo_app = typer.Typer(
     name="nodo",
@@ -74,7 +108,7 @@ def vidi(
         labels = {}
         defns = {}
 
-    info(tr_multi("UUID: {u}", "UUID: {u}", "UUID : {u}").format(u=node["node_id"]))
+    info(tr_multi("ID: {u}", "ID: {u}", "ID : {u}").format(u=node["node_id"]))
     for lang, val in labels.items():
         info(f"  {lang}: {val}")
     if defns:
@@ -377,37 +411,8 @@ def forigi(
                 triple_svc.remove_by_node(nid)
             node_svc.delete(nid)
             deleted += 1
-        except sqlite3.IntegrityError as e:
-            err_msg = str(e)
-            if "UNIQUE constraint failed" in err_msg:
-                err_msg = tr_multi(
-                    "Nodo {u} jam estas en la rubujo.",
-                    "Node {u} is already in the trash.",
-                    "Le nœud {u} est déjà dans la corbeille.",
-                ).format(u=nid[:16])
-            elif "FOREIGN KEY constraint failed" in err_msg:
-                err_msg = tr_multi(
-                    "Nodo {u} havas arkojn. Forigu ilin unue aŭ uzu la flagon --jes.",
-                    "Node {u} has arcs. Delete them first or use the --jes flag.",
-                    "Le nœud {u} a des arcs. Supprimez-les d'abord ou utilisez le drapeau --jes.",
-                )
-            else:
-                err_msg = str(e)
-            error(tr_multi(
-                "Eraro forigante {u}: {e}",
-                "Error deleting {u}: {e}",
-                "Erreur lors de la suppression de {u} : {e}",
-            ).format(u=nid[:16], e=err_msg))
-        except sqlite3.DatabaseError as e:
-            err_msg = str(e)
-            if "malformed" in err_msg:
-                err_msg = tr_multi(
-                    "Datumbazo koruptita. Provu 'VACUUM' aŭ restaŭri de sekurkopio.",
-                    "Database corrupted. Try 'VACUUM' or restore from backup.",
-                    "Base de données corrompue. Essayez 'VACUUM' ou restaurez à partir d'une sauvegarde.",
-                )
-            else:
-                err_msg = str(e)
+        except (sqlite3.IntegrityError, sqlite3.DatabaseError) as e:
+            err_msg = _format_delete_error(nid, e)
             error(tr_multi(
                 "Eraro forigante {u}: {e}",
                 "Error deleting {u}: {e}",

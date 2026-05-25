@@ -153,13 +153,16 @@ class NodeService(CRUDService):
         params.append(node_id)
 
         sql = f"UPDATE nodes SET {', '.join(set_parts)} WHERE node_id = ?"
-        self.db.execute(sql, params)
 
-        # Re-index FTS (wrapped in transaction so partial failure doesn't orphan FTS entries)
+        # Wrap UPDATE + FTS re-index in a single transaction to prevent
+        # data/FTS inconsistency if either operation fails.
         if self._fts_config:
-            with self.db.transaction():
+            with self.db.transaction() as conn:
+                conn.execute(sql, params)
                 self._remove_from_fts(node_id)
                 self._index_fts(node_id)
+        else:
+            self.db.execute(sql, params)
 
         # Track for undo
         if self._undo_manager is not None and old:

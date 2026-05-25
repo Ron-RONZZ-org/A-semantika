@@ -5,7 +5,10 @@ Safe to call repeatedly (idempotent).
 """
 from __future__ import annotations
 
+import sqlite3
 from typing import TYPE_CHECKING
+
+from A import warning as _warning
 
 if TYPE_CHECKING:
     from A.data.base import SQLiteDB
@@ -35,8 +38,8 @@ def migrate_nodes_uuid_to_node_id(db: "SQLiteDB") -> None:
             row["name"]
             for row in db.execute("PRAGMA table_info(nodes)")
         }
-    except Exception:
-        # Table does not exist yet — nothing to migrate
+    except (sqlite3.OperationalError, sqlite3.DatabaseError):
+        # Table may not exist yet during initial DB setup — safe to skip
         return
 
     if "node_id" in columns:
@@ -68,9 +71,9 @@ def migrate_nodes_uuid_to_node_id(db: "SQLiteDB") -> None:
             # Edge case: _ensure_trash_table column sync added node_id
             # alongside uuid.  Drop the orphaned uuid column.
             db.execute("ALTER TABLE nodes_rubujo DROP COLUMN uuid")
-    except Exception:
+    except (sqlite3.OperationalError, sqlite3.DatabaseError):
         # Trash table may not exist (no nodes ever deleted) — safe
-        pass
+        _warning("Trash table not found during uuid→node_id migration; skipping.")
 
 
 def migrate_predicates_uuid_to_predicate_id(db: "SQLiteDB") -> None:
@@ -95,8 +98,8 @@ def migrate_predicates_uuid_to_predicate_id(db: "SQLiteDB") -> None:
             row["name"]
             for row in db.execute("PRAGMA table_info(predicates)")
         }
-    except Exception:
-        return  # Table does not exist yet
+    except (sqlite3.OperationalError, sqlite3.DatabaseError):
+        return  # Table may not exist yet during initial DB setup
 
     if "uuid" not in columns:
         return  # Already migrated or new schema
@@ -259,8 +262,8 @@ def migrate_predicates_uuid_to_predicate_id(db: "SQLiteDB") -> None:
 
             db.execute("DROP TABLE predicates_rubujo")
             db.execute("ALTER TABLE predicates_rubujo_new RENAME TO predicates_rubujo")
-    except Exception:
-        pass  # Trash table may not exist
+    except (sqlite3.OperationalError, sqlite3.DatabaseError):
+        _warning("Trash table not found during predicates migration; skipping.")
 
 
 def migrate_predicate_group_members_unique(db: "SQLiteDB") -> None:
@@ -280,8 +283,14 @@ def migrate_predicate_group_members_unique(db: "SQLiteDB") -> None:
         )
         if create_sql and "UNIQUE(" in create_sql.get("sql", ""):
             return  # Already has the constraint
-    except Exception:
-        return  # Table doesn't exist yet
+    except (sqlite3.OperationalError, sqlite3.DatabaseError):
+        _warning("predicate_group_members table not found during UNIQUE migration; skipping.")
+        return
+
+    if not create_sql or not create_sql.get("sql"):
+        # Table does not exist — nothing to migrate
+        _warning("predicate_group_members table not found during UNIQUE migration (sqlite_master); skipping.")
+        return
 
     # ── Step 1: Create new table with UNIQUE constraint ────────────
     db.execute("DROP TABLE IF EXISTS predicate_group_members_new")
@@ -328,14 +337,16 @@ def migrate_predicates_fts(db: "SQLiteDB") -> None:
             row["name"]
             for row in db.execute("PRAGMA table_info(predicates)")
         }
-    except Exception:
-        return  # Table does not exist yet
+    except (sqlite3.OperationalError, sqlite3.DatabaseError):
+        _warning("predicates table not found during FTS migration; skipping.")
+        return
 
     if "label_text" not in columns:
         try:
             db.execute("ALTER TABLE predicates ADD COLUMN label_text TEXT NOT NULL DEFAULT ''")
-        except Exception:
-            return  # Table doesn't exist
+        except (sqlite3.OperationalError, sqlite3.DatabaseError):
+            _warning("Could not add label_text column during FTS migration; skipping.")
+            return
 
     # Backfill label_text for rows where it is still empty
     db.execute("""

@@ -2,6 +2,7 @@
 """
 from __future__ import annotations
 
+import sqlite3
 from typing import Any, Optional
 
 import typer
@@ -16,6 +17,9 @@ from A_semantika.service import get_predicate_group_service, get_predicate_servi
 def _match_groups_by_prefix(group_svc: Any, prefix: str) -> list[dict]:
     """Find groups whose name starts with *prefix* (LIKE search).
 
+    Escapes SQL LIKE wildcards (``%``, ``_``, ``\\``) in user input
+    so they are matched literally rather than as wildcards.
+
     Args:
         group_svc: PredicateGroupService instance.
         prefix: The prefix to match against group names.
@@ -23,9 +27,10 @@ def _match_groups_by_prefix(group_svc: Any, prefix: str) -> list[dict]:
     Returns:
         List of matching group dicts (may be empty).
     """
+    escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return group_svc.db.execute(
-        "SELECT * FROM predicate_groups WHERE group_name LIKE ?",
-        (prefix + "%",),
+        "SELECT * FROM predicate_groups WHERE group_name LIKE ? ESCAPE '\\'",
+        (escaped + "%",),
     )
 
 
@@ -306,7 +311,7 @@ def forigi(
             group_svc.clear_members(group["uuid"])
             group_svc.delete(group["uuid"])
             deleted += 1
-        except Exception as e:
+        except (sqlite3.Error, ValueError) as e:
             error(tr_multi(
                 "Eraro forigante {g}: {e}",
                 "Error deleting {g}: {e}",
