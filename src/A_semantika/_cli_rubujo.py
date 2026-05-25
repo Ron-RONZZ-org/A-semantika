@@ -362,7 +362,7 @@ def malplenigi(
     if days is not None:
         deleted_count = node_svc.empty_trash(days=days)
     else:
-        deleted_count = node_svc.empty_trash(days=0)
+        deleted_count = node_svc.empty_all_trash()
 
     info(tr_multi(
         "Rubujo malplenigita: {n} nodoj forigitaj.",
