@@ -59,7 +59,7 @@ class TestBuildTriplePreviewTable:
 class TestConfirmNodeWithArcs:
     """confirm_node_with_arcs() should handle arc previews."""
 
-    def test_confirm_node_with_uri_arcs(self, node_svc, pred_svc):
+    def test_confirm_node_with_uri_arcs(self, node_svc, pred_svc) -> None:
         """Node with URI arcs should preview correctly."""
         from A_semantika._preview import confirm_node_with_arcs
 
@@ -80,3 +80,40 @@ class TestConfirmNodeWithArcs:
         # With yes=True, confirmation is skipped
         result = confirm_node_with_arcs(node_svc, pred_svc, "Hundo", node_uuid, arcs, yes=True)
         assert result is True
+
+
+# ── Q1: resolve_predicate_label refactored ―――――――――――――――――――――――――
+
+
+class TestResolvePredicateLabel:
+    """resolve_predicate_label() now delegates to storage.label_from_json()."""
+
+    def test_returns_eo_label(self, pred_svc):
+        """Should return the eo label from etikedoj JSON."""
+        from A_semantika._preview import resolve_predicate_label
+
+        label = resolve_predicate_label(pred_svc, "rdf:type")
+        assert label == "tipo"
+
+    def test_returns_predicate_id_when_no_label(self, pred_svc):
+        """Should return predicate_id if etikedoj has no usable label."""
+        from A_semantika._preview import resolve_predicate_label
+
+        pred_svc.create({"predicate_id": "ex:custom", "etikedoj": {}})
+        label = resolve_predicate_label(pred_svc, "ex:custom")
+        assert label == "ex:custom"
+
+    def test_returns_predicate_id_when_not_found(self, pred_svc):
+        """Should return predicate_id if predicate doesn't exist."""
+        from A_semantika._preview import resolve_predicate_label
+
+        label = resolve_predicate_label(pred_svc, "wdt:NOTEXIST")
+        assert label == "wdt:NOTEXIST"
+
+    def test_falls_back_to_en_when_no_eo(self, pred_svc):
+        """Should fall back to en when eo label is missing."""
+        from A_semantika._preview import resolve_predicate_label
+
+        pred_svc.create({"predicate_id": "ex:enonly", "etikedoj": {"en": "English Only"}})
+        label = resolve_predicate_label(pred_svc, "ex:enonly")
+        assert label == "English Only"

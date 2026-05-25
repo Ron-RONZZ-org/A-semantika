@@ -331,3 +331,48 @@ def test_rubujo_malplenigi_interactive_cancel(runner: CliRunner) -> None:
     # Node should still be in trash
     trash_result = runner.invoke(app, ["rubujo", "ls"])
     assert node_id in trash_result.stdout
+
+
+# ── B3: Case‑insensitive trash lookup ─────────────────────────────────────
+
+
+def test_rubujo_restore_case_insensitive(runner: CliRunner) -> None:
+    """restaurigi should find trash nodes case‑insensitively (COLLATE NOCASE).
+
+    Create a node with uppercase ID (e.g. SPACO), trash it, then restore
+    using lowercase prefix. Without COLLATE NOCASE the LIKE search would
+    fail to match the uppercase ID.
+    """
+    runner.invoke(app, ["nodo", "aldoni", "SPACO", "-e", "eo::Spaco", "--jes"])
+    ls_r = runner.invoke(app, ["nodo", "ls"])
+    assert "SPACO" in ls_r.stdout
+
+    # Trash it
+    r = runner.invoke(app, ["nodo", "forigi", "SPACO", "--jes"])
+    assert r.exit_code == 0
+
+    # Restore using LOWERCASE prefix — COLLATE NOCASE is required here
+    r = runner.invoke(app, ["rubujo", "restaurigi", "spaco"])
+    assert r.exit_code == 0
+    assert "restarigita" in r.stdout.lower() or "restored" in r.stdout.lower()
+
+    # Verify it is back
+    ls_r = runner.invoke(app, ["nodo", "ls"])
+    assert "SPACO" in ls_r.stdout
+
+
+def test_rubujo_forigi_case_insensitive(runner: CliRunner) -> None:
+    """rubujo forigi should find trash nodes case‑insensitively."""
+    runner.invoke(app, ["nodo", "aldoni", "MAMULO", "-e", "eo::Mamulo", "--jes"])
+
+    # Trash it
+    runner.invoke(app, ["nodo", "forigi", "MAMULO", "--jes"])
+
+    # Permanently delete using lowercase — must find via COLLATE NOCASE
+    r = runner.invoke(app, ["rubujo", "forigi", "mamulo", "-y"])
+    assert r.exit_code == 0
+    assert "forigita" in r.stdout.lower() or "deleted" in r.stdout.lower()
+
+    # Should be gone from trash
+    trash_r = runner.invoke(app, ["rubujo", "ls"])
+    assert "MAMULO" not in trash_r.stdout

@@ -70,16 +70,16 @@ def _resolve_trash_node(node_id: str) -> dict | None:
     """Resolve a node_id prefix against the trash table (nodes_rubujo)."""
     db = get_db()
 
-    # Full match first
+    # Full match first (case-insensitive)
     entry = db.execute_one(
-        "SELECT * FROM nodes_rubujo WHERE node_id = ?", (node_id,)
+        "SELECT * FROM nodes_rubujo WHERE node_id = ? COLLATE NOCASE", (node_id,)
     )
     if entry:
         return entry
 
-    # Prefix match (LIKE)
+    # Prefix match (LIKE + COLLATE NOCASE for case-insensitive search)
     entries = db.execute(
-        "SELECT * FROM nodes_rubujo WHERE node_id LIKE ?", (f"{node_id}%",)
+        "SELECT * FROM nodes_rubujo WHERE node_id LIKE ? COLLATE NOCASE", (f"{node_id}%",)
     )
     if not entries:
         return None

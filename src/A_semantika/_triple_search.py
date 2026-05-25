@@ -36,6 +36,15 @@ def _looks_like_uuid_prefix(text: str) -> bool:
     return 8 <= len(text) <= 12 and bool(_UUID_PREFIX_RE.match(text))
 
 
+def _is_numeric(text: str) -> bool:
+    """Check if text represents a numeric value (int or float)."""
+    try:
+        float(text)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
 # ── Subject resolution ────────────────────────────────────────────────────────
 
 
@@ -125,12 +134,20 @@ def resolve_objects(node_svc: NodeService, text: str) -> list[str]:
     if results:
         return [r["node_id"] for r in results]
 
-    # Step 3: Return raw text as literal value match candidate
-    # Inform user that no node match was found — falling back to literal search.
-    # This prevents confusion when a mistyped label silently becomes a literal query.
-    _warning(
-        f"No node found for '{text[:60]}' — searching as literal value"
+    # Step 3: Return raw text as literal value match candidate.
+    # Only warn if the text looks like it could be a mistyped node identifier
+    # (single word, non-numeric). Multi-word phrases, numbers, and quoted
+    # strings are clearly intentional literal searches.
+    _is_obvious_literal = (
+        text.strip().startswith('"')
+        or text.strip().startswith("'")
+        or _is_numeric(text.strip())
+        or len(text.strip().split()) > 1
     )
+    if not _is_obvious_literal:
+        _warning(
+            f"No node found for '{text[:60]}' — searching as literal value"
+        )
     return [text]
 
 

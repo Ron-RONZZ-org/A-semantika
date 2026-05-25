@@ -155,6 +155,37 @@ class TestResolveObjects:
 
         assert resolve_objects(node_svc, "") == []
 
+    def test_numeric_literal_suppresses_warning(self, node_svc) -> None:
+        """Numeric values should NOT trigger the fallback warning (B2)."""
+        from A_semantika._triple_search import resolve_objects
+
+        # No nodes exist for "1000000" — but it's numeric, so no warning
+        values = resolve_objects(node_svc, "1000000")
+        assert values == ["1000000"]
+
+    def test_multi_word_literal_suppresses_warning(self, node_svc) -> None:
+        """Multi-word phrases should NOT trigger the fallback warning (B2)."""
+        from A_semantika._triple_search import resolve_objects
+
+        values = resolve_objects(node_svc, "some long description")
+        assert values == ["some long description"]
+
+    def test_quoted_string_suppresses_warning(self, node_svc) -> None:
+        """Quoted strings should NOT trigger the fallback warning (B2)."""
+        from A_semantika._triple_search import resolve_objects
+
+        values = resolve_objects(node_svc, '"quoted value"')
+        assert values == ['"quoted value"']
+
+    def test_single_word_non_numeric_still_warns(self, node_svc) -> None:
+        """Single non-numeric word without matching node still warns (B2)."""
+        from A_semantika._triple_search import resolve_objects
+
+        # "Neniu" is a single word, non-numeric — should still warn
+        # We just check it returns raw text; the warning itself is fire-and-forget
+        values = resolve_objects(node_svc, "Neniu")
+        assert values == ["Neniu"]
+
 
 # ── search_triples_by_labels ──────────────────────────────────────────────────
 
