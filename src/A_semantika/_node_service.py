@@ -360,9 +360,8 @@ class NodeService(CRUDService):
         Uses the FTS5 ``'delete'`` command rather than a direct
         ``DELETE FROM fts_table`` because the latter causes ``database
         disk image is malformed`` on SQLite with external content tables.
-        If the 'delete' command fails, the error is logged but not
-        propagated — FTS inconsistency is preferable to blocking the
-        deletion.
+        If the 'delete' command fails, auto-rebuilds the entire FTS index
+        (following A-encik's pattern of silent auto-recovery).
         """
         if not self._fts_config:
             return
@@ -378,10 +377,12 @@ class NodeService(CRUDService):
                 " VALUES('delete', ?)",
                 (row["rowid"],),
             )
-        except sqlite3.DatabaseError as exc:
-            _warning(
-                f"FTS cleanup failed for node {node_id}: {exc} — "
-                "FTS index may be stale (non-critical)"
+        except sqlite3.DatabaseError:
+            # FTS5 'delete' failed (transient content mismatch) — rebuild
+            # entire FTS index from current data instead of per-row cleanup.
+            self.db.execute(
+                f"INSERT INTO {self._fts_config.fts_table}"
+                f"({self._fts_config.fts_table}) VALUES('rebuild')"
             )
 
     # ── Override _index_fts to use node_id column ─────────────────────────
