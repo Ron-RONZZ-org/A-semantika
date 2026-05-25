@@ -99,18 +99,15 @@ class NodeService(CRUDService):
     # ── Override get to use node_id column ───────────────────────────────
 
     def get(self, node_id: str) -> dict[str, Any] | None:
-        """Get a node by exact node_id.
+        """Get a node by exact node_id (case-insensitive).
 
-        Tries case-sensitive match first to avoid non-deterministic
-        results when case collisions exist (e.g. ``ABC`` vs ``abc``).
-        Falls back to NOCASE only if no case-sensitive match found.
-        For prefix resolution, use :meth:`resolve_node_id_prefix`.
+        Uses COLLATE NOCASE for case-insensitive matching, consistent with
+        :meth:`resolve_node_id_prefix` and all other node lookups. Case
+        collisions (e.g. ``ABC`` vs ``abc``) are prevented by SQLite TEXT
+        PRIMARY KEY which is case-sensitive, so the NOCASE query will match
+        the single existing variant. For prefix resolution, use
+        :meth:`resolve_node_id_prefix`.
         """
-        node = self.db.execute_one(
-            f"SELECT * FROM {self.table} WHERE node_id = ?", (node_id,)
-        )
-        if node:
-            return node
         return self.db.execute_one(
             f"SELECT * FROM {self.table} WHERE node_id = ? COLLATE NOCASE", (node_id,)
         )

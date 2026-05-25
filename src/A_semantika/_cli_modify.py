@@ -181,8 +181,7 @@ def modifi(
     triple_svc = get_triple_service()
 
     # Determine new object type from flags (default URI for backward compat)
-    new_datatype = validate_type_flags(str_, int_, float_, bool_, lingvo, unuo)
-    new_object_type = "literal" if (str_ or int_ or float_ or bool_) else "uri"
+    new_datatype, new_object_type = validate_type_flags(str_, int_, float_, bool_, lingvo, unuo)
 
     # ── Interactive mode: partial args → show picker ───────────────
     if predicate is None or object is None:
@@ -346,19 +345,10 @@ def modifi(
         return
 
     # ── Execute: delete old + insert new ──────────────────────────
-    # Validate FK references before removal to provide clear error
-    # messages instead of cryptic SQLite constraint failures.
-    subj_check = triple_svc.db.execute_one(
-        "SELECT node_id FROM nodes WHERE node_id = ?", (new_subj_uuid,)
-    )
-    if not subj_check:
-        error(tr_multi(
-            "Nova subjekto ne trovita: {s}",
-            "New subject not found: {s}",
-            "Nouveau sujet non trouvé : {s}",
-        ).format(s=new_subj_uuid))
-        raise typer.Exit(1)
-
+    # Validate the new predicate FK reference (the only value not
+    # already validated by resolve_node_id_prefix() above).
+    # Subject and object are already verified to exist — no need to
+    # re-query the DB for those.
     pred_check = triple_svc.db.execute_one(
         "SELECT predicate_id FROM predicates WHERE predicate_id = ?", (new_pred,)
     )
@@ -369,18 +359,6 @@ def modifi(
             "Nouveau prédicat non trouvé : {p}",
         ).format(p=new_pred))
         raise typer.Exit(1)
-
-    if new_object_type == "uri":
-        obj_check = triple_svc.db.execute_one(
-            "SELECT node_id FROM nodes WHERE node_id = ?", (new_obj_value,)
-        )
-        if not obj_check:
-            error(tr_multi(
-                "Nova objekto ne trovita: {o}",
-                "New object not found: {o}",
-                "Nouvel objet non trouvé : {o}",
-            ).format(o=new_obj_value))
-            raise typer.Exit(1)
 
     from A_semantika.data.storage import now
 

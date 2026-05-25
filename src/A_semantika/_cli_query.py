@@ -4,6 +4,7 @@ Extracted from _cli_triples.py to keep each file under 500 lines.
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -252,4 +253,4 @@ def eksporti(
             ).format(path=str(output_path), e=str(e)))
             raise typer.Exit(1) from e
     else:
-        print(ttl)  # noqa: T201 — intentional stdout output for pipe/redirect
+        sys.stdout.write(ttl)

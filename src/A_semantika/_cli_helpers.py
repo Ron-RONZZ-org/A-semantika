@@ -124,8 +124,13 @@ def count_type_flags(str_: bool, int_: bool, float_: bool, bool_: bool) -> int:
 def validate_type_flags(
     str_: bool, int_: bool, float_: bool, bool_: bool,
     lingvo: str | None, unuo: str | None,
-) -> str | None:
-    """Validate type flag combinations. Returns datatype string or None for URI.
+) -> tuple[str | None, str]:
+    """Validate type flag combinations.
+
+    Returns:
+        Tuple of (datatype, object_type):
+        - datatype: ``None`` for URI/string, ``"xsd:integer"``, etc.
+        - object_type: ``"uri"`` or ``"literal"``
 
     Calls error() and raises typer.Exit(1) on invalid combinations.
     """
@@ -158,17 +163,17 @@ def validate_type_flags(
                 )
             )
             raise typer.Exit(1)
-        return None  # URI reference
+        return (None, "uri")  # URI reference
 
     if str_:
-        return None  # String literal, no datatype
+        return (None, "literal")  # String literal, no datatype
     if int_:
-        return "xsd:integer"
+        return ("xsd:integer", "literal")
     if float_:
-        return "xsd:decimal"
+        return ("xsd:decimal", "literal")
     if bool_:
-        return "xsd:boolean"
-    return None
+        return ("xsd:boolean", "literal")
+    return (None, "uri")
 
 
 def ensure_predicate(pred_svc: "PredicateService", predicate_id: str, label_eo: str) -> None:

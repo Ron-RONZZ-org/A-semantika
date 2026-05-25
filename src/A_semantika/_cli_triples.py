@@ -115,8 +115,7 @@ def aldoni(
 
     Defaŭlte objekto estas URI referenco (nod UUID). Uzu --str por teksta literal.
     """
-    datatype = validate_type_flags(str_, int_, float_, bool_, lingvo, unuo)
-    object_type = "literal" if (str_ or int_ or float_ or bool_) else "uri"
+    datatype, object_type = validate_type_flags(str_, int_, float_, bool_, lingvo, unuo)
 
     node_svc = get_node_service()
     pred_svc = get_predicate_service()

@@ -77,40 +77,45 @@ class TestUUIDHeuristic:
 class TestValidateTypeFlags:
     """validate_type_flags() should validate combinations correctly."""
 
-    def test_no_flags_returns_none(self):
-        """No type flags should return None (URI reference)."""
+    def test_no_flags_returns_uri(self):
+        """No type flags should return (None, 'uri') (URI reference)."""
         from A_semantika._cli_helpers import validate_type_flags
 
-        result = validate_type_flags(False, False, False, False, None, None)
-        assert result is None
+        datatype, obj_type = validate_type_flags(False, False, False, False, None, None)
+        assert datatype is None
+        assert obj_type == "uri"
 
     def test_str_flag(self):
-        """--str should return None (string literal, no datatype)."""
+        """--str should return (None, 'literal') (string literal, no datatype)."""
         from A_semantika._cli_helpers import validate_type_flags
 
-        result = validate_type_flags(True, False, False, False, None, None)
-        assert result is None
+        datatype, obj_type = validate_type_flags(True, False, False, False, None, None)
+        assert datatype is None
+        assert obj_type == "literal"
 
     def test_int_flag(self):
-        """--int should return xsd:integer."""
+        """--int should return ('xsd:integer', 'literal')."""
         from A_semantika._cli_helpers import validate_type_flags
 
-        result = validate_type_flags(False, True, False, False, None, None)
-        assert result == "xsd:integer"
+        datatype, obj_type = validate_type_flags(False, True, False, False, None, None)
+        assert datatype == "xsd:integer"
+        assert obj_type == "literal"
 
     def test_float_flag(self):
-        """--float should return xsd:decimal."""
+        """--float should return ('xsd:decimal', 'literal')."""
         from A_semantika._cli_helpers import validate_type_flags
 
-        result = validate_type_flags(False, False, True, False, None, None)
-        assert result == "xsd:decimal"
+        datatype, obj_type = validate_type_flags(False, False, True, False, None, None)
+        assert datatype == "xsd:decimal"
+        assert obj_type == "literal"
 
     def test_bool_flag(self):
-        """--bool should return xsd:boolean."""
+        """--bool should return ('xsd:boolean', 'literal')."""
         from A_semantika._cli_helpers import validate_type_flags
 
-        result = validate_type_flags(False, False, False, True, None, None)
-        assert result == "xsd:boolean"
+        datatype, obj_type = validate_type_flags(False, False, False, True, None, None)
+        assert datatype == "xsd:boolean"
+        assert obj_type == "literal"
 
     def test_multiple_flags_raises(self):
         """Combining multiple type flags should raise typer.Exit."""
