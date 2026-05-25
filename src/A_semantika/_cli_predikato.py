@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from typing import Optional
 
 import typer
@@ -357,7 +358,7 @@ def forigi(
         try:
             pred_svc.delete(pred["predicate_id"])
             deleted += 1
-        except Exception as e:
+        except (sqlite3.Error, ValueError) as e:
             error(tr_multi(
                 "Eraro forigante {p}: {e}",
                 "Error deleting {p}: {e}",

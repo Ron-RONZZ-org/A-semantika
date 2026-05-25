@@ -40,6 +40,30 @@ def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
         return uuid_or_prefix[:16]
 
 
+def resolve_node_label_from_node(node: dict) -> str:
+    """Get display label from a pre-resolved node dict.
+
+    Avoids redundant ``node_svc.resolve_uuid_prefix()`` calls when the
+    node dict has already been fetched (e.g. in ``build_triple_preview_table()``).
+
+    Uses same eo→en→first→ID fallback logic as ``resolve_node_label()``.
+    """
+    etikedoj = node.get("etikedoj", "{}")
+    try:
+        labels = json.loads(etikedoj) if isinstance(etikedoj, str) else etikedoj
+    except (json.JSONDecodeError, TypeError):
+        labels = {}
+    if isinstance(labels, dict):
+        for lang in ("eo", "en"):
+            val = labels.get(lang)
+            if val and isinstance(val, str):
+                return val
+        for val in labels.values():
+            if val and isinstance(val, str):
+                return val
+    return node.get("node_id", "")[:16]
+
+
 def resolve_predicate_label(pred_svc: PredicateService, predicate_id: str) -> str:
     """Resolve a predicate ID to a display label.
 
@@ -81,27 +105,29 @@ def build_triple_preview_table(
     table.add_column(tr_multi("Predikato", "Predicate", "Predicat"), no_wrap=True)
     table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=True)
 
-    # Pre-resolve subject node once to avoid redundant DB calls
+    # Pre-resolve subject node once, then use cached data for both
+    # display label and raw ID (avoids redundant DB calls).
     try:
         subj_node = node_svc.resolve_uuid_prefix(subject_uuid)
     except AmbiguousUUIDError as e:
         error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
         raise typer.Exit(1) from e
     subj_id = subj_node["node_id"][:16] if subj_node else subject_uuid[:16]
+    subj_label = resolve_node_label_from_node(subj_node) if subj_node else subject_uuid[:16]
 
-    # Use resolve_node_label for subject display label
-    subj_label = resolve_node_label(node_svc, subject_uuid)
     pred_label = resolve_predicate_label(pred_svc, predicate_id)
 
     if object_type == "uri":
+        # Resolve object node once, use cached data
         try:
             obj_node = node_svc.resolve_uuid_prefix(object_value)
         except AmbiguousUUIDError as e:
             error(tr_multi("Ambigua objekto-prefikso: {e}", "Ambiguous object prefix: {e}", "Préfixe objet ambigu : {e}").format(e=str(e)))
             raise typer.Exit(1) from e
         obj_id = obj_node["node_id"][:16] if obj_node else object_value[:16]
+        obj_label = resolve_node_label_from_node(obj_node) if obj_node else object_value[:16]
         # Labels row
-        table.add_row(subj_label, pred_label, resolve_node_label(node_svc, object_value))
+        table.add_row(subj_label, pred_label, obj_label)
         # Raw IDs row
         lang_hint = ""
         if subj_node:
@@ -118,12 +144,15 @@ def build_triple_preview_table(
         table.add_row(f"{subj_id}{lang_hint}", pred_id_display, obj_id)
         footnote = tr_multi("→ URI", "→ URI", "→ URI")
     elif object_type == "literal" and object_datatype:
-        # Typed literal
-        table.add_row(subj_label, pred_label, "")
+        # Typed literal — use cached subj_node for label
+        dtype = object_datatype.split(":")[-1] if ":" in object_datatype else object_datatype
+        obj_display = tr_multi(
+            "Tipita literal ({d})", "Typed literal ({d})", "Littéral typé ({d})",
+        ).format(d=dtype)
+        table.add_row(subj_label, pred_label, obj_display)
         pred_id_display = predicate_id
         table.add_row(subj_id, pred_id_display, object_value)
 
-        dtype = object_datatype.split(":")[-1] if ":" in object_datatype else object_datatype
         parts = [f"→ {dtype}"]
         if object_unit:
             unit_label = resolve_node_label(node_svc, object_unit)

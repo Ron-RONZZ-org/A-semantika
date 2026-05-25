@@ -10,6 +10,7 @@ def _setup_nodes_and_predicates(node_svc, pred_svc) -> dict:
     node_svc.create({"node_id": "s" + "0" * 35, "etikedoj": {"eo": "Hundo"}})
     node_svc.create({"node_id": "o" + "0" * 35, "etikedoj": {"eo": "Mamulo"}})
     node_svc.create({"node_id": "u" + "0" * 35, "etikedoj": {"eo": "Unuo"}})
+    node_svc.create({"node_id": "c" + "0" * 35, "etikedoj": {"eo": "Kato"}})
     # rdf:type is seeded by DEFAULT_PREDICATES in storage.py — no need to create
     pred_svc.create({"predicate_id": "rdfs:label", "etikedoj": {"eo": "etikedo"}})
     pred_svc.create({"predicate_id": "wdt:P1082", "etikedoj": {"eo": "logxantaro"}})
@@ -208,6 +209,44 @@ class TestTripleCountAndStats:
         # Unrelated
         r3 = triple_svc.get_by_node("nonexistent")
         assert len(r3) == 0
+
+    def test_get_by_nodes_bulk(self, triple_svc) -> None:
+        """get_by_nodes should fetch triples for multiple nodes in one query."""
+        subj1 = "s" + "0" * 35
+        subj2 = "c" + "0" * 35
+        obj   = "o" + "0" * 35
+
+        triple_svc.add(subject_uuid=subj1, predicate_id="rdf:type", object_value=obj, object_type="uri")
+        triple_svc.add(subject_uuid=subj2, predicate_id="rdf:type", object_value=obj, object_type="uri")
+
+        # Bulk query for both subjects
+        results = triple_svc.get_by_nodes([subj1, subj2])
+        assert len(results) == 2
+
+        # Subject IDs in result
+        result_subjects = {r["subject_uuid"] for r in results}
+        assert subj1 in result_subjects
+        assert subj2 in result_subjects
+
+    def test_get_by_nodes_empty_list(self, triple_svc) -> None:
+        """get_by_nodes with empty list should return empty list."""
+        assert triple_svc.get_by_nodes([]) == []
+
+    def test_get_by_nodes_no_matches(self, triple_svc) -> None:
+        """get_by_nodes with nonexistent IDs should return empty list."""
+        assert triple_svc.get_by_nodes(["nonexistent"]) == []
+
+    def test_get_by_nodes_includes_object_side(self, triple_svc) -> None:
+        """get_by_nodes should find triples where node is URI object."""
+        subj = "s" + "0" * 35
+        obj  = "o" + "0" * 35
+        triple_svc.add(subject_uuid=subj, predicate_id="rdf:type", object_value=obj, object_type="uri")
+
+        # Query for object node — should find the triple
+        results = triple_svc.get_by_nodes([obj])
+        assert len(results) == 1
+        assert results[0]["subject_uuid"] == subj
+        assert results[0]["object_value"] == obj
 
     def test_remove_by_node(self, triple_svc) -> None:
         """remove_by_node should cascade-delete triples referencing a node."""

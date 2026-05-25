@@ -12,7 +12,11 @@ from typing import Optional
 import typer
 
 from A import error, info, tr_multi
-from A_semantika._cli_helpers import pick_triple, validate_type_flags
+from A_semantika._cli_helpers import (
+    _find_triple_by_spo,
+    pick_triple,
+    validate_type_flags,
+)
 from A_semantika._node_service import AmbiguousUUIDError, NodeService
 from A_semantika._preview import confirm_triple, resolve_node_label, resolve_predicate_label
 from A_semantika._triple_service import TripleService
@@ -201,55 +205,7 @@ def aldoni(
         raise typer.Exit(1) from e
 
 
-def _find_triple_for_delete(
-    triple_svc: TripleService,
-    node_svc: NodeService,
-    subject_uuid: str,
-    predicate: str,
-    object_raw: str,
-) -> tuple[str, str, str | None] | None:
-    """Find an existing triple for deletion.
 
-    Tries URI match first (resolving object as node), then literal
-    match. Returns (resolved_object_value, object_type, object_lang)
-    or None if no match found.
-    """
-    # Try URI: resolve object as node
-    try:
-        obj_node = node_svc.resolve_uuid_prefix(object_raw)
-    except AmbiguousUUIDError:
-        obj_node = None
-
-    if obj_node:
-        obj_value = obj_node["node_id"]
-        if triple_svc.get_one(subject_uuid, predicate, obj_value, "uri"):
-            return (obj_value, "uri", None)
-
-    # Try literal: search by subject + predicate + raw object value
-    results = triple_svc.search_triples(
-        subject_uuids=[subject_uuid],
-        predicate_ids=[predicate],
-        object_values=[object_raw],
-        limit=2,
-    )
-    if results:
-        t = results[0]
-        return (t["object_value"], t.get("object_type", "literal"), t.get("object_lang"))
-
-    # Last resort: if object resolved as node, search by node_id
-    # regardless of type
-    if obj_node:
-        results = triple_svc.search_triples(
-            subject_uuids=[subject_uuid],
-            predicate_ids=[predicate],
-            object_values=[obj_node["node_id"]],
-            limit=2,
-        )
-        if results:
-            t = results[0]
-            return (t["object_value"], t.get("object_type", "uri"), t.get("object_lang"))
-
-    return None
 
 
 def forigi(
@@ -361,10 +317,10 @@ def forigi(
     subject_uuid = subj_node["node_id"]
 
     # Find triple (try URI first, then literal)
-    triple_info = _find_triple_for_delete(
+    triple = _find_triple_by_spo(
         triple_svc, node_svc, subject_uuid, predicate, object,
     )
-    if not triple_info:
+    if not triple:
         error(tr_multi(
             "Arko ne trovita.",
             "Arc not found.",
@@ -372,7 +328,9 @@ def forigi(
         ))
         raise typer.Exit(1)
 
-    obj_value, obj_type, obj_lang = triple_info
+    obj_value = triple["object_value"]
+    obj_type = triple.get("object_type", "uri")
+    obj_lang = triple.get("object_lang")
 
     if not yes:
         obj_label = (

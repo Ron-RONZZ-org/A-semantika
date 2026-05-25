@@ -806,7 +806,7 @@ This is not valid RDF — consumers can't parse labels programmatically.
 
 ### Issue #36: Code Review Round 13 — LIKE Escaping, Exception Narrowing, Transaction Wrap, Label Consistency (May 2026)
 
-**Scope:** 7 fixes from the latest code review. 344 tests total (327 existing + 17 new).
+**Scope:** 7 fixes from the 13th code review round. 344 tests total (327 existing + 17 new).
 
 | Fix | Severity | File | Description |
 |-----|----------|------|-------------|
@@ -830,6 +830,59 @@ This is not valid RDF — consumers can't parse labels programmatically.
 | `test_update_without_fts_still_works` | F3 | test_review_round13.py |
 | `test_vidi_shows_id_not_uuid` | F6 | test_review_round13.py |
 | `test_*_message` (6) | F7 | test_review_round13.py |
+
+### Issue #37: Code Review Round 14 — Bulk Triple Query, Constants Consolidation, Triple Find Consolidation (May 2026)
+
+**Scope:** 6 fixes from 14th code review round. 353 tests total (344 existing + 9 new).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| B1 | Med | `_triple_service.py` → `_cli_nodo.py` | **O(N) → O(1) bulk triple query.** Added `TripleService.get_by_nodes()` that fetches triples for multiple nodes in one SQL query. `nodo forigi` now calls this instead of looping `get_by_node()` per node. |
+| Q1 | Low | `_constants.py` (NEW) | **Shared constants module.** Extracted `FTS5_KEYWORDS` frozenset into `_constants.py`, imported by both `_node_helpers.py` and `_predicate_service.py` — eliminates duplicate maintenance. |
+| Q2 | Low | `_cli_helpers.py` | **Consolidated triple-find logic.** Created `_find_triple_by_spo()` as the single URI→literal→last-resort lookup, replacing 80%+ duplicated logic between `_find_triple_for_delete()` (was `_cli_triples.py`) and `find_triple_direct()` (`_cli_helpers.py`). |
+| Q4 | Low | `_preview.py` | **Cached node label resolution.** Added `resolve_node_label_from_node()` that works with pre-resolved node dicts. `build_triple_preview_table()` uses cached subject/object nodes for both display label and raw ID, avoiding redundant `resolve_uuid_prefix()` calls. |
+| Q5 | Low | `_cli_predikato.py` | **Narrowed exception.** Changed `except Exception` → `(sqlite3.Error, ValueError)` in `forigi()`, matching the project's systematic exception narrowing culture. |
+| B2 | Low | `_preview.py` | **Typed literal preview label.** Replaced empty third column in typed literal label row with `"Tipita literal (integer)"` (trilingual) — consistent with string literal and URI preview patterns. |
+
+**Tests added (9):**
+| Test | Fix | File |
+|------|-----|------|
+| `test_get_by_nodes_bulk` | B1 | test_triples.py |
+| `test_get_by_nodes_empty_list` | B1 | test_triples.py |
+| `test_get_by_nodes_no_matches` | B1 | test_triples.py |
+| `test_get_by_nodes_includes_object_side` | B1 | test_triples.py |
+| `test_returns_eo_label` (from_node) | Q4 | test_preview_helpers.py |
+| `test_falls_back_to_en_when_no_eo` (from_node) | Q4 | test_preview_helpers.py |
+| `test_falls_back_to_id_when_no_labels` (from_node) | Q4 | test_preview_helpers.py |
+| `test_falls_back_to_id_when_etikedoj_invalid` (from_node) | Q4 | test_preview_helpers.py |
+| `test_works_with_already_parsed_labels` (from_node) | Q4 | test_preview_helpers.py |
+
+### Issue #39: Code Review Round 15 — Orphan Arc Rollback, AmbiguousUUIDError, Exception Narrowing, Dedup (May 2026)
+
+**Scope:** 4 fixes from a thorough code review. 365 tests total (353 existing + 12 new).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| F1 | High | `_cli_helpers.py` | **Orphan arc rollback.** When `create_node_arcs()` raised `ValueError` after some arcs were created, the rollback `node_svc.delete()` failed with FK violation (already-created arcs reference the node). The node survived as an orphan with partial arcs. **Fix:** Delete arcs via `triple_svc.remove_by_node()` before deleting node. |
+| F2 | Med | `_triple_search.py` | **AmbiguousUUIDError silently swallowed.** `except ValueError` caught `AmbiguousUUIDError` (a subclass) in `resolve_subjects()` and `resolve_objects()`, silently falling through to FTS5 label search which could return unrelated results. **Fix:** Catch `AmbiguousUUIDError` first with user-visible warning, return `[]` instead of misleading fallback. |
+| F3 | Med | `_predicate_service.py` | **Duplicate `_extract_label_text()`** function (16 lines) duplicated the identical logic in `_node_helpers.py:extract_label_text()`. **Fix:** Imported and reused `extract_label_text` from `_node_helpers`; removed duplicate. |
+| F4 | Med | `_node_service.py` | **`except Exception:` too broad** in `NodeService.delete()` post-delete cleanup handler caught type errors, attribute errors, etc. **Fix:** Narrowed to `except (sqlite3.Error, OSError)`. |
+
+**Tests added (12):**
+| Test | Fix | File |
+|------|-----|------|
+| `test_orphan_cleanup_on_partial_failure` | F1 | test_review_round15.py |
+| `test_rollback_with_duplicate_triple` | F1 | test_review_round15.py |
+| `test_resolve_subjects_ambiguous_warns` | F2 | test_review_round15.py |
+| `test_resolve_objects_ambiguous_warns` | F2 | test_review_round15.py |
+| `test_resolve_subjects_not_found_falls_through` | F2 | test_review_round15.py |
+| `test_extract_from_dict` | F3 | test_review_round15.py |
+| `test_extract_from_json_string` | F3 | test_review_round15.py |
+| `test_extract_empty_dict` | F3 | test_review_round15.py |
+| `test_extract_empty_string` | F3 | test_review_round15.py |
+| `test_delete_with_post_delete_failure` | F4 | test_review_round15.py |
+| `test_delete_with_oserror_post_delete` | F4 | test_review_round15.py |
+| `test_delete_with_unexpected_error_raises` | F4 | test_review_round15.py |
 
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9

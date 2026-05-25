@@ -329,12 +329,10 @@ def forigi(
         error(tr_multi("Nenio forigebla.", "Nothing to delete.", "Rien à supprimer."))
         raise typer.Exit(1)
 
-    # Collect triples referencing each resolved node
+    # Collect triples referencing any of the resolved nodes (single bulk query)
     pred_svc = get_predicate_service()
-    all_triples: list[dict] = []
-    for node in resolved:
-        triples = triple_svc.get_by_node(node["node_id"])
-        all_triples.extend(triples)
+    resolved_ids_list = [n["node_id"] for n in resolved]
+    all_triples = triple_svc.get_by_nodes(resolved_ids_list)
 
     # Build set of resolved node_ids that have triples
     nodes_with_triples: set[str] = set()

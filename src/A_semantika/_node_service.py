@@ -211,8 +211,8 @@ class NodeService(CRUDService):
 
         try:
             self._post_delete(node_id, old_data, soft)
-        except Exception:
-            _warning(f"Post-delete cleanup failed for node: {node_id}")
+        except (sqlite3.Error, OSError) as _exc:
+            _warning(f"Post-delete cleanup failed for node: {node_id}: {_exc}")
 
     # ── Override _move_to_trash to use node_id column ────────────────────
 
