@@ -75,9 +75,11 @@ class PredicateService(CRUDService):
             )
 
     def _remove_from_fts(self, predicate_id: str) -> None:
-        """Remove a predicate from FTS index.
+        """Remove a predicate from FTS index using FTS5 'delete' command.
 
-        Uses FTS5 'delete' command for SQLite >= 3.50 compatibility.
+        If the 'delete' command fails, the error is logged but not
+        propagated — FTS inconsistency is preferable to blocking the
+        deletion.
         """
         row = self.db.execute_one(
             "SELECT rowid FROM predicates WHERE predicate_id = ?",
@@ -85,11 +87,18 @@ class PredicateService(CRUDService):
         )
         if not row or row.get("rowid") is None:
             return
-        self.db.execute(
-            "INSERT INTO predicates_fts(predicates_fts, rowid)"
-            " VALUES('delete', ?)",
-            (row["rowid"],),
-        )
+        try:
+            self.db.execute(
+                "INSERT INTO predicates_fts(predicates_fts, rowid)"
+                " VALUES('delete', ?)",
+                (row["rowid"],),
+            )
+        except sqlite3.DatabaseError as exc:
+            from A import warning as _warn
+            _warn(
+                f"FTS cleanup failed for predicate {predicate_id}: {exc} — "
+                "FTS index may be stale (non-critical)"
+            )
 
     def _index_fts(self, predicate_id: str) -> None:
         """Index a single predicate in FTS5."""

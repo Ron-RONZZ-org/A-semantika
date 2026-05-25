@@ -221,9 +221,6 @@ class NodeService(CRUDService):
         if not entry:
             return
 
-        if self._fts_config:
-            self._remove_from_fts(node_id)
-
         from datetime import datetime, timezone
 
         entry["forigita_je"] = datetime.now(timezone.utc).isoformat()
@@ -233,6 +230,9 @@ class NodeService(CRUDService):
         values = list(entry.values())
         placeholders = ", ".join(["?"] * len(columns))
         sql = f"INSERT OR REPLACE INTO {self._trash_table} ({', '.join(columns)}) VALUES ({placeholders})"
+
+        if self._fts_config:
+            self._remove_from_fts(node_id)
 
         with self.db.transaction() as conn:
             conn.execute(sql, values)
@@ -352,16 +352,17 @@ class NodeService(CRUDService):
                 f"INSERT INTO {config.fts_table}({config.fts_table}) VALUES('rebuild')"
             )
 
-    # ── Override _remove_from_fts for SQLite 3.50+ compatibility ────────
+    # ── Override _remove_from_fts (FTS5 'delete' command) ────────────────
 
     def _remove_from_fts(self, node_id: str) -> None:
         """Remove node from FTS index using FTS5 'delete' command.
 
-        Overrides CRUDService._remove_from_fts which uses a direct
-        ``DELETE FROM fts_table`` — this causes ``database disk image is
-        malformed`` on SQLite ≥ 3.50 when the FTS table uses external
-        content (content = nodes).  The FTS5 ``'delete'`` command avoids
-        this bug.
+        Uses the FTS5 ``'delete'`` command rather than a direct
+        ``DELETE FROM fts_table`` because the latter causes ``database
+        disk image is malformed`` on SQLite with external content tables.
+        If the 'delete' command fails, the error is logged but not
+        propagated — FTS inconsistency is preferable to blocking the
+        deletion.
         """
         if not self._fts_config:
             return
@@ -370,11 +371,18 @@ class NodeService(CRUDService):
         )
         if not row or row.get("rowid") is None:
             return
-        self.db.execute(
-            f"INSERT INTO {self._fts_config.fts_table}({self._fts_config.fts_table}, rowid)"
-            " VALUES('delete', ?)",
-            (row["rowid"],),
-        )
+        try:
+            self.db.execute(
+                f"INSERT INTO {self._fts_config.fts_table}"
+                f"({self._fts_config.fts_table}, rowid)"
+                " VALUES('delete', ?)",
+                (row["rowid"],),
+            )
+        except sqlite3.DatabaseError as exc:
+            _warning(
+                f"FTS cleanup failed for node {node_id}: {exc} — "
+                "FTS index may be stale (non-critical)"
+            )
 
     # ── Override _index_fts to use node_id column ─────────────────────────
 

@@ -35,7 +35,7 @@ def _format_delete_error(nid: str, error: Exception) -> str:
                 "Nodo {u} jam estas en la rubujo.",
                 "Node {u} is already in the trash.",
                 "Le nœud {u} est déjà dans la corbeille.",
-            ).format(u=nid[:16])
+            ).format(u=nid)
         if "FOREIGN KEY constraint failed" in err_msg:
             return tr_multi(
                 "Nodo {u} havas arkojn. Forigu ilin unue aŭ uzu la flagon --jes.",
@@ -43,13 +43,13 @@ def _format_delete_error(nid: str, error: Exception) -> str:
                 "Le nœud {u} a des arcs. Supprimez-les d'abord ou utilisez le drapeau --jes.",
             )
         return err_msg
-    if "malformed" in err_msg:
-        return tr_multi(
-            "Datumbazo koruptita. Provu 'VACUUM' aŭ restaŭri de sekurkopio.",
-            "Database corrupted. Try 'VACUUM' or restore from backup.",
-            "Base de données corrompue. Essayez 'VACUUM' ou restaurez à partir d'une sauvegarde.",
-        )
-    return err_msg
+    # Log the actual exception detail before returning user-facing message
+    warning(f"Delete error for {nid}: {type(error).__name__}: {err_msg}")
+    return tr_multi(
+        "Eraro forigante {u}: {e}",
+        "Error deleting {u}: {e}",
+        "Erreur lors de la suppression de {u} : {e}",
+    ).format(u=nid, e=err_msg)
 
 
 nodo_app = typer.Typer(
@@ -429,12 +429,7 @@ def forigi(
             node_svc.delete(nid)
             deleted += 1
         except (sqlite3.IntegrityError, sqlite3.DatabaseError) as e:
-            err_msg = _format_delete_error(nid, e)
-            error(tr_multi(
-                "Eraro forigante {u}: {e}",
-                "Error deleting {u}: {e}",
-                "Erreur lors de la suppression de {u} : {e}",
-            ).format(u=nid[:16], e=err_msg))
+            error(_format_delete_error(nid, e))
 
     info(tr_multi(
         "Forigis {d} el {t} nodoj.",

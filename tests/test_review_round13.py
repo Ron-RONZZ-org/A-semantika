@@ -211,19 +211,22 @@ class TestFormatDeleteError:
         assert msg == "some other error"
 
     def test_malformed_database_message(self):
-        """DatabaseError with 'malformed' should produce corruption msg."""
+        """DatabaseError with 'malformed' should include the actual error."""
         err = sqlite3.DatabaseError("database disk image is malformed")
         msg = _format_delete_error("test-node", err)
-        assert "koruptita" in msg or "corrupted" in msg or "corrompue" in msg
+        assert "test-node" in msg
+        assert "malformed" in msg
 
     def test_other_database_error_passes_through(self):
-        """Other DatabaseError messages should pass through verbatim."""
+        """Other DatabaseError should include UUID and error message."""
         err = sqlite3.DatabaseError("database is locked")
         msg = _format_delete_error("test-node", err)
-        assert msg == "database is locked"
+        assert "test-node" in msg
+        assert "database is locked" in msg
 
     def test_unknown_exception_passes_through(self):
-        """Non-sqlite3 exceptions should pass through verbatim."""
+        """Non-sqlite3 exceptions should include UUID and error message."""
         err = ValueError("something else")
         msg = _format_delete_error("test-node", err)
-        assert msg == "something else"
+        assert "test-node" in msg
+        assert "something else" in msg
