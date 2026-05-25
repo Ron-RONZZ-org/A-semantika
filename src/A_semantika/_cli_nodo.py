@@ -108,6 +108,11 @@ def vidi(
         labels = {}
         defns = {}
 
+    if not isinstance(labels, dict):
+        labels = {}
+    if not isinstance(defns, dict):
+        defns = {}
+
     info(tr_multi("ID: {u}", "ID: {u}", "ID : {u}").format(u=node["node_id"]))
     for lang, val in labels.items():
         info(f"  {lang}: {val}")

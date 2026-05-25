@@ -56,7 +56,7 @@ def ls(
 
     for n in items:
         label = label_from_json(n.get("etikedoj", "{}"))
-        deleted_at = n.get("forigita_je", "")[:19]  # Truncate ISO to seconds
+        deleted_at = (n.get("forigita_je") or "?")[:19]  # Truncate ISO to seconds; "?" for None
         nid = n.get("node_id", "?")
         display_id = nid[:16] if len(nid) > 16 else nid
         table.add_row(display_id, label, deleted_at)

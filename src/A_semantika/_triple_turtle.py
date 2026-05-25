@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import urllib.parse
 from typing import Any
 
 # Turtle PN_LOCAL (simplified): chars allowed in prefixed-name local part.
@@ -65,7 +66,7 @@ def _format_turtle_uri(val: str, prefix_uris: dict[str, str], base_uri: str) -> 
     if _PN_LOCAL_RE.match(val):
         return f":{val}"
     # Fall back to full URI with base
-    return f"<{base_uri}{val}>"
+    return f"<{base_uri}{urllib.parse.quote(val, safe='')}>"
 
 
 def _build_label_map(db: Any) -> dict[str, list[tuple[str, str]]]:

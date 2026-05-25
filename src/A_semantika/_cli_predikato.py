@@ -363,7 +363,7 @@ def forigi(
                 "Eraro forigante {p}: {e}",
                 "Error deleting {p}: {e}",
                 "Erreur lors de la suppression de {p} : {e}",
-                ).format(p=pred.get("predicate_id", pred["predicate_id"][:16]), e=str(e)))
+                ).format(p=pred.get("predicate_id", "")[:16], e=str(e)))
 
     info(tr_multi(
         "Forigis {d} el {t} predikatojn.",
