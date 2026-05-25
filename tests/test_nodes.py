@@ -290,6 +290,23 @@ class TestNodeTrashOlderThan:
         items = node_svc.get_trash_older_than(-1, limit=2)
         assert len(items) <= 2
 
+    def test_empty_all_trash(self, node_svc) -> None:
+        """empty_all_trash should delete all trash entries."""
+        node_svc.create({"node_id": "TRASH1", "etikedoj": {"eo": "Trash1"}})
+        node_svc.create({"node_id": "TRASH2", "etikedoj": {"eo": "Trash2"}})
+        node_svc.delete("TRASH1", soft=True)
+        node_svc.delete("TRASH2", soft=True)
+        assert len(node_svc.get_trash_older_than(-1)) == 2
+
+        deleted = node_svc.empty_all_trash()
+        assert deleted == 2
+        assert len(node_svc.get_trash_older_than(-1)) == 0
+
+    def test_empty_all_trash_empty_db(self, node_svc) -> None:
+        """empty_all_trash on empty trash should return 0."""
+        deleted = node_svc.empty_all_trash()
+        assert deleted == 0
+
 
 class TestNodeDisplayLabel:
     """Display label resolution tests."""

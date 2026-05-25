@@ -26,6 +26,86 @@ from A_semantika.service import (
 )
 
 
+# ── Shared helpers ──────────────────────────────────────────────────────
+
+
+def _resolve_subject_id(
+    node_svc: "NodeService",
+    text: str,
+    label: str = "subjekto",
+) -> str:
+    """Resolve a subject text to a node UUID, or exit on error.
+
+    Args:
+        node_svc: NodeService instance.
+        text: Subject text (UUID prefix or label).
+        label: Context label for error messages (e.g. "nova subjekto").
+
+    Returns:
+        Resolved node UUID.
+
+    Raises:
+        ``typer.Exit(1)`` via ``error()`` if ambiguous or not found.
+    """
+    try:
+        node = node_svc.resolve_node_id_prefix(text)
+    except AmbiguousUUIDError as e:
+        error(tr_multi(
+            f"Ambigua {label}-prefikso: {{e}}",
+            f"Ambiguous {label} prefix: {{e}}",
+            f"Préfixe {label} ambigu : {{e}}",
+        ).format(e=str(e)))
+        raise typer.Exit(1) from e
+    if not node:
+        error(tr_multi(
+            f"{label.capitalize()} ne trovita: {{s}}",
+            f"{label.capitalize()} not found: {{s}}",
+            f"{label.capitalize()} non trouvé : {{s}}",
+        ).format(s=text))
+        raise typer.Exit(1)
+    return node["node_id"]
+
+
+def _resolve_new_object_value(
+    node_svc: "NodeService",
+    new_object_type: str,
+    new_obj_raw: str | None,
+    old_object_value: str,
+    lingvo: str | None,
+    str_: bool,
+) -> tuple[str, str | None]:
+    """Resolve the new object value for a modifi operation.
+
+    For URI types, resolves the text to a node UUID.
+    For literal types, returns the raw value as-is.
+
+    Args:
+        node_svc: NodeService instance.
+        new_object_type: Target object type ("uri" or "literal").
+        new_obj_raw: Raw new object value from CLI.
+        old_object_value: Current object value (fallback if new is None).
+        lingvo: Language tag (only for string literals).
+        str_: Whether the new object is a string literal.
+
+    Returns:
+        Tuple of (resolved_value, object_lang).
+    """
+    new_obj_value: str = new_obj_raw if new_obj_raw is not None else old_object_value
+    new_obj_lang: str | None = lingvo if str_ else None
+
+    if new_object_type == "uri":
+        new_obj_raw_clean = new_obj_raw if new_obj_raw is not None else old_object_value
+        obj_node = _resolve_subject_id(
+            node_svc, new_obj_raw_clean, label="nova objekto"
+        )
+        new_obj_value = obj_node
+
+    return new_obj_value, new_obj_lang
+
+
+# ── Main command ────────────────────────────────────────────────────────
+
+
 def modifi(
     subject: str = typer.Argument(
         ...,
@@ -199,23 +279,7 @@ def modifi(
         object_lang = triple.get("object_lang")
 
         # Resolve old subject
-        try:
-            subj_node = node_svc.resolve_node_id_prefix(subject)
-        except AmbiguousUUIDError as e:
-            error(tr_multi(
-                "Ambigua subjekto-prefikso: {e}",
-                "Ambiguous subject prefix: {e}",
-                "Préfixe sujet ambigu : {e}",
-            ).format(e=str(e)))
-            raise typer.Exit(1) from e
-        if not subj_node:
-            error(tr_multi(
-                "Subjekto ne trovita: {s}",
-                "Subject not found: {s}",
-                "Sujet non trouvé : {s}",
-            ).format(s=subject))
-            raise typer.Exit(1)
-        subject_uuid = subj_node["node_id"]
+        subject_uuid = _resolve_subject_id(node_svc, subject)
 
         # Keep old values for no-op check
         old_object_type = object_type
@@ -223,24 +287,7 @@ def modifi(
         old_object_lang = object_lang
     else:
         # ── Direct mode: full triplet provided ────────────────────
-        # Resolve subject
-        try:
-            subj_node = node_svc.resolve_node_id_prefix(subject)
-        except AmbiguousUUIDError as e:
-            error(tr_multi(
-                "Ambigua subjekto-prefikso: {e}",
-                "Ambiguous subject prefix: {e}",
-                "Préfixe sujet ambigu : {e}",
-            ).format(e=str(e)))
-            raise typer.Exit(1) from e
-        if not subj_node:
-            error(tr_multi(
-                "Subjekto ne trovita: {s}",
-                "Subject not found: {s}",
-                "Sujet non trouvé : {s}",
-            ).format(s=subject))
-            raise typer.Exit(1)
-        subject_uuid = subj_node["node_id"]
+        subject_uuid = _resolve_subject_id(node_svc, subject)
 
         # Try to find existing triple (URI or literal)
         existing, old_object_type, old_object_lang = find_triple_direct(
@@ -263,46 +310,13 @@ def modifi(
     new_obj_raw = new_object if new_object is not None else old_object_value
 
     # Resolve new subject UUID
-    try:
-        new_subj_node = node_svc.resolve_node_id_prefix(new_subj)
-    except AmbiguousUUIDError as e:
-        error(tr_multi(
-            "Ambigua nova subjekto-prefikso: {e}",
-            "Ambiguous new subject prefix: {e}",
-            "Préfixe nouveau sujet ambigu : {e}",
-        ).format(e=str(e)))
-        raise typer.Exit(1) from e
-    if not new_subj_node:
-        error(tr_multi(
-            "Nova subjekto ne trovita: {s}",
-            "New subject not found: {s}",
-            "Nouveau sujet non trouvé : {s}",
-        ).format(s=new_subj))
-        raise typer.Exit(1)
-    new_subj_uuid = new_subj_node["node_id"]
+    new_subj_uuid = _resolve_subject_id(node_svc, new_subj, label="nova subjekto")
 
     # Resolve new object (URI → node lookup, literal → raw value)
-    new_obj_value: str = new_obj_raw
-    new_obj_lang: str | None = lingvo if str_ else None
-    if new_object_type == "uri":
-        new_obj_raw_clean = new_obj_raw if new_obj_raw is not None else (old_object_value or "")
-        try:
-            new_obj_node = node_svc.resolve_node_id_prefix(new_obj_raw_clean)
-        except AmbiguousUUIDError as e:
-            error(tr_multi(
-                "Ambigua nova objekto-prefikso: {e}",
-                "Ambiguous new object prefix: {e}",
-                "Préfixe nouvel objet ambigu : {e}",
-            ).format(e=str(e)))
-            raise typer.Exit(1) from e
-        if not new_obj_node:
-            error(tr_multi(
-                "Nova objekto ne trovita: {o}",
-                "New object not found: {o}",
-                "Nouvel objet non trouvé : {o}",
-            ).format(o=new_obj_raw_clean))
-            raise typer.Exit(1)
-        new_obj_value = new_obj_node["node_id"]
+    new_obj_value, new_obj_lang = _resolve_new_object_value(
+        node_svc, new_object_type, new_obj_raw,
+        old_object_value, lingvo, str_,
+    )
 
     # ── Preview & confirm ─────────────────────────────────────────
     if not yes:

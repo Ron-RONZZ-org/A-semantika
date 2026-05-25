@@ -164,3 +164,62 @@ class TestResolveNodeLabelFromNode:
         node = {"node_id": "abc123", "etikedoj": {"eo": "Hundo"}}
         label = resolve_node_label_from_node(node)
         assert label == "Hundo"
+
+
+# ── build_modify_preview coverage ─────────────────────────────────────
+
+
+class TestBuildModifyPreview:
+    """build_modify_preview() should produce correct old→new tables."""
+
+    def test_build_uri_preview(self, node_svc, pred_svc):
+        """URI triple modifi preview should show labels and raw IDs."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        from A_semantika._cli_helpers import build_modify_preview
+
+        subj = node_svc.create({"etikedoj": {"eo": "Hundo"}})
+        obj = node_svc.create({"etikedoj": {"eo": "Mamulo"}})
+        new_subj = node_svc.create({"etikedoj": {"eo": "Lupo"}})
+
+        table = build_modify_preview(
+            node_svc, pred_svc,
+            subj["node_id"], "rdf:type", obj["node_id"],
+            "uri", None,
+            new_subj["node_id"], "rdfs:label", obj["node_id"],
+            "uri", None,
+        )
+        assert table is not None
+        buf = StringIO()
+        console = Console(file=buf, width=120)
+        console.print(table)
+        output = buf.getvalue()
+        assert "Malnova" in output or "Old" in output
+        assert "Nova" in output or "New" in output
+
+    def test_build_literal_preview(self, node_svc, pred_svc):
+        """Literal triple modifi preview should show quoted value."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        from A_semantika._cli_helpers import build_modify_preview
+
+        subj = node_svc.create({"etikedoj": {"eo": "Hundo"}})
+        new_subj = node_svc.create({"etikedoj": {"eo": "Lupo"}})
+
+        table = build_modify_preview(
+            node_svc, pred_svc,
+            subj["node_id"], "rdfs:label", "Malnova Etikedo",
+            "literal", "eo",
+            new_subj["node_id"], "rdfs:label", "Nova Etikedo",
+            "literal", "eo",
+        )
+        assert table is not None
+        buf = StringIO()
+        console = Console(file=buf, width=120)
+        console.print(table)
+        output = buf.getvalue()
+        assert "Malnova Etikedo" in output or "Nova Etikedo" in output

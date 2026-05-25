@@ -49,37 +49,60 @@ def _is_numeric(text: str) -> bool:
 # ── Subject resolution ────────────────────────────────────────────────────────
 
 
-def resolve_subjects(node_svc: NodeService, text: str) -> list[str]:
-    """Resolve subject text to a list of node UUIDs.
+def _resolve_node_by_label(
+    node_svc: NodeService, text: str,
+) -> tuple[list[str], bool]:
+    """Resolve text to node IDs via UUID prefix or FTS5 label search.
+
+    Shared helper used by both resolve_subjects() and resolve_objects()
+    — encapsulates the common UUID-prefix-then-FTS5 resolution pattern.
 
     Resolution order:
     1. If text looks like a UUID prefix, try resolve_node_id_prefix()
     2. Fall back to NodeService.search() via FTS5 label search
     3. Return empty list if no matches
+
+    Returns:
+        Tuple of (node_ids, ambiguous) where:
+        - node_ids: List of matching node IDs, or empty list if no match.
+        - ambiguous: True if the text was a UUID prefix that matched
+          multiple nodes (prevents callers from falling through to
+          literal-mode fallback).
     """
     if not text or not text.strip():
-        return []
+        return ([], False)
 
     # Step 1: Try UUID prefix resolution
     if _looks_like_uuid_prefix(text):
         try:
             node = node_svc.resolve_node_id_prefix(text)
             if node:
-                return [node["node_id"]]
+                return ([node["node_id"]], False)
         except AmbiguousUUIDError:
             _warning(
                 f"Ambiguous prefix '{text}' — multiple nodes match"
             )
-            return []  # Don't fall through to FTS5 — ambiguous prefix
+            return ([], True)  # Don't fall through to FTS5 — ambiguous prefix
         except ValueError:
             pass  # Not found — fall through to label search
 
     # Step 2: FTS5 label search
     results = node_svc.search(text, limit=50)
     if results:
-        return [r["node_id"] for r in results]
+        return ([r["node_id"] for r in results], False)
 
-    return []
+    return ([], False)
+
+
+def resolve_subjects(node_svc: NodeService, text: str) -> list[str]:
+    """Resolve subject text to a list of node UUIDs.
+
+    Delegates to :func:`_resolve_node_by_label` for the common
+    UUID-prefix-then-FTS5 pattern. Ambiguous prefixes return empty
+    (no literal-mode fallback for subjects).
+    """
+    node_ids, _ = _resolve_node_by_label(node_svc, text)
+    return node_ids
 
 
 # ── Predicate resolution ──────────────────────────────────────────────────────
@@ -119,33 +142,20 @@ def resolve_objects(node_svc: NodeService, text: str) -> list[str]:
     For literal objects, the raw text is returned as-is.
 
     Resolution order:
-    1. If text looks like a UUID prefix, try resolve_node_id_prefix()
-    2. Fall back to NodeService.search() via FTS5 label search
-    3. If still no matches, return the raw text as a literal match candidate
+    1. Delegate to :func:`_resolve_node_by_label` (UUID prefix → FTS5)
+    2. If still no matches, return the raw text as a literal match candidate
     """
     if not text or not text.strip():
         return []
 
-    # Step 1: Try UUID prefix resolution
-    if _looks_like_uuid_prefix(text):
-        try:
-            node = node_svc.resolve_node_id_prefix(text)
-            if node:
-                return [node["node_id"]]
-        except AmbiguousUUIDError:
-            _warning(
-                f"Ambiguous prefix '{text}' — multiple nodes match"
-            )
-            return []  # Don't fall through to FTS5 — ambiguous prefix
-        except ValueError:
-            pass  # Not found
+    # Step 1: Try UUID prefix resolution → FTS5 label search
+    resolved, ambiguous = _resolve_node_by_label(node_svc, text)
+    if resolved:
+        return resolved
+    if ambiguous:
+        return []  # Don't fall through to literal mode — ambiguous prefix
 
-    # Step 2: FTS5 label search — match node labels (for URI objects)
-    results = node_svc.search(text, limit=50)
-    if results:
-        return [r["node_id"] for r in results]
-
-    # Step 3: Return raw text as literal value match candidate.
+    # Step 2: Return raw text as literal value match candidate.
     # Only warn if the text looks like it could be a mistyped node identifier
     # (single word, non-numeric). Multi-word phrases, numbers, and quoted
     # strings are clearly intentional literal searches.

@@ -273,6 +273,26 @@ class TestTripleCountAndStats:
         cnt = triple_svc.count_by_subject_or_object("nonexistent")
         assert cnt == 0
 
+    def test_get_subject_objects(self, triple_svc) -> None:
+        """get_subject_objects should return triples with object node labels."""
+        subj = "s" + "0" * 35
+        obj  = "o" + "0" * 35
+        triple_svc.add(
+            subject_uuid=subj, predicate_id="rdf:type",
+            object_value=obj, object_type="uri",
+        )
+        results = triple_svc.get_subject_objects(subj)
+        assert len(results) == 1
+        assert results[0]["subject_uuid"] == subj
+        assert results[0]["predicate_id"] == "rdf:type"
+        assert results[0]["object_value"] == obj
+        # Should include etikedoj from the object node (URI join)
+        assert "object_node_etikedoj" in results[0]
+
+    def test_get_subject_objects_empty(self, triple_svc) -> None:
+        """get_subject_objects for a node with no triples should return empty list."""
+        assert triple_svc.get_subject_objects("nonexistent") == []
+
 
 class TestTripleTurtleExport:
     """Turtle export tests."""
