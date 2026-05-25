@@ -804,6 +804,33 @@ This is not valid RDF — consumers can't parse labels programmatically.
 | `test_modifi_uri_to_literal` | B4 | test_triple_modifi_edge.py |
 | `test_modifi_literal_noop` | B4 | test_triple_modifi_edge.py |
 
+### Issue #36: Code Review Round 13 — LIKE Escaping, Exception Narrowing, Transaction Wrap, Label Consistency (May 2026)
+
+**Scope:** 7 fixes from the latest code review. 344 tests total (327 existing + 17 new).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| F1 | Med | `_cli_predikat_grupo.py` | LIKE wildcard escaping — `%`/`_`/`\` in user input now escaped before `LIKE ?` in `_match_groups_by_prefix()`, preventing unintended wildcard matching |
+| F2 | Med | `migrations.py` | Replaced 6 bare `except Exception: pass` with narrow `(sqlite3.OperationalError, sqlite3.DatabaseError)` + `warning()` calls across all 5 migration functions |
+| F3 | Med | `_node_service.py` | `NodeService.update()` now wraps the node UPDATE + FTS re-index (`_remove_from_fts` + `_index_fts`) in a single transaction to prevent data/FTS inconsistency |
+| F4 | Med | `_cli_predikat_grupo.py` | Narrowed `except Exception` → `except (sqlite3.Error, ValueError)` in `forigi()` Phase 3 |
+| F5 | Low | `_cli_rubujo.py` | Narrowed `except Exception` → `except (sqlite3.Error, ValueError)` in `_batch_restore()` and `forigi()` |
+| F6 | Low | `_cli_nodo.py` | Changed `"UUID: {u}"` → `"ID: {u}"` in `vidi()` output to match `node_id` column name |
+| F7 | Low | `_cli_nodo.py` | Extracted `_format_delete_error()` helper to eliminate duplicated `IntegrityError`/`DatabaseError` formatting; removed unused `DuplicateTripleError` import |
+
+**Tests added (17):**
+| Test | Fix | File |
+|------|-----|------|
+| `test_underscore_matched_literally` | F1 | test_review_round13.py |
+| `test_percent_matched_literally` | F1 | test_review_round13.py |
+| `test_backslash_escaped` | F1 | test_review_round13.py |
+| `test_migrate_*_idempotent` (4) | F2 | test_review_round13.py |
+| `test_all_migrations_graceful_on_empty_db` | F2 | test_review_round13.py |
+| `test_update_preserves_fts_index` | F3 | test_review_round13.py |
+| `test_update_without_fts_still_works` | F3 | test_review_round13.py |
+| `test_vidi_shows_id_not_uuid` | F6 | test_review_round13.py |
+| `test_*_message` (6) | F7 | test_review_round13.py |
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
