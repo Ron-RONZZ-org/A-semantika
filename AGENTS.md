@@ -944,6 +944,50 @@ This is not valid RDF — consumers can't parse labels programmatically.
 
 **Tests:** All 377 tests pass (370 existing + 7 new performance benchmarks).
 
+### Issue #41: Code Review Round 17 — LIKE Wildcard Escaping, URI Encoding, JSON Array Guard, Dead Fallback (May 2026)
+
+**Scope:** Fixes from comprehensive code review covering 7 source files + 13 new regression tests. 390 tests total (377 existing + 13 new).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| M1 | Medium | `_cli_predikato.py:366` | **Dead fallback** — `pred.get("predicate_id", pred["predicate_id"][:16])` eagerly evaluates the default, crashing with `KeyError` if key missing. Changed to `pred.get("predicate_id", "")[:16]`. |
+| M2 | High | `_node_service.py:494` | **LIKE wildcard escaping** — The LIKE fallback query in `NodeService.search()` did not escape `%`/`_`/`\` in user queries. A search for `"100%"` would match `"100x done"` via wildcard. Added the same `replace()` escaping pattern used in all other LIKE queries. |
+| M3 | Medium | `_preview.py:39` | **Clarifying comment** — Added docstring explaining that `ValueError` catch is specifically for invalid UUID formats from `get_display_label()`. |
+| M4 | Medium | `_cli_nodo.py:112` | **JSON array guard** — `vidi` command ran `json.loads(node["etikedoj"])` without checking that the result is a `dict`. If `etikedoj` contained a JSON array, `labels.items()` would crash with `AttributeError`. Added `isinstance(labels, dict)` and `isinstance(defns, dict)` guards. |
+| M5 | Medium | `_triple_turtle.py:64` | **URI encoding** — Fallback `f"<{base_uri}{val}>"` concatenated bare values without percent-encoding. Values with spaces (`"my value"`) or quotes produced invalid Turtle URIs. Changed to `urllib.parse.quote(val, safe='')`. |
+| L4 | Low | `_cli_rubujo.py:59` | **NULL date display** — SQLite returns `None` for `NULL` columns, not a missing key. `n.get("forigita_je", "?")` returned `None`, crashing on `[:19]`. Changed to `(n.get("forigita_je") or "?")[:19]`. |
+| L5 | Low | `_node_helpers.py:74-76` | **Clarifying comment** — Added comment explaining that `isinstance(val, str)` guard skips non-string values. |
+
+**Key findings from review process:**
+- **H1/H2 false positive**: The review flagged `except RuntimeError` as too narrow in `_wikidata_helper.py`, but analysis of A-core's `_api_get()` confirmed that `URLError` and `TimeoutError` are caught internally and re-raised as `RuntimeError`. No change needed.
+- **L1 skipped**: The reviewer's concern about `--str` without `--nova-objekto` silently re-inserting the old value is a valid use case (changing type without changing value). Not a bug.
+- **L6 skipped**: `_label_from_etikedoj` wrapper has a `str | dict` signature that's different from `label_from_json`'s `str`-only signature. Inlining would require more extensive changes.
+
+**Tests added (13 in `test_review_round17.py`):**
+| Test | What it tests |
+|------|---------------|
+| `TestM1DeadFallback::test_missing_predicate_id_in_error_format` | `pred.get("predicate_id", "")[:16]` safe with missing key |
+| `TestM2LIKEescaping::test_like_wildcard_no_false_match` | `%` in LIKE queries escaped correctly (DB-level) |
+| `TestM2LIKEescaping::test_like_underscore_no_false_match` | `_` in LIKE queries escaped correctly (DB-level) |
+| `TestM3ValueErrorFallback::test_invalid_uuid_prefix` | Non-hex prefix falls back to truncated input |
+| `TestM3ValueErrorFallback::test_short_prefix_fallback` | Very short prefix returns itself |
+| `TestM4JsonArrayGuard::test_etikedoj_json_array_no_crash` | `vidi` with JSON array in `etikedoj` doesn't crash |
+| `TestM4JsonArrayGuard::test_difinoj_json_array_no_crash` | `vidi` with JSON array in `difinoj` doesn't crash |
+| `TestM5URIEncoding::test_percent_encode_fallback_uri` | Spaces encoded as `%20` in Turtle URIs |
+| `TestM5URIEncoding::test_no_encoding_for_valid_prefixed_name` | Known prefixes with valid local parts unchanged |
+| `TestM5URIEncoding::test_encoding_for_special_chars_in_value` | Double-quote encoded as `%22` |
+| `TestL4MissingDateFallback::test_missing_deleted_at_shows_question_mark` | `rubujo ls` shows `?` for `NULL` `forigita_je` |
+| `TestSmoke::test_import_preview` | `_preview` module loads without error |
+| `TestSmoke::test_import_triple_turtle` | `_triple_turtle` module loads without error |
+
+**User Simulation Test (verified):**
+- M2: Create nodes with `100% done` and `100x done` → search `100%` returns both via FTS, but LIKE protected
+- M4: Inject JSON array into `etikedoj` → `nodo vidi` displays ID + timestamps, no crash
+- L4: Soft-delete node, NULL `forigita_je` → `rubujo ls` shows `?` gracefully
+- M5: Verified `_format_turtle_uri("my value", {}, "https://example.org/")` → `<https://example.org/my%20value>`
+
+**Tests:** All 390 tests pass (377 existing + 13 new regression tests).
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
