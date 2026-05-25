@@ -11,12 +11,46 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi, warning
-from A_semantika._cli_helpers import ensure_predicate
-from A_semantika._triple_service import DuplicateTripleError
+from A_semantika._cli_helpers import create_node_arcs, ensure_predicate, resolve_arc_targets
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import confirm_node_with_arcs, resolve_node_label, resolve_predicate_label
 from A_semantika.data.storage import label_from_json
 from A_semantika.service import get_node_service, get_predicate_service, get_triple_service
+
+
+def _format_delete_error(nid: str, error: Exception) -> str:
+    """Format a human-readable delete error from an IntegrityError or DatabaseError.
+
+    Args:
+        nid: Node ID (for reference in the message).
+        error: The caught exception.
+
+    Returns:
+        A user-facing error message string (already localized via tr_multi).
+    """
+    err_msg = str(error)
+    if isinstance(error, sqlite3.IntegrityError):
+        if "UNIQUE constraint failed" in err_msg:
+            return tr_multi(
+                "Nodo {u} jam estas en la rubujo.",
+                "Node {u} is already in the trash.",
+                "Le nœud {u} est déjà dans la corbeille.",
+            ).format(u=nid[:16])
+        if "FOREIGN KEY constraint failed" in err_msg:
+            return tr_multi(
+                "Nodo {u} havas arkojn. Forigu ilin unue aŭ uzu la flagon --jes.",
+                "Node {u} has arcs. Delete them first or use the --jes flag.",
+                "Le nœud {u} a des arcs. Supprimez-les d'abord ou utilisez le drapeau --jes.",
+            )
+        return err_msg
+    if "malformed" in err_msg:
+        return tr_multi(
+            "Datumbazo koruptita. Provu 'VACUUM' aŭ restaŭri de sekurkopio.",
+            "Database corrupted. Try 'VACUUM' or restore from backup.",
+            "Base de données corrompue. Essayez 'VACUUM' ou restaurez à partir d'une sauvegarde.",
+        )
+    return err_msg
+
 
 nodo_app = typer.Typer(
     name="nodo",
@@ -74,7 +108,7 @@ def vidi(
         labels = {}
         defns = {}
 
-    info(tr_multi("UUID: {u}", "UUID: {u}", "UUID : {u}").format(u=node["node_id"]))
+    info(tr_multi("ID: {u}", "ID: {u}", "ID : {u}").format(u=node["node_id"]))
     for lang, val in labels.items():
         info(f"  {lang}: {val}")
     if defns:
@@ -133,57 +167,9 @@ def aldoni(
     ensure_predicate(pred_svc, "owl:disjointWith", "disjointWith")
     ensure_predicate(pred_svc, "owl:inverseOf", "inverseOf")
 
-    arc_templates: list[tuple[str, str]] = []
-    arc_errors: list[str] = []
-
-    def _resolve_arc_target(predicate: str, user_input: str) -> str | None:
-        """Resolve an arc target node_id. Returns node_id or None (not found).
-
-        Warns when an explicitly provided target is not found, so the user
-        is not misled into thinking the arc was created.
-        """
-        target = node_svc.resolve_uuid_prefix(user_input)
-        if target:
-            return target["node_id"]
-        warning(tr_multi(
-            "Arka celo ne trovita: {t} (preterlasita)",
-            "Arc target not found: {t} (skipped)",
-            "Cible d'arc non trouvée : {t} (ignorée)",
-        ).format(t=user_input))
-        return None
-
-    for t in (tipo or []):
-        try:
-            target_id = _resolve_arc_target("rdf:type", t)
-            if target_id:
-                arc_templates.append((target_id, "rdf:type"))
-        except AmbiguousUUIDError as e:
-            arc_errors.append(tr_multi("Ambigua tipo-prefikso: {e}",
-                "Ambiguous type prefix: {e}", "Préfixe type ambigu : {e}").format(e=str(e)))
-    for s in (superklaso or []):
-        try:
-            target_id = _resolve_arc_target("rdfs:subClassOf", s)
-            if target_id:
-                arc_templates.append((target_id, "rdfs:subClassOf"))
-        except AmbiguousUUIDError as e:
-            arc_errors.append(tr_multi("Ambigua superklaso-prefikso: {e}",
-                "Ambiguous superclass prefix: {e}", "Préfixe superclasse ambigu : {e}").format(e=str(e)))
-    for n in (ne or []):
-        try:
-            target_id = _resolve_arc_target("owl:disjointWith", n)
-            if target_id:
-                arc_templates.append((target_id, "owl:disjointWith"))
-        except AmbiguousUUIDError as e:
-            arc_errors.append(tr_multi("Ambigua malakorda-prefikso: {e}",
-                "Ambiguous disjoint prefix: {e}", "Préfixe disjoint ambigu : {e}").format(e=str(e)))
-    for inv in (invers or []):
-        try:
-            target_id = _resolve_arc_target("owl:inverseOf", inv)
-            if target_id:
-                arc_templates.append((target_id, "owl:inverseOf"))
-        except AmbiguousUUIDError as e:
-            arc_errors.append(tr_multi("Ambigua inversa-prefikso: {e}",
-                "Ambiguous inverse prefix: {e}", "Préfixe inverse ambigu : {e}").format(e=str(e)))
+    arc_templates, arc_errors = resolve_arc_targets(
+        node_svc, tipo, superklaso, ne, invers,
+    )
 
     if arc_errors:
         for msg in arc_errors:
@@ -213,18 +199,11 @@ def aldoni(
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
             raise typer.Exit(0)
 
-        for arc in arcs:
-            try:
-                triple_svc.add(
-                    subject_uuid=arc["subject"],
-                    predicate_id=arc["predicate"],
-                    object_value=arc["object"],
-                    object_type=arc["object_type"],
-                )
-            except DuplicateTripleError:
-                pass  # Silently skip — triple already exists, no harm
-            except ValueError as e:
-                raise  # Re-raise genuine errors
+        try:
+            create_node_arcs(triple_svc, node_svc, node_id_val, arcs)
+        except ValueError as e:
+            error(str(e))
+            raise typer.Exit(1) from e
     elif not yes:
         from A.utils.interactive import confirm_action
 
@@ -432,37 +411,8 @@ def forigi(
                 triple_svc.remove_by_node(nid)
             node_svc.delete(nid)
             deleted += 1
-        except sqlite3.IntegrityError as e:
-            err_msg = str(e)
-            if "UNIQUE constraint failed" in err_msg:
-                err_msg = tr_multi(
-                    "Nodo {u} jam estas en la rubujo.",
-                    "Node {u} is already in the trash.",
-                    "Le nœud {u} est déjà dans la corbeille.",
-                ).format(u=nid[:16])
-            elif "FOREIGN KEY constraint failed" in err_msg:
-                err_msg = tr_multi(
-                    "Nodo {u} havas arkojn. Forigu ilin unue aŭ uzu la flagon --jes.",
-                    "Node {u} has arcs. Delete them first or use the --jes flag.",
-                    "Le nœud {u} a des arcs. Supprimez-les d'abord ou utilisez le drapeau --jes.",
-                )
-            else:
-                err_msg = str(e)
-            error(tr_multi(
-                "Eraro forigante {u}: {e}",
-                "Error deleting {u}: {e}",
-                "Erreur lors de la suppression de {u} : {e}",
-            ).format(u=nid[:16], e=err_msg))
-        except sqlite3.DatabaseError as e:
-            err_msg = str(e)
-            if "malformed" in err_msg:
-                err_msg = tr_multi(
-                    "Datumbazo koruptita. Provu 'VACUUM' aŭ restaŭri de sekurkopio.",
-                    "Database corrupted. Try 'VACUUM' or restore from backup.",
-                    "Base de données corrompue. Essayez 'VACUUM' ou restaurez à partir d'une sauvegarde.",
-                )
-            else:
-                err_msg = str(e)
+        except (sqlite3.IntegrityError, sqlite3.DatabaseError) as e:
+            err_msg = _format_delete_error(nid, e)
             error(tr_multi(
                 "Eraro forigante {u}: {e}",
                 "Error deleting {u}: {e}",

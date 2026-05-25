@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 
+from A_semantika._node_helpers import get_display_label
+
 
 class TestNodeCreate:
     """Node creation tests."""
@@ -281,26 +283,26 @@ class TestNodeDisplayLabel:
     def test_get_display_label_eo(self, node_svc) -> None:
         """Display label should prefer eo."""
         node = node_svc.create({"etikedoj": {"eo": "Hundo", "en": "Dog"}})
-        label, lang = node_svc.get_display_label(node["node_id"])
+        label, lang = get_display_label(node_svc.resolve_uuid_prefix, node["node_id"])
         assert label == "Hundo"
         assert lang == "eo"
 
     def test_get_display_label_en_fallback(self, node_svc) -> None:
         """Display label should fall back to en."""
         node = node_svc.create({"etikedoj": {"en": "Dog"}})
-        label, lang = node_svc.get_display_label(node["node_id"])
+        label, lang = get_display_label(node_svc.resolve_uuid_prefix, node["node_id"])
         assert label == "Dog"
         assert lang == "en"
 
     def test_get_display_label_fallback_id(self, node_svc) -> None:
         """Display label with no labels should return node_id prefix."""
         node = node_svc.create({"etikedoj": {}})
-        label, lang = node_svc.get_display_label(node["node_id"])
+        label, lang = get_display_label(node_svc.resolve_uuid_prefix, node["node_id"])
         assert label == node["node_id"][:16]
         assert lang == ""
 
     def test_get_display_label_nonexistent(self, node_svc) -> None:
         """Nonexistent node_id should return the input as-is."""
-        label, lang = node_svc.get_display_label("nonexistent")
+        label, lang = get_display_label(node_svc.resolve_uuid_prefix, "nonexistent")
         assert label == "nonexistent"
         assert lang == ""

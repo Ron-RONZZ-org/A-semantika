@@ -14,6 +14,7 @@ from A.core.backup_targets import BackupTarget
 from A_semantika.data.migrations import (
     migrate_nodes_uuid_to_node_id,
     migrate_predicate_group_members_unique,
+    migrate_predicates_fts,
     migrate_predicates_uuid_to_predicate_id,
 )
 
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS predicates (
     predicate_id  TEXT PRIMARY KEY,
     source        TEXT NOT NULL DEFAULT 'manual',
     etikedoj      TEXT NOT NULL DEFAULT '{}',
+    label_text    TEXT NOT NULL DEFAULT '',     -- denormalized from etikedoj (for FTS5)
     priskriboj    TEXT NOT NULL DEFAULT '{}',
     aliases       TEXT NOT NULL DEFAULT '[]',
     kreita_je     TEXT NOT NULL,
@@ -110,6 +112,17 @@ CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
     content_rowid=rowid,
     tokenize='unicode61'
 );
+
+-- FTS5 on predicates (external content table)
+CREATE VIRTUAL TABLE IF NOT EXISTS predicates_fts USING fts5(
+    predicate_id UNINDEXED,
+    etikedoj,
+    priskriboj,
+    aliases,
+    content=predicates,
+    content_rowid=rowid,
+    tokenize='unicode61'
+);
 """
 
 
@@ -157,11 +170,18 @@ def _seed_default_predicates(db: "SQLiteDB") -> None:
     """
     now_iso = now()
     for pred in DEFAULT_PREDICATES:
+        etikedoj = pred["etikedoj"]
+        # Extract label_text from etikedoj JSON
+        try:
+            labels = json.loads(etikedoj) if isinstance(etikedoj, str) else etikedoj
+            label_text = " ".join(v for v in labels.values() if v and isinstance(v, str))
+        except (json.JSONDecodeError, TypeError):
+            label_text = ""
         db.execute(
             "INSERT OR IGNORE INTO predicates "
-            "(predicate_id, source, etikedoj, priskriboj, aliases, kreita_je, modifita_je) "
-            "VALUES (?, ?, ?, '{}', '[]', ?, ?)",
-            (pred["predicate_id"], pred["source"], pred["etikedoj"], now_iso, now_iso),
+            "(predicate_id, source, etikedoj, label_text, priskriboj, aliases, kreita_je, modifita_je) "
+            "VALUES (?, ?, ?, ?, '{}', '[]', ?, ?)",
+            (pred["predicate_id"], pred["source"], etikedoj, label_text, now_iso, now_iso),
         )
 
 
@@ -182,8 +202,26 @@ def init_db(db: "SQLiteDB | None" = None) -> None:
     migrate_nodes_uuid_to_node_id(db)
     migrate_predicates_uuid_to_predicate_id(db)
     migrate_predicate_group_members_unique(db)
+    # Create predicates_fts table (may be needed by FTS migrations below)
+    db.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS predicates_fts"
+        " USING fts5("
+        "  predicate_id UNINDEXED,"
+        "  etikedoj,"
+        "  priskriboj,"
+        "  aliases,"
+        "  content=predicates,"
+        "  content_rowid=rowid,"
+        "  tokenize='unicode61'"
+        ")"
+    )
+    migrate_predicates_fts(db)
     # Seed built-in RDF/OWL predicates (must be AFTER migrations)
     _seed_default_predicates(db)
+    # Always rebuild FTS index after seeding to ensure seeded
+    # predicates (inserted via raw SQL, not PredicateService.create)
+    # are indexed for full-text search.
+    db.execute("INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')")
 
 
 def close_db() -> None:

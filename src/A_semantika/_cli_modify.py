@@ -8,11 +8,11 @@ from __future__ import annotations
 from typing import Optional
 
 import typer
-from rich.box import SIMPLE as BOX_SIMPLE
-from rich.table import Table
 
 from A import error, info, tr_multi
 from A_semantika._cli_helpers import (
+    build_modify_preview,
+    find_triple_direct,
     pick_triple,
     resolve_deprecated,
     validate_type_flags,
@@ -24,113 +24,6 @@ from A_semantika.service import (
     get_predicate_service,
     get_triple_service,
 )
-
-
-def _build_modify_preview(
-    node_svc,
-    pred_svc,
-    subject_uuid: str,
-    predicate: str,
-    object_value: str,
-    object_type: str,
-    object_lang: str | None,
-    new_subj_uuid: str,
-    new_pred: str,
-    new_obj_value: str,
-    new_obj_type: str,
-    new_obj_lang: str | None,
-) -> Table:
-    """Build a preview table for modifi showing old → new values.
-
-    Handles both URI and literal object types.
-    """
-    table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
-    table.add_column("", no_wrap=True)
-    table.add_column(tr_multi("Subjekto", "Subject", "Sujet"), no_wrap=True)
-    table.add_column(tr_multi("Predikato", "Predicate", "Predicat"), no_wrap=True)
-    table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=True)
-
-    old_subj_label = resolve_node_label(node_svc, subject_uuid)
-
-    def _obj_display(val: str, typ: str, lang: str | None) -> str:
-        if typ == "uri":
-            return f"{resolve_node_label(node_svc, val)} ({val[:16]})"
-        if lang:
-            return f'"{val}"@{lang}'
-        return f'"{val}"'
-
-    old_pred_label = resolve_predicate_label(pred_svc, predicate)
-    old_obj_display = _obj_display(object_value, object_type, object_lang)
-    table.add_row(
-        tr_multi("Malnova", "Old", "Ancien"),
-        f"{old_subj_label} ({subject_uuid[:16]})",
-        old_pred_label,
-        old_obj_display,
-    )
-
-    new_subj_label = resolve_node_label(node_svc, new_subj_uuid)
-    new_pred_label = resolve_predicate_label(pred_svc, new_pred)
-    new_obj_display = _obj_display(new_obj_value, new_obj_type, new_obj_lang)
-    table.add_row(
-        tr_multi("Nova", "New", "Nouveau"),
-        f"{new_subj_label} ({new_subj_uuid[:16]})",
-        new_pred_label,
-        new_obj_display,
-    )
-
-    return table
-
-
-def _find_triple_direct(
-    triple_svc, node_svc, subject_uuid: str, predicate: str, object: str,
-) -> tuple[dict | None, str, str | None]:
-    """Find an existing triple in direct mode (full SPO specified).
-
-    Tries URI match first (resolving object as a node reference), then
-    literal match.
-
-    Returns:
-        Tuple of (triple_dict or None, resolved_object_type, resolved_object_lang).
-    """
-    # Try URI: resolve object as node
-    try:
-        obj_node = node_svc.resolve_uuid_prefix(object)
-    except AmbiguousUUIDError:
-        obj_node = None
-
-    if obj_node:
-        existing = triple_svc.get_one(subject_uuid, predicate, obj_node["node_id"], "uri")
-        if existing:
-            return existing, "uri", None
-    else:
-        obj_node = None
-
-    # Try literal match by subject + predicate + object_value
-    results = triple_svc.search_triples(
-        subject_uuids=[subject_uuid],
-        predicate_ids=[predicate],
-        object_values=[object],
-        limit=2,
-    )
-    if results:
-        t = results[0]
-        return t, t.get("object_type", "literal"), t.get("object_lang")
-
-    # Last resort: try with raw object as URI (for object that matched UUID
-    # but was not a triple with object_type='uri')
-    if obj_node:
-        # Try searching by node_id regardless of type
-        results = triple_svc.search_triples(
-            subject_uuids=[subject_uuid],
-            predicate_ids=[predicate],
-            object_values=[obj_node["node_id"]],
-            limit=2,
-        )
-        if results:
-            t = results[0]
-            return t, t.get("object_type", "uri"), t.get("object_lang")
-
-    return None, "uri", None
 
 
 def modifi(
@@ -351,7 +244,7 @@ def modifi(
         subject_uuid = subj_node["node_id"]
 
         # Try to find existing triple (URI or literal)
-        existing, old_object_type, old_object_lang = _find_triple_direct(
+        existing, old_object_type, old_object_lang = find_triple_direct(
             triple_svc, node_svc, subject_uuid, predicate, object,
         )
         if not existing:
@@ -368,7 +261,7 @@ def modifi(
     # ── Resolve new values ────────────────────────────────────────
     new_subj = new_subject or subject
     new_pred = new_predicate or predicate
-    new_obj_raw = new_object or old_object_value
+    new_obj_raw = new_object if new_object is not None else old_object_value
 
     # Resolve new subject UUID
     try:
@@ -414,7 +307,7 @@ def modifi(
 
     # ── Preview & confirm ─────────────────────────────────────────
     if not yes:
-        table = _build_modify_preview(
+        table = build_modify_preview(
             node_svc, pred_svc,
             subject_uuid, predicate, old_object_value,
             old_object_type, old_object_lang,
@@ -453,6 +346,42 @@ def modifi(
         return
 
     # ── Execute: delete old + insert new ──────────────────────────
+    # Validate FK references before removal to provide clear error
+    # messages instead of cryptic SQLite constraint failures.
+    subj_check = triple_svc.db.execute_one(
+        "SELECT node_id FROM nodes WHERE node_id = ?", (new_subj_uuid,)
+    )
+    if not subj_check:
+        error(tr_multi(
+            "Nova subjekto ne trovita: {s}",
+            "New subject not found: {s}",
+            "Nouveau sujet non trouvé : {s}",
+        ).format(s=new_subj_uuid))
+        raise typer.Exit(1)
+
+    pred_check = triple_svc.db.execute_one(
+        "SELECT predicate_id FROM predicates WHERE predicate_id = ?", (new_pred,)
+    )
+    if not pred_check:
+        error(tr_multi(
+            "Nova predikato ne trovita: {p}",
+            "New predicate not found: {p}",
+            "Nouveau prédicat non trouvé : {p}",
+        ).format(p=new_pred))
+        raise typer.Exit(1)
+
+    if new_object_type == "uri":
+        obj_check = triple_svc.db.execute_one(
+            "SELECT node_id FROM nodes WHERE node_id = ?", (new_obj_value,)
+        )
+        if not obj_check:
+            error(tr_multi(
+                "Nova objekto ne trovita: {o}",
+                "New object not found: {o}",
+                "Nouvel objet non trouvé : {o}",
+            ).format(o=new_obj_value))
+            raise typer.Exit(1)
+
     from A_semantika.data.storage import now
 
     timestamp = now()

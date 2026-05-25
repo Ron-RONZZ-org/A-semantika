@@ -1,11 +1,21 @@
 """Shared helper functions for NodeService.
 
 Extracted from _node_service.py to keep that file under 500 lines.
-Contains label/definition text extraction and FTS5 keyword handling.
+Contains label/definition text extraction, FTS5 keyword handling,
+and display label resolution.
 """
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    pass
+
+
+class AmbiguousUUIDError(ValueError):
+    """Raised when a UUID prefix matches multiple nodes."""
+    pass
 
 
 # FTS5 keywords that need to be lowercased (not stripped) when they
@@ -37,3 +47,38 @@ def extract_difin_text(difinoj: str | dict) -> str:
     if not isinstance(defns, dict):
         return ""
     return " ".join(str(v) for v in defns.values() if v)
+
+
+def get_display_label(
+    resolve_fn,  # Callable[[str], dict[str, Any] | None]
+    node_id_or_prefix: str,
+) -> tuple[str, str]:
+    """Get (display_label, language_code) for a node.
+
+    Resolution is delegated to the provided callable (usually
+    ``NodeService.resolve_uuid_prefix``).
+
+    Returns label in eo, falling back to en, then to the first available,
+    then to the node_id prefix as last resort.
+    """
+    node = resolve_fn(node_id_or_prefix)
+    if not node:
+        return (node_id_or_prefix, "")
+
+    try:
+        labels = json.loads(node["etikedoj"])
+    except (json.JSONDecodeError, TypeError):
+        return (node["node_id"][:16], "")
+
+    if not isinstance(labels, dict):
+        return (node["node_id"][:16], "")
+
+    for lang in ("eo", "en"):
+        val = labels.get(lang)
+        if val and isinstance(val, str):
+            return (val, lang)
+
+    for val in labels.values():
+        if val and isinstance(val, str):
+            return (val, "")
+    return (node["node_id"][:16], "")

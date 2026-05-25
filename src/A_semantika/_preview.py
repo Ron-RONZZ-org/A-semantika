@@ -14,7 +14,8 @@ from rich.table import Table
 
 from A import error, info, tr_multi
 from A.utils.interactive import confirm_action
-from A_semantika._node_service import AmbiguousUUIDError, NodeService
+from A_semantika._node_helpers import AmbiguousUUIDError, get_display_label
+from A_semantika._node_service import NodeService
 from A_semantika._predicate_service import PredicateService
 from A_semantika.data.storage import label_from_json
 
@@ -22,8 +23,8 @@ from A_semantika.data.storage import label_from_json
 def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
     """Resolve a node UUID/prefix to a display label.
 
-    Delegates to NodeService.get_display_label() to avoid duplicating
-    the eo→en→first fallback logic.
+    Delegates to ``get_display_label()`` from ``_node_helpers`` to avoid
+    duplicating the eo→en→first fallback logic.
 
     Returns the label if found, the UUID prefix as fallback.
 
@@ -31,7 +32,7 @@ def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
         AmbiguousUUIDError: If the prefix matches multiple nodes.
     """
     try:
-        label, _ = node_svc.get_display_label(uuid_or_prefix)
+        label, _ = get_display_label(node_svc.resolve_uuid_prefix, uuid_or_prefix)
         return label
     except AmbiguousUUIDError:
         raise

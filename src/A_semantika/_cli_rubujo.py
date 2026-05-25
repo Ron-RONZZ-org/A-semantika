@@ -6,6 +6,7 @@ restaŭrigi and restauxrigi are kept as hidden deprecated aliases.
 """
 from __future__ import annotations
 
+import sqlite3
 from typing import Optional
 
 import typer
@@ -262,7 +263,7 @@ def _batch_restore(node_ids: list[str], yes: bool) -> None:
                     "Restored: {u}",
                     "Restauré : {u}",
                 ).format(u=node["node_id"][:16]))
-        except Exception as e:
+        except (sqlite3.Error, ValueError) as e:
             error(tr_multi(
                 "Eraro restarigante {u}: {e}",
                 "Error restoring {u}: {e}",
@@ -459,7 +460,7 @@ def forigi(
                 "Permanently deleted: {u}",
                 "Définitivement supprimé : {u}",
             ).format(u=node["node_id"][:16]))
-        except Exception as e:
+        except (sqlite3.Error, ValueError) as e:
             error(tr_multi(
                 "Eraro forigante {u}: {e}",
                 "Error deleting {u}: {e}",
