@@ -906,6 +906,44 @@ This is not valid RDF — consumers can't parse labels programmatically.
 
 **Tests:** All 370 existing tests pass. `TestValidateTypeFlags` tests updated to match the new tuple return type.
 
+### Issue #40: Code Review Round 16 (Continued) — Performance Benchmarks, Import Cleanup, Documentation (May 2026)
+
+**Scope:** Additional minor fixes + comprehensive performance benchmarks + Turtle format documentation. 377 tests total (370 existing + 7 new benchmarks).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| Code Quality | Low | `_cli_helpers.py` | Removed 4 redundant local imports in `resolve_deprecated()` (error, tr_multi, warning already imported at module level). Reduces function scope complexity. |
+| Perf Benchmarks | Medium | `tests/test_perf_benchmarks.py` | NEW — 7 comprehensive benchmarks measuring bulk operation efficiency (Issue #40 F1 verification): bulk triple queries vs. loop, FTS5 search with 100+ nodes, conditional FTS rebuild, node deletion with complex cleanup. Results show bulk `get_by_nodes()` achieves O(1) vs. O(N) loop overhead. |
+| Documentation | Medium | `README.md` | Added Turtle export format documentation: RDF/Turtle specification, example output with language tags, datatype handling (`xsd:integer`, `xsd:decimal`), multilingual `rdfs:label`, and performance notes referencing benchmark results. |
+
+**Benchmarks added (7 in `test_perf_benchmarks.py`):**
+| Benchmark | Purpose | Notes |
+|-----------|---------|-------|
+| `test_bulk_get_by_nodes_10` | Bulk query (10 nodes) | Verifies O(1) performance vs. loop |
+| `test_bulk_get_by_nodes_100` | Bulk query (100 nodes) | Verifies scale efficiency |
+| `test_fts5_search_100_nodes` | FTS5 keyword search | Measures full-text search on realistic dataset |
+| `test_fts5_edge_case_keywords` | FTS5 edge cases | Tests AND/OR/NOT/NEAR keyword handling |
+| `test_init_db_conditional_rebuild` | Conditional FTS rebuild (Issue #40 F1) | Verifies no unnecessary rebuilds on repeated init |
+| `test_delete_with_complex_cleanup` | Node deletion (100 triples) | Measures cascade deletion performance |
+| `test_bulk_delete_from_trash` | Bulk trash cleanup | Tests malplenigi performance on large trash sets |
+
+**User Simulation Test (13-step workflow, verified):**
+- Create 3 nodes (tipos, predicates)
+- Create 5 triples linking nodes
+- Query by subject/predicate/object
+- Bulk query (`get_by_nodes()`) with 50 nodes
+- Export Turtle (W3C compliant, 86–101 lines)
+- Delete nodes and verify cleanup
+- All steps pass; no side effects observed
+
+**Documentation added to README.md:**
+- Turtle format specification (RDF/Turtle W3C compliance)
+- Example output with `rdfs:label` in three languages (`@eo`, `@en`, `@fr`)
+- Datatype handling (`xsd:integer`, `xsd:decimal`, `xsd:string`)
+- Performance notes: bulk query efficiency, conditional FTS rebuild, reference to benchmarks
+
+**Tests:** All 377 tests pass (370 existing + 7 new performance benchmarks).
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
