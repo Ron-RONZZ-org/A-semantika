@@ -53,7 +53,7 @@ def resolve_subjects(node_svc: NodeService, text: str) -> list[str]:
     """Resolve subject text to a list of node UUIDs.
 
     Resolution order:
-    1. If text looks like a UUID prefix, try resolve_uuid_prefix()
+    1. If text looks like a UUID prefix, try resolve_node_id_prefix()
     2. Fall back to NodeService.search() via FTS5 label search
     3. Return empty list if no matches
     """
@@ -63,7 +63,7 @@ def resolve_subjects(node_svc: NodeService, text: str) -> list[str]:
     # Step 1: Try UUID prefix resolution
     if _looks_like_uuid_prefix(text):
         try:
-            node = node_svc.resolve_uuid_prefix(text)
+            node = node_svc.resolve_node_id_prefix(text)
             if node:
                 return [node["node_id"]]
         except AmbiguousUUIDError:
@@ -119,7 +119,7 @@ def resolve_objects(node_svc: NodeService, text: str) -> list[str]:
     For literal objects, the raw text is returned as-is.
 
     Resolution order:
-    1. If text looks like a UUID prefix, try resolve_uuid_prefix()
+    1. If text looks like a UUID prefix, try resolve_node_id_prefix()
     2. Fall back to NodeService.search() via FTS5 label search
     3. If still no matches, return the raw text as a literal match candidate
     """
@@ -129,7 +129,7 @@ def resolve_objects(node_svc: NodeService, text: str) -> list[str]:
     # Step 1: Try UUID prefix resolution
     if _looks_like_uuid_prefix(text):
         try:
-            node = node_svc.resolve_uuid_prefix(text)
+            node = node_svc.resolve_node_id_prefix(text)
             if node:
                 return [node["node_id"]]
         except AmbiguousUUIDError:

@@ -49,7 +49,7 @@ def get_display_label(
     """Get (display_label, language_code) for a node.
 
     Resolution is delegated to the provided callable (usually
-    ``NodeService.resolve_uuid_prefix``).
+    ``NodeService.resolve_node_id_prefix``).
 
     Returns label in eo, falling back to en, then to the first available,
     then to the node_id prefix as last resort.

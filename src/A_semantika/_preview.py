@@ -32,7 +32,7 @@ def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
         AmbiguousUUIDError: If the prefix matches multiple nodes.
     """
     try:
-        label, _ = get_display_label(node_svc.resolve_uuid_prefix, uuid_or_prefix)
+        label, _ = get_display_label(node_svc.resolve_node_id_prefix, uuid_or_prefix)
         return label
     except AmbiguousUUIDError:
         raise
@@ -43,7 +43,7 @@ def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
 def resolve_node_label_from_node(node: dict) -> str:
     """Get display label from a pre-resolved node dict.
 
-    Avoids redundant ``node_svc.resolve_uuid_prefix()`` calls when the
+    Avoids redundant ``node_svc.resolve_node_id_prefix()`` calls when the
     node dict has already been fetched (e.g. in ``build_triple_preview_table()``).
 
     Uses same eo→en→first→ID fallback logic as ``resolve_node_label()``.
@@ -108,7 +108,7 @@ def build_triple_preview_table(
     # Pre-resolve subject node once, then use cached data for both
     # display label and raw ID (avoids redundant DB calls).
     try:
-        subj_node = node_svc.resolve_uuid_prefix(subject_uuid)
+        subj_node = node_svc.resolve_node_id_prefix(subject_uuid)
     except AmbiguousUUIDError as e:
         error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
         raise typer.Exit(1) from e
@@ -120,7 +120,7 @@ def build_triple_preview_table(
     if object_type == "uri":
         # Resolve object node once, use cached data
         try:
-            obj_node = node_svc.resolve_uuid_prefix(object_value)
+            obj_node = node_svc.resolve_node_id_prefix(object_value)
         except AmbiguousUUIDError as e:
             error(tr_multi("Ambigua objekto-prefikso: {e}", "Ambiguous object prefix: {e}", "Préfixe objet ambigu : {e}").format(e=str(e)))
             raise typer.Exit(1) from e
@@ -157,7 +157,7 @@ def build_triple_preview_table(
         if object_unit:
             unit_label = resolve_node_label(node_svc, object_unit)
             try:
-                unit_node = node_svc.resolve_uuid_prefix(object_unit)
+                unit_node = node_svc.resolve_node_id_prefix(object_unit)
             except AmbiguousUUIDError as e:
                 error(tr_multi("Ambigua unuo-prefikso: {e}", "Ambiguous unit prefix: {e}", "Préfixe unité ambigu : {e}").format(e=str(e)))
                 raise typer.Exit(1) from e

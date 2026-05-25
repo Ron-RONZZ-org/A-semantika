@@ -124,8 +124,13 @@ def count_type_flags(str_: bool, int_: bool, float_: bool, bool_: bool) -> int:
 def validate_type_flags(
     str_: bool, int_: bool, float_: bool, bool_: bool,
     lingvo: str | None, unuo: str | None,
-) -> str | None:
-    """Validate type flag combinations. Returns datatype string or None for URI.
+) -> tuple[str | None, str]:
+    """Validate type flag combinations.
+
+    Returns:
+        Tuple of (datatype, object_type):
+        - datatype: ``None`` for URI/string, ``"xsd:integer"``, etc.
+        - object_type: ``"uri"`` or ``"literal"``
 
     Calls error() and raises typer.Exit(1) on invalid combinations.
     """
@@ -158,17 +163,17 @@ def validate_type_flags(
                 )
             )
             raise typer.Exit(1)
-        return None  # URI reference
+        return (None, "uri")  # URI reference
 
     if str_:
-        return None  # String literal, no datatype
+        return (None, "literal")  # String literal, no datatype
     if int_:
-        return "xsd:integer"
+        return ("xsd:integer", "literal")
     if float_:
-        return "xsd:decimal"
+        return ("xsd:decimal", "literal")
     if bool_:
-        return "xsd:boolean"
-    return None
+        return ("xsd:boolean", "literal")
+    return (None, "uri")
 
 
 def ensure_predicate(pred_svc: "PredicateService", predicate_id: str, label_eo: str) -> None:
@@ -270,7 +275,7 @@ def _find_triple_by_spo(
     """
     # Try URI: resolve object as node
     try:
-        obj_node = node_svc.resolve_uuid_prefix(object_raw)
+        obj_node = node_svc.resolve_node_id_prefix(object_raw)
     except AmbiguousUUIDError:
         obj_node = None
 
@@ -342,7 +347,7 @@ def resolve_arc_targets(
     arc_errors: list[str] = []
 
     def _resolve_one(predicate: str, user_input: str) -> str | None:
-        target = node_svc.resolve_uuid_prefix(user_input)
+        target = node_svc.resolve_node_id_prefix(user_input)
         if target:
             return target["node_id"]
         warning(tr_multi(
@@ -413,6 +418,17 @@ def create_node_arcs(
     except ValueError:
         # Rollback: remove already-created arcs first (FK constraint),
         # then delete the node to prevent orphan with partial arcs.
-        triple_svc.remove_by_node(node_id_val)
-        node_svc.delete(node_id_val)
+        # Wrap rollback in try/except so a rollback failure doesn't mask
+        # the original ValueError that triggered it.
+        try:
+            triple_svc.remove_by_node(node_id_val)
+            node_svc.delete(node_id_val)
+        except (sqlite3.Error, ValueError) as rollback_err:
+            warning(
+                tr_multi(
+                    "Enrulumbo malsukcesis por nodo {n}: {e}",
+                    "Rollback failed for node {n}: {e}",
+                    "Rétablissement échoué pour le nœud {n} : {e}",
+                ).format(n=node_id_val, e=str(rollback_err))
+            )
         raise

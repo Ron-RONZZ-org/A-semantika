@@ -79,8 +79,11 @@ def _resolve_trash_node(node_id: str) -> dict | None:
         return entry
 
     # Prefix match (LIKE + COLLATE NOCASE for case-insensitive search)
+    # Escape LIKE wildcards so user's `_` and `%` are matched literally
+    escaped = node_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     entries = db.execute(
-        "SELECT * FROM nodes_rubujo WHERE node_id LIKE ? COLLATE NOCASE", (f"{node_id}%",)
+        "SELECT * FROM nodes_rubujo WHERE node_id LIKE ? COLLATE NOCASE ESCAPE '\\'",
+        (f"{escaped}%",)
     )
     if not entries:
         return None

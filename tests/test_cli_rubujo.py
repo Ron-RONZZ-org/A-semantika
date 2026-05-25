@@ -376,3 +376,50 @@ def test_rubujo_forigi_case_insensitive(runner: CliRunner) -> None:
     # Should be gone from trash
     trash_r = runner.invoke(app, ["rubujo", "ls"])
     assert "MAMULO" not in trash_r.stdout
+
+
+# ── Q1: LIKE wildcard escaping in _resolve_trash_node() ──────────────────
+
+
+def test_rubujo_resolve_trash_node_underscore_matched_literally(runner: CliRunner) -> None:
+    """LIKE escape: underscore in node_id must match literally, not as wildcard.
+
+    Create a node with ``test_1`` (underscore) and another with ``testX1``.
+    If ``_`` is not escaped, the LIKE pattern ``test_%`` would match both.
+    Verifies that only ``test_1`` is found in trash.
+    """
+    runner.invoke(app, ["nodo", "aldoni", "test_underscore_1", "-e", "eo::Underscore1", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", "testX1", "-e", "eo::TestX1", "--jes"])
+
+    # Trash both
+    r = runner.invoke(app, ["nodo", "forigi", "test_underscore_1", "--jes"])
+    assert r.exit_code == 0
+    r = runner.invoke(app, ["nodo", "forigi", "testX1", "--jes"])
+    assert r.exit_code == 0
+
+    # Now restore using prefix "test_" — must match ONLY test_underscore_1
+    r = runner.invoke(app, ["rubujo", "restaurigi", "test_underscore"])
+    assert r.exit_code == 0
+    assert "restarigita" in r.stdout.lower() or "restored" in r.stdout.lower()
+
+    # The other node should still be in trash
+    trash_r = runner.invoke(app, ["rubujo", "ls"])
+    assert "testX1" in trash_r.stdout
+
+
+def test_rubujo_resolve_trash_node_percent_matched_literally(runner: CliRunner) -> None:
+    """LIKE escape: percent in node_id must match literally, not as wildcard."""
+    runner.invoke(app, ["nodo", "aldoni", "test%pct", "-e", "eo::PercentTest", "--jes"])
+
+    # Trash it
+    r = runner.invoke(app, ["nodo", "forigi", "test%pct", "--jes"])
+    assert r.exit_code == 0
+
+    # Restore using prefix "test%" — the % must be escaped to match literally
+    r = runner.invoke(app, ["rubujo", "restaurigi", "test%pct"])
+    assert r.exit_code == 0
+    assert "restarigita" in r.stdout.lower() or "restored" in r.stdout.lower()
+
+    # Verify node is restored (no longer in trash)
+    trash_r = runner.invoke(app, ["rubujo", "ls"])
+    assert "test%pct" not in trash_r.stdout

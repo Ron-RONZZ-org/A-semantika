@@ -161,13 +161,26 @@ def get_db() -> "SQLiteDB":
     return _DB
 
 
-def _seed_default_predicates(db: "SQLiteDB") -> None:
+def _seed_default_predicates(db: "SQLiteDB") -> bool:
     """Insert default RDF/OWL semantic predicates into the predicates table.
 
     Uses INSERT OR IGNORE so this is safe to call repeatedly:
-    predicates that already exist (created by _ensure_predicate in
-    older versions of _cli_nodo.py) are left untouched.
+    predicates that already exist are left untouched.
+
+    Returns:
+        True if any new predicates were inserted, False otherwise.
     """
+    # Check how many default predicates already exist before seeding
+    existing_ids = {
+        r["predicate_id"]
+        for r in db.execute(
+            "SELECT predicate_id FROM predicates WHERE predicate_id IN "
+            f"({','.join('?' * len(DEFAULT_PREDICATES))})",
+            tuple(p["predicate_id"] for p in DEFAULT_PREDICATES),
+        )
+    }
+    needs_seeding = any(p["predicate_id"] not in existing_ids for p in DEFAULT_PREDICATES)
+
     now_iso = now()
     for pred in DEFAULT_PREDICATES:
         etikedoj = pred["etikedoj"]
@@ -183,6 +196,7 @@ def _seed_default_predicates(db: "SQLiteDB") -> None:
             "VALUES (?, ?, ?, ?, '{}', '[]', ?, ?)",
             (pred["predicate_id"], pred["source"], etikedoj, label_text, now_iso, now_iso),
         )
+    return needs_seeding
 
 
 def init_db(db: "SQLiteDB | None" = None) -> None:
@@ -217,11 +231,14 @@ def init_db(db: "SQLiteDB | None" = None) -> None:
     )
     migrate_predicates_fts(db)
     # Seed built-in RDF/OWL predicates (must be AFTER migrations)
-    _seed_default_predicates(db)
-    # Always rebuild FTS index after seeding to ensure seeded
-    # predicates (inserted via raw SQL, not PredicateService.create)
-    # are indexed for full-text search.
-    db.execute("INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')")
+    seeded = _seed_default_predicates(db)
+    # Only rebuild FTS index if new predicates were actually inserted.
+    # Predicates inserted by PredicateService.create are already indexed;
+    # seeded predicates are inserted via raw SQL and need explicit indexing.
+    # Skipping the rebuild when no new rows were added avoids unnecessary
+    # work on every init_db() call (e.g. read-only CLI callbacks).
+    if seeded:
+        db.execute("INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')")
 
 
 def close_db() -> None:

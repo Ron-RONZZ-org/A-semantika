@@ -212,6 +212,81 @@ class TestNarrowedDeleteException:
         # Should not raise
         node_svc.delete("oserror-test-node", soft=False)
 
+    def test_rollback_delete_failure_preserves_original_error(
+        self, db, node_svc, pred_svc, triple_svc
+    ):
+        """When node_svc.delete() fails during rollback, the original ValueError still propagates."""
+        node_svc.create({"node_id": "rollback-del-nodo", "etikedoj": {"eo": "RB-Del"}})
+        node_svc.create({"node_id": "rb-objekt-1", "etikedoj": {"eo": "RbObj1"}})
+        pred_svc.create({"predicate_id": "ex:pred", "etikedoj": {"eo": "pred"}})
+
+        node_id_val = "rollback-del-nodo"
+        arcs = [
+            {
+                "subject": node_id_val,
+                "predicate": "ex:pred",
+                "object": "rb-objekt-1",
+                "object_type": "uri",
+            },
+            {
+                "subject": node_id_val,
+                "predicate": "ex:nonexistent-pred",
+                "object": "rb-objekt-1",
+                "object_type": "uri",
+            },
+        ]
+
+        original_delete = node_svc.delete
+
+        def broken_delete(*args, **kwargs):
+            msg = "Simulated delete failure during rollback"
+            raise ValueError(msg)
+
+        import unittest.mock as mock
+        with (
+            mock.patch.object(node_svc, "delete", broken_delete),
+            pytest.raises(ValueError, match="Predicate not found"),
+        ):
+            create_node_arcs(triple_svc, node_svc, node_id_val, arcs)
+
+        # Restore original delete for cleanup
+        node_svc.delete = original_delete
+
+    def test_rollback_remove_by_node_failure_preserves_original_error(
+        self, db, node_svc, pred_svc, triple_svc
+    ):
+        """When triple_svc.remove_by_node() fails during rollback, the original ValueError still propagates."""
+        node_svc.create({"node_id": "rollback-rm-nodo", "etikedoj": {"eo": "RB-Rm"}})
+        node_svc.create({"node_id": "rb-objekt-2", "etikedoj": {"eo": "RbObj2"}})
+        pred_svc.create({"predicate_id": "ex:pred2", "etikedoj": {"eo": "pred2"}})
+
+        node_id_val = "rollback-rm-nodo"
+        arcs = [
+            {
+                "subject": node_id_val,
+                "predicate": "ex:pred2",
+                "object": "rb-objekt-2",
+                "object_type": "uri",
+            },
+            {
+                "subject": node_id_val,
+                "predicate": "ex:nonexistent-pred2",
+                "object": "rb-objekt-2",
+                "object_type": "uri",
+            },
+        ]
+
+        def broken_remove(*args, **kwargs):
+            msg = "Simulated remove failure during rollback"
+            raise sqlite3.Error(msg)
+
+        import unittest.mock as mock
+        with (
+            mock.patch.object(triple_svc, "remove_by_node", broken_remove),
+            pytest.raises(ValueError, match="Predicate not found"),
+        ):
+            create_node_arcs(triple_svc, node_svc, node_id_val, arcs)
+
     def test_delete_with_unexpected_error_raises(self, node_svc, monkeypatch):
         """Post-delete unexpected error type should propagate."""
         node_svc.create({"node_id": "unexpected-test-node", "etikedoj": {"eo": "test"}})

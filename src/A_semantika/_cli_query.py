@@ -4,6 +4,7 @@ Extracted from _cli_triples.py to keep each file under 500 lines.
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -153,7 +154,7 @@ def vidi(
     triple_svc = get_triple_service()
 
     try:
-        subj_node = node_svc.resolve_uuid_prefix(subject_uuid)
+        subj_node = node_svc.resolve_node_id_prefix(subject_uuid)
     except AmbiguousUUIDError as e:
         error(tr_multi(
             "Ambigua subjekto-prefikso: {e}",
@@ -252,4 +253,4 @@ def eksporti(
             ).format(path=str(output_path), e=str(e)))
             raise typer.Exit(1) from e
     else:
-        print(ttl)  # noqa: T201 — intentional stdout output for pipe/redirect
+        sys.stdout.write(ttl)

@@ -115,8 +115,7 @@ def aldoni(
 
     Defaŭlte objekto estas URI referenco (nod UUID). Uzu --str por teksta literal.
     """
-    datatype = validate_type_flags(str_, int_, float_, bool_, lingvo, unuo)
-    object_type = "literal" if (str_ or int_ or float_ or bool_) else "uri"
+    datatype, object_type = validate_type_flags(str_, int_, float_, bool_, lingvo, unuo)
 
     node_svc = get_node_service()
     pred_svc = get_predicate_service()
@@ -124,7 +123,7 @@ def aldoni(
 
     # Resolve subject UUID
     try:
-        subj_node = node_svc.resolve_uuid_prefix(subject)
+        subj_node = node_svc.resolve_node_id_prefix(subject)
     except AmbiguousUUIDError as e:
         error(tr_multi(
             "Ambigua subjekto-prefikso: {e}",
@@ -145,7 +144,7 @@ def aldoni(
     object_uuid = object
     if object_type == "uri":
         try:
-            obj_node = node_svc.resolve_uuid_prefix(object)
+            obj_node = node_svc.resolve_node_id_prefix(object)
         except AmbiguousUUIDError as e:
             error(tr_multi(
                 "Ambigua objekto-prefikso: {e}",
@@ -299,7 +298,7 @@ def forigi(
 
     # ── Direct mode: full triplet provided (backward compat) ──────
     try:
-        subj_node = node_svc.resolve_uuid_prefix(subject)
+        subj_node = node_svc.resolve_node_id_prefix(subject)
     except AmbiguousUUIDError as e:
         error(tr_multi(
             "Ambigua subjekto-prefikso: {e}",
