@@ -54,17 +54,36 @@ src/A_semantika/
     ├── storage.py         # Schema DDL, get_db(), init_db(), get_service() singletons
     └── migrations.py      # DB migrations: uuid→node_id, predicates JSON, UNIQUE constraints
 tests/
-├── conftest.py               # autouse isolation fixture
-├── test_cli.py               # CLI integration (includes Wikidata tests)
-├── test_cli_export.py        # eksporti Turtle export tests
-├── test_cli_rubujo.py        # rubujo (trash) CLI tests
-├── test_nodes.py
-├── test_predicates.py
-├── test_predicate_groups.py
-├── test_triple_search.py  # Triple search unit tests (Issue #8 R2)
-├── test_triples.py
-├── test_storage.py
-└── test_wikidata_helper.py   # Wikidata helper unit tests
+├── conftest.py                      # autouse isolation fixture
+├── test_cli_deprecated.py           # Deprecated alias tests
+├── test_cli_export.py               # eksporti Turtle export tests
+├── test_cli_help.py                 # Help & command discovery
+├── test_cli_nodo.py                 # Nodo CLI CRUD
+├── test_cli_predikat_grupo.py       # Predikat-grupo CLI CRUD
+├── test_cli_predikato.py            # Predikato CLI CRUD
+├── test_cli_rubujo.py               # rubujo (trash) CLI tests
+├── test_cli_triples.py              # Triple CLI CRUD
+├── test_cli_type_flags.py           # B3: type flag validation
+├── test_cli_wikidata.py             # Wikidata integration tests
+├── test_edge_inputs.py              # Edge: special chars, empty inputs
+├── test_fts5_sanitization.py        # Edge: FTS5 special chars
+├── test_multi_forigi.py             # Edge: multi-identifier forigi
+├── test_node_arcs.py                # Edge: nodo aldoni with arcs
+├── test_nodes.py                    # NodeService unit tests
+├── test_nodo_errors.py              # Edge: nodo error handling
+├── test_nodo_vidi_ensure.py         # Edge: vidi + ensure_predicate
+├── test_predicate_groups.py         # PredicateGroupService tests
+├── test_predicates.py               # PredicateService tests
+├── test_preview_helpers.py          # Edge: preview table + confirm
+├── test_search_helpers.py           # Edge: UUID heuristic, type flags
+├── test_storage_default_predicates.py  # DB: default predicate seeding
+├── test_storage_migrations.py       # DB: schema migrations
+├── test_storage_schema.py           # DB: schema & WAL mode
+├── test_triple_modifi_edge.py       # Edge: modifi + confirm triples
+├── test_triple_search.py            # Triple search unit tests
+├── test_triples.py                  # TripleService unit tests
+├── test_turtle_export_edge.py       # Edge: custom datatype export
+└── test_wikidata_helper.py          # Wikidata helper unit tests
 ```
 
 ## Final DB Schema
@@ -615,6 +634,34 @@ Raw `IntegrityError` tracebacks in `nodo aldoni` and `nodo forigi` are caught an
 - `test_export_turtle_nodes_without_triples_in_comments` — orphan nodes appear as Turtle comments
 - `test_export_turtle_digit_prefix_uses_full_uri` — digit-prefixed node IDs use `<...>` syntax
 - `test_export_turtle_no_trailing_blank_lines` — output does not end with blank lines
+
+### Issue #29: Code Review Findings Round 7 — B3/RDF-G3/M1 + Monolith Split (May 2026)
+
+**Scope:** 3 fixes from seventh code review round + monolith test file split. 285 tests total
+(277 existing + 8 new).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| B3 | Low | `_cli_helpers.py` | `--lingvo` / `--unuo` without type flag now raises error + `typer.Exit(1)` instead of just warning. Prevents silent creation of wrong triple type. |
+| RDF-G3 | Med | `_triple_turtle.py` | Unknown namespace predicates (e.g. `wdt:P1082`) now emit as full URIs `<wdt:P1082>` instead of concatenating with `base_uri`. Known prefixes (`rdf:`, `rdfs:`, `xsd:`, `owl:`) still emit prefixed names. |
+| M1 | Low | `_cli_predikat_grupo.py` | `predikat-grupo modifi` now supports prefix matching with disambiguation. Exact match tried first, then prefix (LIKE) match. Ambiguous prefixes list all matches. Non-existent prefixes show "not found". |
+
+**Monolith split:**
+- `tests/test_edge_cases.py` (857 lines) → 10 focused test files (max ~140 lines each)
+- `tests/test_cli.py` (794 lines) → 8 focused test files (max ~237 lines each)
+- `tests/test_storage.py` (594 lines) → 3 focused test files (max ~358 lines each)
+
+**Tests added:**
+| Test | Area | File |
+|------|------|------|
+| `test_aldoni_lingvo_without_str_exits_error` | B3 | test_cli_type_flags.py |
+| `test_aldoni_unuo_without_int_or_float_exits_error` | B3 | test_cli_type_flags.py |
+| `test_export_turtle_unknown_namespace_as_full_uri` | RDF-G3 | test_cli_export.py |
+| `test_export_turtle_known_prefix_still_works` | RDF-G3 | test_cli_export.py |
+| `test_modifi_exact_name` | M1 | test_predicate_groups.py |
+| `test_modifi_prefix_match_one` | M1 | test_predicate_groups.py |
+| `test_modifi_prefix_ambiguous` | M1 | test_predicate_groups.py |
+| `test_modifi_nonexistent_prefix` | M1 | test_predicate_groups.py |
 
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9

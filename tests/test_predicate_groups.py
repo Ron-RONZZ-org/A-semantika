@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import pytest
+from typer.testing import CliRunner
+
+from A_semantika.cli import app
 
 
 class TestGroupCreate:
@@ -111,3 +114,48 @@ class TestGroupMembers:
         group_svc.clear_members(group["uuid"])
         members = group_svc.list_members("test_group")
         assert len(members) == 0
+
+
+# ── M1: Group name prefix resolution tests ──────────────────────────────
+
+
+class TestGroupModifiPrefixResolution:
+    """Test that `predikat-grupo modifi` supports prefix matching (M1)."""
+
+    def test_modifi_exact_name(self, runner: CliRunner) -> None:
+        """Exact group name should work as before."""
+        runner.invoke(app, ["predikat-grupo", "aldoni", "exact_group", "--jes"])
+        result = runner.invoke(app, [
+            "predikat-grupo", "modifi", "exact_group", "renamed_group", "--jes",
+        ])
+        assert result.exit_code == 0
+        assert "renomita" in result.stdout or "renamed" in result.stdout
+
+    def test_modifi_prefix_match_one(self, runner: CliRunner) -> None:
+        """Prefix matching a single group should work."""
+        runner.invoke(app, ["predikat-grupo", "aldoni", "prefix_match_test", "--jes"])
+        result = runner.invoke(app, [
+            "predikat-grupo", "modifi", "prefix_match", "renamed_prefix", "--jes",
+        ])
+        assert result.exit_code == 0
+        assert "renomita" in result.stdout or "renamed" in result.stdout
+
+    def test_modifi_prefix_ambiguous(self, runner: CliRunner) -> None:
+        """Prefix matching multiple groups should fail with ambiguity error."""
+        runner.invoke(app, ["predikat-grupo", "aldoni", "ambig_a", "--jes"])
+        runner.invoke(app, ["predikat-grupo", "aldoni", "ambig_b", "--jes"])
+        result = runner.invoke(app, [
+            "predikat-grupo", "modifi", "ambig", "renamed_ambig", "--jes",
+        ])
+        assert result.exit_code == 1
+        assert "ambigua" in result.stdout or "ambiguous" in result.stdout
+        assert "ambig_a" in result.stdout
+        assert "ambig_b" in result.stdout
+
+    def test_modifi_nonexistent_prefix(self, runner: CliRunner) -> None:
+        """Non-existent prefix should show not-found error."""
+        result = runner.invoke(app, [
+            "predikat-grupo", "modifi", "nonexistent_xyz", "new_name", "--jes",
+        ])
+        assert result.exit_code == 1
+        assert "ne trovita" in result.stdout or "not found" in result.stdout

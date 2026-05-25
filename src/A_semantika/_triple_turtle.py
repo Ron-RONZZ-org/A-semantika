@@ -31,9 +31,11 @@ def _format_turtle_uri(val: str, prefix_uris: dict[str, str], base_uri: str) -> 
     """Format a URI reference for Turtle, respecting known namespaces.
 
     Known prefixes (rdf:, rdfs:, xsd:, owl:) are emitted as prefixed names.
-    For values with a colon where the prefix is known, the prefixed form is used.
-    For all other values, the local part must be a valid Turtle PN_LOCAL
-    (not start with a digit); otherwise a full ``<...>`` URI is emitted.
+    For unknown prefixes (e.g. wdt:P1082 when wdt is not in prefix_uris),
+    the full value is wrapped in ``<...>`` to preserve its identity.
+    For values without a colon, the local part must be a valid Turtle
+    PN_LOCAL (not start with a digit); otherwise a full ``<...>`` URI
+    using *base_uri* is emitted.
 
     Args:
         val: The URI reference string.
@@ -46,12 +48,18 @@ def _format_turtle_uri(val: str, prefix_uris: dict[str, str], base_uri: str) -> 
     """
     if ":" in val:
         prefix, _, local = val.partition(":")
-        if prefix in prefix_uris and _PN_LOCAL_RE.match(local):
-            return val  # Already a valid prefixed name
-    # Check if val can be a default-prefix name
+        if prefix in prefix_uris:
+            if _PN_LOCAL_RE.match(local):
+                return val  # Known prefix, valid local part → prefixed name
+            # Known prefix but invalid local part (e.g. starts with digit)
+            # → expand to full URI
+            return f"<{prefix_uris[prefix]}{local}>"
+        # Unknown prefix — emit as full URI preserving identity
+        return f"<{val}>"
+    # No colon in val
     if _PN_LOCAL_RE.match(val):
         return f":{val}"
-    # Fall back to full URI
+    # Fall back to full URI with base
     return f"<{base_uri}{val}>"
 
 

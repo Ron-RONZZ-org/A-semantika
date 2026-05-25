@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import tempfile
 
+import pytest
 from typer.testing import CliRunner
 
 from A_semantika.cli import app
@@ -66,3 +67,54 @@ def test_eksporti_produces_valid_turtle(runner: CliRunner) -> None:
     assert output.strip().startswith("@prefix")
     # Must have triples section (or be empty)
     assert "a" in output or "rdf:type" in output or not output.strip()
+
+
+# ── RDF-G3: External URI / unknown namespace support ─────────────────────
+
+
+def test_export_turtle_unknown_namespace_as_full_uri(runner: CliRunner) -> None:
+    """Predicates with unknown namespaces (e.g. wdt:P1082) should be emitted
+    as full URIs <wdt:P1082>, not concatenated with base_uri (RDF-G3)."""
+    subj_id = "g3subj"
+    obj_id = "g3obj"
+    runner.invoke(app, ["nodo", "aldoni", subj_id, "-e", "eo::RDFG3Subj", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", obj_id, "-e", "eo::RDFG3Obj", "--jes"])
+    runner.invoke(app, [
+        "predikato", "aldoni", "wdt:P1082", "-e", "eo::logxantaro", "--jes",
+    ])
+
+    # Create triple with unknown-namespace predicate
+    r = runner.invoke(app, ["aldoni", subj_id, "wdt:P1082", obj_id, "--jes"])
+    assert r.exit_code == 0, f"Triple aldoni failed: {r.stdout}"
+
+    # Export — the wdt:P1082 predicate should be <wdt:P1082> (full URI)
+    # NOT <https://example.org/wdt:P1082> (concatenated with base_uri)
+    result = runner.invoke(app, ["eksporti"])
+    assert result.exit_code == 0
+    assert "<wdt:P1082>" in result.stdout, (
+        f"Expected <wdt:P1082> full URI in Turtle output, got:\n{result.stdout}"
+    )
+    assert "https://example.org/wdt:P1082" not in result.stdout, (
+        "Unknown-namespace predicate must not be concatenated with base_uri"
+    )
+
+
+def test_export_turtle_known_prefix_still_works(runner: CliRunner) -> None:
+    """Known prefixes (rdf:, rdfs:, xsd:, owl:) should still emit prefixed names."""
+    subj_id = "g3ksubj"
+    obj_id = "g3kobj"
+    runner.invoke(app, ["nodo", "aldoni", subj_id, "-e", "eo::KnownPrefSubj", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", obj_id, "-e", "eo::KnownPrefObj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    r = runner.invoke(app, ["aldoni", subj_id, "rdf:type", obj_id, "--jes"])
+    assert r.exit_code == 0
+
+    result = runner.invoke(app, ["eksporti"])
+    assert result.exit_code == 0
+    assert "rdf:type" in result.stdout, (
+        f"Expected 'rdf:type' prefixed name, got:\n{result.stdout}"
+    )
+    assert "<rdf:type>" not in result.stdout, (
+        "Known-namespace predicate must be prefixed name, not full URI"
+    )
