@@ -39,17 +39,13 @@ def resolve_deprecated(new_val: object, old_val: object,
     """
     if old_val is not None:
         if new_val is not None:
-            from A import error as _err
-            from A import tr_multi as _tr
-            _err(_tr(
+            error(tr_multi(
                 f"Ne eblas uzi samtempe --{old_name} kaj --{new_name}",
                 f"Cannot use both --{old_name} and --{new_name}",
                 f"Impossible d'utiliser --{old_name} et --{new_name} à la fois",
             ))
             raise typer.Exit(1)
-        from A import warning as _warn
-        from A import tr_multi as _tr
-        _warn(_tr(
+        warning(tr_multi(
             f"--{old_name} estas malrekomendita, uzu --{new_name}",
             f"--{old_name} is deprecated, use --{new_name}",
             f"--{old_name} est déprécié, utilisez --{new_name}",
