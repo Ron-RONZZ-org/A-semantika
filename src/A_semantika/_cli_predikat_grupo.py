@@ -228,7 +228,7 @@ def forigi(
     """Forigi predikat-grupojn."""
     group_svc = get_predicate_group_service()
 
-    # Phase 1: Resolve all identifiers
+    # Phase 1: Resolve all identifiers (with prefix matching)
     resolved: list[dict] = []
     errors: list[tuple[str, str]] = []
 
@@ -236,8 +236,27 @@ def forigi(
         group = group_svc.get_by_field("group_name", gname)
         if group:
             resolved.append(group)
-        else:
+            continue
+
+        # Prefix match: search for groups where group_name starts with gname
+        candidates = group_svc.db.execute(
+            "SELECT * FROM predicate_groups WHERE group_name LIKE ?",
+            (gname + "%",),
+        )
+        if not candidates:
             errors.append((gname, tr_multi("ne trovita", "not found", "non trouvé")))
+            continue
+        if len(candidates) == 1:
+            resolved.append(candidates[0])
+            continue
+
+        # Ambiguous prefix
+        names = [c["group_name"] for c in candidates]
+        errors.append((gname, tr_multi(
+            "ambigua: {m}",
+            "ambiguous: {m}",
+            "ambigüe : {m}",
+        ).format(m=", ".join(names))))
 
     # Report resolution errors
     for input_val, reason in errors:

@@ -59,3 +59,44 @@ def test_predikat_grupo_forigi_single_no_confirm(runner: CliRunner) -> None:
     result = runner.invoke(app, ["predikat-grupo", "forigi", "no-conf-group"])
     assert result.exit_code == 0
     assert "Forigis" in result.stdout or "forigita" in result.stdout
+
+
+def test_predikat_grupo_forigi_prefix_match(runner: CliRunner) -> None:
+    """forigi should support prefix matching (like modifi)."""
+    runner.invoke(app, ["predikat-grupo", "aldoni", "biologio", "-y"])
+    result = runner.invoke(app, ["predikat-grupo", "forigi", "bio", "-y"])
+    assert result.exit_code == 0
+    assert "Forigis" in result.stdout
+
+
+def test_predikat_grupo_forigi_prefix_ambiguous(runner: CliRunner) -> None:
+    """forigi with ambiguous prefix should report error and exit(1)."""
+    runner.invoke(app, ["predikat-grupo", "aldoni", "bio1", "-y"])
+    runner.invoke(app, ["predikat-grupo", "aldoni", "bio2", "-y"])
+    result = runner.invoke(app, ["predikat-grupo", "forigi", "bio", "-y"])
+    assert result.exit_code == 1  # Nothing to delete → typer.Exit(1)
+    assert "ambigua" in result.stdout or "ambiguous" in result.stdout
+
+
+def test_predikat_grupo_forigi_prefix_not_found(runner: CliRunner) -> None:
+    """forigi with non-existent prefix should report error and exit(1)."""
+    result = runner.invoke(app, ["predikat-grupo", "forigi", "nonexistent", "-y"])
+    assert result.exit_code == 1  # Nothing to delete → typer.Exit(1)
+    assert "ne trovita" in result.stdout or "not found" in result.stdout
+
+
+def test_predikat_grupo_forigi_mixed_resolution(runner: CliRunner) -> None:
+    """forigi with mixed valid/invalid/prefix entries should resolve independently."""
+    runner.invoke(app, ["predikat-grupo", "aldoni", "exact-group", "-y"])
+    runner.invoke(app, ["predikat-grupo", "aldoni", "prefixed_group", "-y"])
+    result = runner.invoke(app, [
+        "predikat-grupo", "forigi",
+        "exact-group",     # exact match
+        "nonexistent",     # not found (reported as error, not counted in total)
+        "prefixed_",       # prefix match
+        "-y",
+    ])
+    assert result.exit_code == 0
+    # Should have deleted 2 (exact-group + prefixed_group).
+    # Total (t) is len(resolved)=2, not len(input)=3.
+    assert "Forigis 2 el 2" in result.stdout or "Deleted 2 of 2" in result.stdout

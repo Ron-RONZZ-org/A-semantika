@@ -735,6 +735,38 @@ This is not valid RDF — consumers can't parse labels programmatically.
 
 **Tests:** 295 total (unchanged count, 1 test updated).
 
+### Issue #33: Code Review Round 9 — Collation, Prefix Forigi, LIKE Escaping, Malplenigi Performance (May 2026)
+
+**Scope:** 6 fixes from ninth code review round. 310 tests total (295 existing + 15 new).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| B1 | Medium | `_node_service.py` | Added `COLLATE NOCASE` to `resolve_uuid_prefix()` — case-insensitive exact/LIKE matching consistent with trash module |
+| B2 | Medium | `_cli_predikat_grupo.py` | `predikat-grupo forigi` now uses prefix matching (same as `modifi`): exact → single prefix → ambiguous → not found, with independent per-identifier resolution |
+| B3 | Low | `_node_service.py` | Escaped `%`, `_`, `\` in LIKE prefix search in `resolve_uuid_prefix()` — matches `_predicate_service.py` pattern |
+| B4 | Low | `_node_service.py` | `NodeService.get()` changed from `LIKE prefix` to exact `= COLLATE NOCASE` — prevents silent wrong-match on prefix input |
+| B5 | Low | `_triple_turtle.py` | Added POSIX trailing newline to `export_turtle()` output |
+| B6 | Low | `_cli_rubujo.py`, `_node_service.py` | `malplenigi --days N` now pushes date filter to SQL via `get_trash_older_than()` instead of loading all items into memory |
+
+**Tests added (15):**
+| Test | Fix | File |
+|------|-----|------|
+| `test_get_exact_match_only` | B4 | test_nodes.py |
+| `test_get_exact_case_insensitive` | B4 | test_nodes.py |
+| `test_get_nonexistent_case_insensitive` | B4 | test_nodes.py |
+| `test_resolve_case_insensitive_exact` | B1 | test_nodes.py |
+| `test_resolve_case_insensitive_prefix` | B1 | test_nodes.py |
+| `test_resolve_case_insensitive_ambiguous` | B1 | test_nodes.py |
+| `test_resolve_prefix_with_underscore` | B3 | test_nodes.py |
+| `test_resolve_prefix_with_percent` | B3 | test_nodes.py |
+| `test_get_trash_older_than_positive_days_excludes_fresh` | B6 | test_nodes.py |
+| `test_get_trash_older_than_negative_days_matches_all` | B6 | test_nodes.py |
+| `test_get_trash_older_than_with_limit` | B6 | test_nodes.py |
+| `test_predikat_grupo_forigi_prefix_match` | B2 | test_cli_predikat_grupo.py |
+| `test_predikat_grupo_forigi_prefix_ambiguous` | B2 | test_cli_predikat_grupo.py |
+| `test_predikat_grupo_forigi_prefix_not_found` | B2 | test_cli_predikat_grupo.py |
+| `test_predikat_grupo_forigi_mixed_resolution` | B2 | test_cli_predikat_grupo.py |
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82

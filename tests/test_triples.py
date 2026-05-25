@@ -316,7 +316,7 @@ class TestTripleTurtleExport:
         assert "<https://example.org/1234" in ttl
 
     def test_export_turtle_no_trailing_blank_lines(self, triple_svc) -> None:
-        """Turtle export should not end with blank lines."""
+        """Turtle export should end with a single newline (POSIX)."""
         triple_svc.add(
             subject_uuid="s" + "0" * 35,
             predicate_id="rdf:type",
@@ -324,9 +324,11 @@ class TestTripleTurtleExport:
             object_type="uri",
         )
         ttl = triple_svc.export_turtle()
-        # Should not end with a newline or blank line
+        # Should end with a single newline (POSIX file convention)
         assert ttl != ""
-        assert not ttl.endswith("\n\n")
+        assert ttl.endswith("\n"), f"Expected trailing newline, got {repr(ttl[-10:])}"
+        # But NOT with a blank line (double newline)
+        assert not ttl.endswith("\n\n"), f"Expected no trailing blank line, got {repr(ttl[-10:])}"
 
 
 class TestTripleServicePrefixIsolation:

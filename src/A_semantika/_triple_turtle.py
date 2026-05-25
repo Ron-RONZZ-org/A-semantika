@@ -266,4 +266,4 @@ def export_turtle(
     while lines and lines[-1] == "":
         lines.pop()
 
-    return "\n".join(lines)
+    return "\n".join(lines) + "\n"

@@ -122,9 +122,14 @@ class NodeService(CRUDService):
     # ── Override get to use node_id column ───────────────────────────────
 
     def get(self, node_id: str) -> dict[str, Any] | None:
-        """Get a node by node_id (supports prefix matching)."""
+        """Get a node by exact node_id.
+
+        Uses exact match (not LIKE prefix matching) to avoid silent
+        ambiguity.  For prefix resolution, use
+        :meth:`resolve_uuid_prefix` which detects ambiguous matches.
+        """
         return self.db.execute_one(
-            f"SELECT * FROM {self.table} WHERE node_id LIKE ?", (f"{node_id}%",)
+            f"SELECT * FROM {self.table} WHERE node_id = ? COLLATE NOCASE", (node_id,)
         )
 
     # ── Override update to use node_id column ────────────────────────────
@@ -296,6 +301,20 @@ class NodeService(CRUDService):
 
     # ── Override empty_trash to use correct ISO timestamp comparison ──────
 
+    def get_trash_older_than(self, days: int, limit: int = 99999) -> list[dict]:
+        """Get trash items older than N days, filtering in SQL.
+
+        Avoids loading all trash items into memory when only a subset
+        is needed (e.g., for preview before ``malplenigi --days``).
+        """
+        from datetime import datetime, timezone, timedelta
+
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        return self.db.execute(
+            f"SELECT * FROM {self._trash_table} WHERE forigita_je < ? ORDER BY node_id LIMIT ?",
+            (cutoff, limit),
+        )
+
     def empty_trash(self, days: int = 30) -> int:
         """Permanently delete entries from trash older than days.
 
@@ -404,21 +423,23 @@ class NodeService(CRUDService):
 
         Returns the node dict if exactly one match, None if no match.
         Raises AmbiguousUUIDError if prefix is ambiguous (multiple matches).
+        Searches are case-insensitive (COLLATE NOCASE).
         """
         if not prefix:
             return None
 
-        # Full node_id match via exact match
+        # Full node_id match via exact match (case-insensitive)
         node = self.db.execute_one(
-            "SELECT * FROM nodes WHERE node_id = ?", (prefix,)
+            "SELECT * FROM nodes WHERE node_id = ? COLLATE NOCASE", (prefix,)
         )
         if node:
             return node
 
-        # Prefix search via LIKE
+        # Prefix search via LIKE (case-insensitive, with wildcard escaping)
+        escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         matches = self.db.execute(
-            "SELECT * FROM nodes WHERE node_id LIKE ?",
-            (f"{prefix}%",),
+            "SELECT * FROM nodes WHERE node_id LIKE ? COLLATE NOCASE ESCAPE '\\'",
+            (f"{escaped}%",),
         )
         if not matches:
             return None

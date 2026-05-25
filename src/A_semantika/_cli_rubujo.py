@@ -304,28 +304,24 @@ def malplenigi(
     """
     node_svc = get_node_service()
 
-    # Gather items to be deleted
-    items = node_svc.get_trash(limit=99999)
-    if not items:
-        info(tr_multi(
-            "Rubujo estas jam malplena.",
-            "Trash is already empty.",
-            "La corbeille est déjà vide.",
-        ))
-        return
-
-    # If days filter, count matching items
+    # Gather items to be deleted (SQL-side filtering for --days)
     if days is not None:
-        from datetime import datetime, timezone, timedelta
-
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-        items = [i for i in items if i.get("forigita_je", "") < cutoff.isoformat()]
+        items = node_svc.get_trash_older_than(days)
         if not items:
             info(tr_multi(
                 "Neniuj nodoj pli aĝaj ol {d} tagoj.",
                 "No nodes older than {d} days.",
                 "Aucun nœud plus vieux que {d} jours.",
             ).format(d=days))
+            return
+    else:
+        items = node_svc.get_trash(limit=99999)
+        if not items:
+            info(tr_multi(
+                "Rubujo estas jam malplena.",
+                "Trash is already empty.",
+                "La corbeille est déjà vide.",
+            ))
             return
 
     if not yes:
