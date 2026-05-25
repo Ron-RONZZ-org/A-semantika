@@ -2,7 +2,7 @@
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 from rich.box import SIMPLE as BOX_SIMPLE
@@ -11,6 +11,43 @@ from rich.table import Table
 from A import error, info, tr_multi
 from A_semantika.data.storage import label_from_json
 from A_semantika.service import get_predicate_group_service, get_predicate_service
+
+
+def _resolve_group_name(group_svc: Any, name: str) -> dict | None:
+    """Resolve a group name, supporting prefix matching.
+
+    Tries exact match first, then prefix (LIKE) match.
+    If the prefix matches multiple groups, shows an error and raises
+    ``typer.Exit(1)``.
+
+    Args:
+        group_svc: PredicateGroupService instance.
+        name: Group name or prefix.
+
+    Returns:
+        The resolved group dict, or None if not found.
+    """
+    group = group_svc.get_by_field("group_name", name)
+    if group:
+        return group
+
+    # Prefix match: search for groups where group_name starts with name
+    candidates = group_svc.db.execute(
+        "SELECT * FROM predicate_groups WHERE group_name LIKE ?",
+        (name + "%",),
+    )
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+    # Multiple matches — ambiguous
+    names = [c["group_name"] for c in candidates]
+    error(tr_multi(
+        "Grupa nomo '{n}' estas ambigua: {m}",
+        "Group name '{n}' is ambiguous: {m}",
+        "Nom de groupe '{n}' est ambigu : {m}",
+    ).format(n=name, m=", ".join(names)))
+    raise typer.Exit(1)
 
 predikat_grupo_app = typer.Typer(
     name="predikat-grupo",
@@ -132,14 +169,25 @@ def modifi(
     """Renomi predikat-grupon."""
     group_svc = get_predicate_group_service()
 
+    # Resolve the old group name (supports prefix matching)
+    resolved = _resolve_group_name(group_svc, old_name)
+    if not resolved:
+        error(tr_multi(
+            "Grupo ne trovita: {g}",
+            "Group not found: {g}",
+            "Groupe non trouvé : {g}",
+        ).format(g=old_name))
+        raise typer.Exit(1)
+    resolved_name: str = resolved["group_name"]
+
     if not yes:
         from A.utils.interactive import confirm_action
 
         if not confirm_action(
             tr_multi(
-                f"Ĉu renomi grupon '{old_name}' al '{new_name}'?",
-                f"Rename group '{old_name}' to '{new_name}'?",
-                f"Renommer le groupe '{old_name}' en '{new_name}'?",
+                f"Ĉu renomi grupon '{resolved_name}' al '{new_name}'?",
+                f"Rename group '{resolved_name}' to '{new_name}'?",
+                f"Renommer le groupe '{resolved_name}' en '{new_name}'?",
             ),
             default=True,
         ):
@@ -147,7 +195,7 @@ def modifi(
             raise typer.Exit(0)
 
     try:
-        group_svc.rename(old_name, new_name)
+        group_svc.rename(resolved_name, new_name)
         info(tr_multi(
             "Grupo renomita: '{old}' → '{new}'",
             "Group renamed: '{old}' → '{new}'",

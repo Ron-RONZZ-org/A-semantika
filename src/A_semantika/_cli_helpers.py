@@ -136,25 +136,23 @@ def validate_type_flags(
         raise typer.Exit(1)
     if count == 0:
         if lingvo:
-            from A import warning as _warn
-
-            _warn(
+            error(
                 tr_multi(
-                    "--lingvo ignorita sen --str",
-                    "--lingvo ignored without --str",
-                    "--lingvo ignoré sans --str",
+                    "--lingvo bezonas --str",
+                    "--lingvo requires --str",
+                    "--lingvo nécessite --str",
                 )
             )
+            raise typer.Exit(1)
         if unuo:
-            from A import warning as _warn
-
-            _warn(
+            error(
                 tr_multi(
-                    "--unuo ignorita sen --int aŭ --float",
-                    "--unuo ignored without --int or --float",
-                    "--unuo ignoré sans --int ou --float",
+                    "--unuo bezonas --int aŭ --float",
+                    "--unuo requires --int or --float",
+                    "--unuo nécessite --int ou --float",
                 )
             )
+            raise typer.Exit(1)
         return None  # URI reference
 
     if str_:
