@@ -271,8 +271,12 @@ class TestTripleTurtleExport:
         ttl = triple_svc.export_turtle()
         assert '"Hundo"@eo' in ttl or "Hundo" in ttl
 
-    def test_export_turtle_nodes_without_triples_in_comments(self, node_svc, triple_svc) -> None:
-        """Nodes without outgoing triples should appear as comments in Turtle output."""
+    def test_export_turtle_nodes_without_triples_still_get_rdfs_label(self, node_svc, triple_svc) -> None:
+        """Nodes without outgoing triples should appear with rdfs:label in Turtle output.
+
+        Labels (from etikedoj JSON) are emitted as standard rdfs:label triples
+        following W3C RDFS recommendation — not as Turtle comments.
+        """
         # Create a node with no triples
         node_svc.create({"node_id": "orphan_node", "etikedoj": {"eo": "Orfa nodo"}})
         # Create a node WITH triples
@@ -285,9 +289,11 @@ class TestTripleTurtleExport:
         )
         ttl = triple_svc.export_turtle()
 
-        # The orphan node should appear as a comment
+        # The orphan node should appear with rdfs:label (not as a comment)
         assert "orphan_node" in ttl
-        assert "#" in ttl
+        assert "Orfa nodo" in ttl
+        assert "rdfs:label" in ttl
+        assert "#" not in ttl or "Not a comment"  # No raw-JSON comments
         # The parent node should have proper triples
         assert ":parent_node" in ttl
         assert "rdf:type" in ttl

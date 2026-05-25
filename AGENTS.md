@@ -88,6 +88,25 @@ tests/
 
 ## Final DB Schema
 
+#### Turtle Export (`eksporti`)
+
+The `eksporti` command exports the entire triple store to standard Turtle (.ttl) format.
+Node labels (from `etikedoj` JSON) are emitted as standard W3C `rdfs:label` triples with
+language tags — this follows the RDFS recommendation for resource annotation.
+
+**Output structure:**
+```turtle
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+:HUNDO
+    rdf:type :KATO ;
+    rdfs:label "Hundo"@eo,
+               "Dog"@en .
+```
+
+Nodes without outgoing triples but with labels appear as standalone `rdfs:label` nodes.
+Nodes with neither triples nor labels are silently omitted.
+
 ```sql
 -- Nodes: entities in the knowledge graph
 CREATE TABLE nodes (
@@ -193,7 +212,7 @@ def get_by_sp(subject_uuid, predicate_id) -> list[dict]
 def exists(subject_uuid, predicate_id, object_value, object_type="uri") -> bool
 def count() -> int
 def get_stats() -> dict
-def export_turtle(base_uri="https://example.org/") -> str
+    def export_turtle(base_uri="https://example.org/") -> str  # rdfs:label emitted for node labels
 ```
 
 ## CLI Commands
@@ -618,7 +637,7 @@ Raw `IntegrityError` tracebacks in `nodo aldoni` and `nodo forigi` are caught an
 
 | Fix | Severity | File | Description |
 |-----|----------|------|-------------|
-| R1a | High | `_triple_service.py` → `_triple_turtle.py` | Turtle export now includes nodes without triples as comments (instead of silently omitting them) |
+| R1a | High | `_triple_service.py` → `_triple_turtle.py` | Turtle export now includes nodes without triples as `rdfs:label` triples (originally as comments, upgraded to standard RDF in Issue #34) |
 | R1b | High | `_triple_turtle.py` | Node IDs starting with digits now emit full URIs `<...>` instead of invalid Turtle prefixed names like `:1234` |
 | R1c | Low | `_triple_turtle.py` | Removed trailing blank lines from Turtle output |
 | A2/A3 | High | `_preview.py` | Consolidated `resolve_node_label()` with `NodeService.get_display_label()` — eliminated 30 lines of duplicate eo→en→first fallback logic |
@@ -686,6 +705,35 @@ Raw `IntegrityError` tracebacks in `nodo aldoni` and `nodo forigi` are caught an
 | `test_returns_predicate_id_when_no_label` | Q1 | test_preview_helpers.py |
 | `test_returns_predicate_id_when_not_found` | Q1 | test_preview_helpers.py |
 | `test_falls_back_to_en_when_no_eo` | Q1 | test_preview_helpers.py |
+
+### Issue #34: Standard `rdfs:label` in Turtle Export (May 2026)
+
+**Scope:** Replace raw-JSON Turtle comments with standard `rdfs:label` triples.
+
+**Problem:** Turtle export was dumping node labels as raw JSON comments:
+```turtle
+#   :Hundo  {"eo": "Hundo", "en": "Dog"}
+```
+This is not valid RDF — consumers can't parse labels programmatically.
+
+**Fix:** Every node's `etikedoj` JSON is now emitted as standard W3C RDFS `rdfs:label` triples with language tags:
+```turtle
+:HUNDO
+    rdf:type :KATO ;
+    rdfs:label "Hundo"@eo,
+               "Dog"@en .
+```
+
+**Changes:**
+| File | What |
+|------|------|
+| `_triple_turtle.py` | Added `_build_label_map()` — parses etikedoj JSON for all nodes |
+| `_triple_turtle.py` | Added `_append_label_lines()` — emits rdfs:label in comma-separated Turtle format |
+| `_triple_turtle.py` | `export_turtle()` now calls `_append_label_lines()` for each subject before the flush |
+| `_triple_turtle.py` | Nodes without outgoing triples now emit proper `rdfs:label` nodes instead of comments |
+| `tests/test_triples.py` | Updated `test_export_turtle_nodes_without_triples_in_comments` → renamed to `_still_get_rdfs_label`, checks `rdfs:label` instead of `#` |
+
+**Tests:** 295 total (unchanged count, 1 test updated).
 
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
