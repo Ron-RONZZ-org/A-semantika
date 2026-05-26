@@ -1,9 +1,4 @@
-"""NodeService — CRUDService subclass for knowledge graph nodes.
-
-Supports FTS5 search on label_text + difin_text.
-Auto-denormalizes etikedoj/difinoj JSON into flat text fields.
-UUID override on create for manual assignment.
-"""
+"""CRUDService for knowledge graph nodes — FTS5, label denormalization, UUID override."""
 from __future__ import annotations
 
 import json

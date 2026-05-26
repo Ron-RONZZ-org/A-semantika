@@ -14,7 +14,7 @@ from rich.table import Table
 
 from A import error, info, tr_multi
 from A.utils.interactive import confirm_action
-from A_semantika._node_helpers import AmbiguousUUIDError, get_display_label
+from A_semantika._node_helpers import AmbiguousUUIDError, get_display_label, get_label_from_node
 from A_semantika._node_service import NodeService
 from A_semantika._predicate_service import PredicateService
 from A_semantika.data.storage import label_from_json
@@ -48,22 +48,11 @@ def resolve_node_label_from_node(node: dict) -> str:
     Avoids redundant ``node_svc.resolve_node_id_prefix()`` calls when the
     node dict has already been fetched (e.g. in ``build_triple_preview_table()``).
 
-    Uses same eo→en→first→ID fallback logic as ``resolve_node_label()``.
+    Delegates to :func:`get_label_from_node` to share the same
+    ``eo → en → first → node_id[:16]`` fallback logic as
+    :func:`resolve_node_label` and :func:`get_display_label`.
     """
-    etikedoj = node.get("etikedoj", "{}")
-    try:
-        labels = json.loads(etikedoj) if isinstance(etikedoj, str) else etikedoj
-    except (json.JSONDecodeError, TypeError):
-        labels = {}
-    if isinstance(labels, dict):
-        for lang in ("eo", "en"):
-            val = labels.get(lang)
-            if val and isinstance(val, str):
-                return val
-        for val in labels.values():
-            if val and isinstance(val, str):
-                return val
-    return node.get("node_id", "")[:16]
+    return get_label_from_node(node)
 
 
 def resolve_predicate_label(pred_svc: PredicateService, predicate_id: str) -> str:
@@ -142,8 +131,7 @@ def build_triple_preview_table(
                         break
             except (json.JSONDecodeError, TypeError):
                 pass
-        pred_id_display = predicate_id
-        table.add_row(f"{subj_id}{lang_hint}", pred_id_display, obj_id)
+        table.add_row(f"{subj_id}{lang_hint}", predicate_id, obj_id)
         footnote = tr_multi("→ URI", "→ URI", "→ URI")
     elif object_type == "literal" and object_datatype:
         # Typed literal — use cached subj_node for label
@@ -152,8 +140,7 @@ def build_triple_preview_table(
             "Tipita literal ({d})", "Typed literal ({d})", "Littéral typé ({d})",
         ).format(d=dtype)
         table.add_row(subj_label, pred_label, obj_display)
-        pred_id_display = predicate_id
-        table.add_row(subj_id, pred_id_display, object_value)
+        table.add_row(subj_id, predicate_id, object_value)
 
         parts = [f"→ {dtype}"]
         if object_unit:
@@ -169,9 +156,8 @@ def build_triple_preview_table(
     else:
         # String literal
         table.add_row(subj_label, pred_label, "")
-        pred_id_display = predicate_id
         quoted_val = f'"{object_value}"'
-        table.add_row(subj_id, pred_id_display, quoted_val)
+        table.add_row(subj_id, predicate_id, quoted_val)
 
         parts = [tr_multi("→ literal", "→ literal", "→ litteral")]
         if object_lang:

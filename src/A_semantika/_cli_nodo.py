@@ -363,8 +363,8 @@ def forigi(
     nodes_with_triples &= resolved_ids
 
     # Phase 2: Preview and confirmation
-    need_confirm = len(resolved) >= 2 or all_triples
-    if not yes and need_confirm:
+    requires_confirm = len(resolved) >= 2 or all_triples
+    if not yes and requires_confirm:
         # Nodes preview table
         table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
         table.add_column("ID", no_wrap=True)
