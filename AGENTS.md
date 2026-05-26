@@ -1085,6 +1085,25 @@ This is not valid RDF — consumers can't parse labels programmatically.
 
 **Tests:** 427 pass (426 existing + 1 updated assertion).
 
+### Issue #53: UX Improvements — Arc Display, Whitespace Strip, Duplicate Handling (May 2026)
+
+**Scope:** 3 UX improvements for A-semantika CLI to enhance usability and prevent user errors.
+
+| Fix | Severity | Files | Description |
+|-----|----------|-------|-------------|
+| F1 | Low | `_cli_triples.py` | **Arc Display — Full Literal Values.** Triple object display was truncating both URIs and literals to 16 chars. Now: URIs remain truncated (for readability), but literal values display at full length so users see complete text content. Changed line ~211 to conditionally format based on `object_type`. |
+| F2 | Low | `_cli_nodo.py`, `_cli_predikato.py` | **Whitespace Stripping.** User input for language tags and text values (e.g. `eo::Label`, `LANG::TEXT` format) now auto-strips leading/trailing whitespace. Applied to `_parse_lang_tag_pairs()` and `_parse_lang_value_pairs()` respectively. Improves UX when pasting values with accidental spaces. |
+| F3 | Low | `_cli_nodo.py`, `_cli_predikato.py` | **Auto-Prompt on Duplicate.** When creating a node/predicate that already exists (by label/ID search), show friendly confirmation dialog: "Similar X already exists. Is it the same entity?" User can choose to update existing instead of creating a new one. Pattern adapted from A-vorto (proven success). Respects `-y`/`--jes` flag for scripting compatibility (silent exit if duplicate found with `-y`). Added import of `confirm_action` from `A.utils.interactive`. |
+
+**Tests:** All 427 tests pass (no regressions).
+
+**Commit:** `484f5cb` — "feat: implement three UX improvements (#53)"
+
+**User Simulation Verified:**
+- ✓ Long literal values displayed in full (not truncated)
+- ✓ Whitespace stripped from labels on creation
+- ✓ Duplicate detection triggers and shows confirmation prompt
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
