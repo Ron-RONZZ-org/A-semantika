@@ -320,9 +320,9 @@ def aldoni(
                         # User wants to update existing node instead
                         node_svc.delete(node_id_val)
                         info(tr_multi(
-                            "Novnodo ne kreita. Uzu 'modifi' por ĝisdatigi.",
-                            "New node not created. Use 'modifi' to update it.",
-                            "Nouveau nœud non créé. Utilisez 'modifi' pour le mettre à jour.",
+                            "Novnodo ne kreita. Uzu 'A semantika nodo modifi' por ĝisdatigi.",
+                            "New node not created. Use 'A semantika nodo modifi' to update it.",
+                            "Nouveau nœud non créé. Utilisez 'A semantika nodo modifi' pour le mettre à jour.",
                         ))
                         raise typer.Exit(0)
 

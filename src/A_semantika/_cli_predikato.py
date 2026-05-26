@@ -196,9 +196,9 @@ def aldoni(
             if confirm_action(msg, default=False):
                 # User wants to update existing predicate instead
                 info(tr_multi(
-                    "Nova predikato ne kreita. Uzu 'modifi' por ĝisdatigi.",
-                    "New predicate not created. Use 'modifi' to update it.",
-                    "Nouveau prédicat non créé. Utilisez 'modifi' pour le mettre à jour.",
+                    "Nova predikato ne kreita. Uzu 'A semantika predikato modifi' por ĝisdatigi.",
+                    "New predicate not created. Use 'A semantika predikato modifi' to update it.",
+                    "Nouveau prédicat non créé. Utilisez 'A semantika predikato modifi' pour le mettre à jour.",
                 ))
                 raise typer.Exit(0)
         # If yes=-y, just exit (don't create)
