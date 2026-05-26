@@ -356,6 +356,58 @@ def build_node_preview_table(node_id: str, labels: dict[str, str], defns: dict[s
     return table
 
 
+def build_node_modify_preview(
+    node_id: str,
+    old_labels: dict[str, str],
+    new_labels: dict[str, str] | None,
+    old_defns: dict[str, str],
+    new_defns: dict[str, str] | None,
+) -> Table | None:
+    """Build a preview table showing old → new values for a node modifi.
+
+    Only includes fields that actually changed.  Returns ``None`` if no
+    fields changed (no-op).
+
+    Args:
+        node_id: Node ID.
+        old_labels: Existing labels dict.
+        new_labels: New labels dict, or ``None`` if not changing.
+        old_defns: Existing definitions dict.
+        new_defns: New definitions dict, or ``None`` if not changing.
+
+    Returns:
+        A Rich Table with old→new columns, or ``None`` if nothing changed.
+    """
+    table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
+    table.add_column(tr_multi("Kampo", "Field", "Champ"), no_wrap=True)
+    table.add_column(tr_multi("Malnova", "Old", "Ancien"), no_wrap=True)
+    table.add_column(tr_multi("Nova", "New", "Nouveau"), no_wrap=True)
+
+    has_changes = False
+
+    if new_labels is not None and new_labels != old_labels:
+        has_changes = True
+        old_lines = "\n".join(f"{k}: {v}" for k, v in sorted(old_labels.items())) if old_labels else "—"
+        new_lines = "\n".join(f"{k}: {v}" for k, v in sorted(new_labels.items())) if new_labels else "—"
+        table.add_row(
+            tr_multi("Etikedoj", "Labels", "Étiquettes"),
+            old_lines,
+            new_lines,
+        )
+
+    if new_defns is not None and new_defns != old_defns:
+        has_changes = True
+        old_lines = "\n".join(f"{k}: {v}" for k, v in sorted(old_defns.items())) if old_defns else "—"
+        new_lines = "\n".join(f"{k}: {v}" for k, v in sorted(new_defns.items())) if new_defns else "—"
+        table.add_row(
+            tr_multi("Difinoj", "Definitions", "Définitions"),
+            old_lines,
+            new_lines,
+        )
+
+    return table if has_changes else None
+
+
 def confirm_node_creation(
     node_id: str,
     labels: dict[str, str],
@@ -428,6 +480,60 @@ def build_predicate_preview_table(pred_data: dict) -> Table:
         table.add_row(tr_multi("Priskriboj", "Descriptions", "Descriptions"), descs_str)
 
     return table
+
+
+def build_predicate_modify_preview(
+    pred_id: str,
+    old_etikedoj: dict[str, str],
+    new_etikedoj: dict[str, str] | None,
+    old_priskriboj: dict[str, str],
+    new_priskriboj: dict[str, str] | None,
+) -> Table | None:
+    """Build a preview table showing old → new values for a predicate modifi.
+
+    Only includes fields that actually changed.  Returns ``None`` if no
+    fields changed (no-op).
+
+    Args:
+        pred_id: Predicate ID (e.g. ``rdf:type``).
+        old_etikedoj: Existing labels dict.
+        new_etikedoj: New labels dict, or ``None`` if labels not changing.
+        old_priskriboj: Existing descriptions dict.
+        new_priskriboj: New descriptions dict, or ``None`` if not changing.
+
+    Returns:
+        A Rich Table with old→new columns, or ``None`` if nothing changed.
+    """
+    table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
+    table.add_column(tr_multi("Kampo", "Field", "Champ"), no_wrap=True)
+    table.add_column(tr_multi("Malnova", "Old", "Ancien"), no_wrap=True)
+    table.add_column(tr_multi("Nova", "New", "Nouveau"), no_wrap=True)
+
+    has_changes = False
+
+    # Labels (etikedoj)
+    if new_etikedoj is not None and new_etikedoj != old_etikedoj:
+        has_changes = True
+        old_lines = "\n".join(f"{k}: {v}" for k, v in sorted(old_etikedoj.items())) if old_etikedoj else "—"
+        new_lines = "\n".join(f"{k}: {v}" for k, v in sorted(new_etikedoj.items())) if new_etikedoj else "—"
+        table.add_row(
+            tr_multi("Etikedoj", "Labels", "Étiquettes"),
+            old_lines,
+            new_lines,
+        )
+
+    # Descriptions (priskriboj)
+    if new_priskriboj is not None and new_priskriboj != old_priskriboj:
+        has_changes = True
+        old_lines = "\n".join(f"{k}: {v}" for k, v in sorted(old_priskriboj.items())) if old_priskriboj else "—"
+        new_lines = "\n".join(f"{k}: {v}" for k, v in sorted(new_priskriboj.items())) if new_priskriboj else "—"
+        table.add_row(
+            tr_multi("Priskriboj", "Descriptions", "Descriptions"),
+            old_lines,
+            new_lines,
+        )
+
+    return table if has_changes else None
 
 
 def confirm_predicate_creation(

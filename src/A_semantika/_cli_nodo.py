@@ -13,7 +13,13 @@ from rich.table import Table
 from A import error, info, tr_multi, warning
 from A_semantika._cli_helpers import create_node_arcs, ensure_predicate, resolve_arc_targets
 from A_semantika._node_service import AmbiguousUUIDError
-from A_semantika._preview import confirm_node_creation, confirm_node_with_arcs, resolve_node_label, resolve_predicate_label
+from A_semantika._preview import (
+    build_node_modify_preview,
+    confirm_node_creation,
+    confirm_node_with_arcs,
+    resolve_node_label,
+    resolve_predicate_label,
+)
 from A_semantika.data.storage import label_from_json
 from A_semantika.service import get_node_service, get_predicate_service, get_triple_service
 
@@ -162,12 +168,44 @@ def aldoni(
         for e in etikedoj:
             if "::" in e:
                 lang, _, text = e.partition("::")
+            elif ":" in e:
+                lang, _, text = e.partition(":")
+            else:
+                warning(tr_multi(
+                    "Nevalida etikedo-formato (mankas ':' aŭ '::'): {i}",
+                    "Invalid label format (missing ':' or '::'): {i}",
+                    "Format d'étiquette invalide (' : ' ou ' :: ' manquant) : {i}",
+                ).format(i=e))
+                continue
+            if lang and text:
                 labels_dict[lang] = text
+            else:
+                warning(tr_multi(
+                    "Malplena lingvokodo aŭ teksto en: {i}",
+                    "Empty language code or text in: {i}",
+                    "Code de langue ou texte vide dans : {i}",
+                ).format(i=e))
     if difinoj:
         for d in difinoj:
             if "::" in d:
                 lang, _, text = d.partition("::")
+            elif ":" in d:
+                lang, _, text = d.partition(":")
+            else:
+                warning(tr_multi(
+                    "Nevalida difino-formato (mankas ':' aŭ '::'): {i}",
+                    "Invalid definition format (missing ':' or '::'): {i}",
+                    "Format de définition invalide (' : ' ou ' :: ' manquant) : {i}",
+                ).format(i=d))
+                continue
+            if lang and text:
                 defs_dict[lang] = text
+            else:
+                warning(tr_multi(
+                    "Malplena lingvokodo aŭ teksto en: {i}",
+                    "Empty language code or text in: {i}",
+                    "Code de langue ou texte vide dans : {i}",
+                ).format(i=d))
 
     data: dict = {
         "etikedoj": labels_dict,
@@ -238,6 +276,35 @@ def aldoni(
     ).format(label=resolve_node_label(node_svc, node_id_val), node_id=node_id_val[:16]))
 
 
+def _parse_lang_tag_pairs(items: list[str]) -> dict[str, str]:
+    """Parse ``LANG::TEKSTO`` or ``LANG:TEKSTO`` list into a dict.
+
+    Warns about malformed entries (no separator).
+    """
+    result: dict[str, str] = {}
+    for item in items:
+        if "::" in item:
+            lang, _, text = item.partition("::")
+        elif ":" in item:
+            lang, _, text = item.partition(":")
+        else:
+            warning(tr_multi(
+                "Nevalida etikedo-formato (mankas ':' aŭ '::'): {i}",
+                "Invalid label format (missing ':' or '::'): {i}",
+                "Format d'étiquette invalide (' : ' ou ' :: ' manquant) : {i}",
+            ).format(i=item))
+            continue
+        if lang and text:
+            result[lang] = text
+        else:
+            warning(tr_multi(
+                "Malplena lingvokodo aŭ teksto en: {i}",
+                "Empty language code or text in: {i}",
+                "Code de langue ou texte vide dans : {i}",
+            ).format(i=item))
+    return result
+
+
 @nodo_app.command("modifi")
 def modifi(
     node_id: str = typer.Argument(..., help=tr_multi("Nod-indekso", "Node ID", "ID du nœud")),
@@ -256,27 +323,60 @@ def modifi(
         error(tr_multi("Nodo ne trovita: {u}", "Node not found: {u}", "Nœud non trouvé : {u}").format(u=node_id))
         raise typer.Exit(1)
 
+    # Parse existing values
+    try:
+        old_labels = json.loads(node.get("etikedoj", "{}"))
+    except (json.JSONDecodeError, TypeError):
+        old_labels = {}
+    try:
+        old_defns = json.loads(node.get("difinoj", "{}"))
+    except (json.JSONDecodeError, TypeError):
+        old_defns = {}
+
     updates: dict = {}
+    new_labels: dict[str, str] | None = None
+    new_defns: dict[str, str] | None = None
+
     if etikedoj:
-        labels: dict[str, str] = {}
-        for e in etikedoj:
-            if "::" in e:
-                lang, _, text = e.partition("::")
-                labels[lang] = text
-        updates["etikedoj"] = labels
+        parsed_labels = _parse_lang_tag_pairs(etikedoj)
+        new_labels = dict(old_labels)
+        new_labels.update(parsed_labels)
+        updates["etikedoj"] = new_labels
+
     if difinoj:
-        defs: dict[str, str] = {}
-        for d in difinoj:
-            if "::" in d:
-                lang, _, text = d.partition("::")
-                defs[lang] = text
-        updates["difinoj"] = defs
+        parsed_defns = _parse_lang_tag_pairs(difinoj)
+        new_defns = dict(old_defns)
+        new_defns.update(parsed_defns)
+        updates["difinoj"] = new_defns
 
     if not updates:
         error(tr_multi("Neniu ŝanĝo specifita.", "No changes specified.", "Aucun changement spécifié."))
         raise typer.Exit(1)
 
+    # No-op detection: compare old vs new
+    noop = (
+        (new_labels is None or new_labels == old_labels)
+        and (new_defns is None or new_defns == old_defns)
+    )
+    if noop:
+        info(tr_multi(
+            "Neniu ŝanĝo: nodo restas neŝanĝita.",
+            "No change: node remains unchanged.",
+            "Aucun changement : le nœud reste inchangé.",
+        ))
+        return
+
+    # Show change summary and confirm
     if not yes:
+        table = build_node_modify_preview(
+            node["node_id"],
+            old_labels, new_labels,
+            old_defns, new_defns,
+        )
+        if table:
+            info("")
+            info(table)
+
         from A.utils.interactive import confirm_action
 
         if not confirm_action(

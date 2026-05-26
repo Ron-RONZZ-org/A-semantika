@@ -12,7 +12,10 @@ from rich.table import Table
 
 from A import error, info, tr_multi, warning as awarning
 from A_semantika._predicate_service import _label_from_etikedoj
-from A_semantika._preview import confirm_predicate_creation
+from A_semantika._preview import (
+    build_predicate_modify_preview,
+    confirm_predicate_creation,
+)
 from A_semantika._wikidata_helper import (
     is_wikidata_id,
     normalize_predicate_id,
@@ -40,16 +43,34 @@ predikato_app = typer.Typer(
 def _parse_lang_value_pairs(items: list[str] | None) -> dict[str, str]:
     """Parse ``LANGCODE::TEKSTO`` list into a language→text dict.
 
-    Skips malformed entries (no ``::`` separator).
+    Accepts both ``LANGCODE::TEKSTO`` (double colon) and ``LANGCODE:TEKSTO``
+    (single colon) separators.  Warns about entries with no separator.
     """
+    from A import warning as awarning
+
     result: dict[str, str] = {}
     if not items:
         return result
     for item in items:
         if "::" in item:
             lang, _, text = item.partition("::")
-            if lang and text:
-                result[lang] = text
+        elif ":" in item:
+            lang, _, text = item.partition(":")
+        else:
+            awarning(tr_multi(
+                "Nevalida etikedo-formato (mankas ':' aŭ '::'): {i}",
+                "Invalid label format (missing ':' or '::'): {i}",
+                "Format d'étiquette invalide (' : ' ou ' :: ' manquant) : {i}",
+            ).format(i=item))
+            continue
+        if lang and text:
+            result[lang] = text
+        else:
+            awarning(tr_multi(
+                "Malplena lingvokodo aŭ teksto en: {i}",
+                "Empty language code or text in: {i}",
+                "Code de langue ou texte vide dans : {i}",
+            ).format(i=item))
     return result
 
 
@@ -235,40 +256,68 @@ def modifi(
         error(tr_multi("Predikato ne trovita: {p}", "Predicate not found: {p}", "Prédicat non trouvé : {p}").format(p=predicate_id))
         raise typer.Exit(1)
 
+    # Parse existing values
+    try:
+        old_etikedoj = json.loads(pred.get("etikedoj", "{}"))
+    except (json.JSONDecodeError, TypeError):
+        old_etikedoj = {}
+    try:
+        old_priskriboj = json.loads(pred.get("priskriboj", "{}"))
+    except (json.JSONDecodeError, TypeError):
+        old_priskriboj = {}
+
     updates: dict = {}
+    new_etikedoj: dict[str, str] | None = None
+    new_priskriboj: dict[str, str] | None = None
 
     # Handle etikedoj: merge or replace
     if etikedoj is not None:
-        new_labels = _parse_lang_value_pairs(etikedoj)
+        parsed_labels = _parse_lang_value_pairs(etikedoj)
         if anstatauxigi:
-            updates["etikedoj"] = new_labels
+            new_etikedoj = parsed_labels
         else:
-            # Merge: load existing, update with new values
-            try:
-                existing_labels = json.loads(pred.get("etikedoj", "{}"))
-            except (json.JSONDecodeError, TypeError):
-                existing_labels = {}
-            existing_labels.update(new_labels)
-            updates["etikedoj"] = existing_labels
+            new_etikedoj = dict(old_etikedoj)
+            new_etikedoj.update(parsed_labels)
+        updates["etikedoj"] = new_etikedoj
 
     # Handle priskriboj: merge or replace
     if priskriboj is not None:
-        new_descs = _parse_lang_value_pairs(priskriboj)
+        parsed_descs = _parse_lang_value_pairs(priskriboj)
         if anstatauxigi:
-            updates["priskriboj"] = new_descs
+            new_priskriboj = parsed_descs
         else:
-            try:
-                existing_descs = json.loads(pred.get("priskriboj", "{}"))
-            except (json.JSONDecodeError, TypeError):
-                existing_descs = {}
-            existing_descs.update(new_descs)
-            updates["priskriboj"] = existing_descs
+            new_priskriboj = dict(old_priskriboj)
+            new_priskriboj.update(parsed_descs)
+        updates["priskriboj"] = new_priskriboj
 
     if not updates:
         error(tr_multi("Neniu ŝanĝo specifita.", "No changes specified.", "Aucun changement spécifié."))
         raise typer.Exit(1)
 
+    # No-op detection: compare old vs new
+    noop = (
+        (new_etikedoj is None or new_etikedoj == old_etikedoj)
+        and (new_priskriboj is None or new_priskriboj == old_priskriboj)
+    )
+    if noop:
+        info(tr_multi(
+            "Neniu ŝanĝo: predikato restas neŝanĝita.",
+            "No change: predicate remains unchanged.",
+            "Aucun changement : le prédicat reste inchangé.",
+        ))
+        return
+
+    # Show change summary and confirm
     if not yes:
+        table = build_predicate_modify_preview(
+            predicate_id,
+            old_etikedoj, new_etikedoj,
+            old_priskriboj, new_priskriboj,
+        )
+        if table:
+            info("")
+            info(table)
+
         from A.utils.interactive import confirm_action
 
         if not confirm_action(
