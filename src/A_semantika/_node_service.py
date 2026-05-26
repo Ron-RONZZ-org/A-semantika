@@ -222,12 +222,16 @@ class NodeService(CRUDService):
         sql = f"INSERT OR REPLACE INTO {self._trash_table} ({', '.join(columns)}) VALUES ({placeholders})"
 
         with self.db.transaction() as conn:
-            conn.execute(sql, values)
-            conn.execute(f"DELETE FROM {self.table} WHERE node_id = ?", (node_id,))
-            # Remove from FTS inside the transaction to prevent FTS/data
-            # inconsistency if the transaction later rolls back.
+            # Remove from FTS BEFORE deleting from nodes — _remove_from_fts
+            # needs the rowid from the nodes table to issue the FTS5 'delete'
+            # command. Deleting from nodes first would make the rowid
+            # inaccessible, leaving a dangling FTS reference that causes
+            # "fts5: missing row N from content table" errors on subsequent
+            # MATCH queries.
             if self._fts_config:
                 self._remove_from_fts(node_id)
+            conn.execute(sql, values)
+            conn.execute(f"DELETE FROM {self.table} WHERE node_id = ?", (node_id,))
 
     # ── Override restore to use node_id column ───────────────────────────
 
