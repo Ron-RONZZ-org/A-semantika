@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 from rich.box import SIMPLE as BOX_SIMPLE
@@ -182,6 +182,11 @@ def aldoni(
     if is_wd:
         predicate_id = normalize_predicate_id(predicate_id)
 
+    # Parse labels and descriptions early (needed both for create and for
+    # duplicate-update before the existing predicate check).
+    labels_dict = _parse_lang_value_pairs(etikedoj)
+    descs_dict = _parse_lang_value_pairs(priskriboj)
+
     existing = pred_svc.get_by_predicate_id(predicate_id)
     if existing:
         existing_label = label_from_json(existing.get("etikedoj", {}))
@@ -194,19 +199,22 @@ def aldoni(
                 "Est-ce le même prédicat ? Si oui, je vais le mettre à jour à la place.",
             )
             if confirm_action(msg, default=False):
-                # User wants to update existing predicate instead
+                # Build update data from user-provided labels/descriptions
+                update_data: dict[str, Any] = {}
+                if labels_dict:
+                    update_data["etikedoj"] = labels_dict
+                if descs_dict:
+                    update_data["priskriboj"] = descs_dict
+                if update_data:
+                    pred_svc.update(predicate_id, update_data)
                 info(tr_multi(
-                    "Nova predikato ne kreita. Uzu 'A semantika predikato modifi' por ĝisdatigi.",
-                    "New predicate not created. Use 'A semantika predikato modifi' to update it.",
-                    "Nouveau prédicat non créé. Utilisez 'A semantika predikato modifi' pour le mettre à jour.",
-                ))
+                    "Predikato ĝisdatigita: {p}",
+                    "Predicate updated: {p}",
+                    "Prédicat mis à jour : {p}",
+                ).format(p=predicate_id))
                 raise typer.Exit(0)
         # If yes=-y, just exit (don't create)
         raise typer.Exit(1)
-
-    # Parse labels and descriptions from LANGCODE::TEKSTO format
-    labels_dict = _parse_lang_value_pairs(etikedoj)
-    descs_dict = _parse_lang_value_pairs(priskriboj)
 
     # Auto-fetch Wikidata details for Wikidata property IDs
     wd_details: dict | None = None
