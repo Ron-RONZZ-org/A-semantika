@@ -195,7 +195,8 @@ CREATE INDEX idx_nodes_label_text ON nodes(label_text);
 ### PredicateService (extends CRUDService)
 - Stores multilingual labels/descriptions as JSON dicts: `etikedoj` / `priskriboj`
 - Search on `predicate_id`, `etikedoj`, `priskriboj`, `aliases` via LIKE
-- No undo/trash needed (predicates are lightweight metadata)
+- Trash support (soft-delete to ``predicates_rubujo``, restorable via ``restore()``)
+- Custom ``_move_to_trash``, ``restore``, ``permanent_delete``, ``empty_trash`` using ``predicate_id`` column
 - Custom `create()` / `update()` with JSON serialization of dict fields
 
 ### PredicateGroupService (extends CRUDService)

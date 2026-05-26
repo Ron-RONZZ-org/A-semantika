@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from A.core.service import CRUDService
@@ -209,23 +210,106 @@ class PredicateService(CRUDService):
 
         return self.get_by_predicate_id(predicate_id)
 
-    def delete(self, predicate_id: str, soft: bool = True) -> None:
-        """Hard-delete a predicate by predicate_id.
+    # ── Trash support ───────────────────────────────────────────────────
 
-        Predicates are lightweight metadata — undo/trash are not needed.
-        The ``soft`` parameter is accepted for API compatibility but
-        ignored (deletion is always permanent).
+    def delete(self, predicate_id: str, soft: bool = True) -> None:
+        """Delete a predicate.
+
+        If soft=True, moves to trash (predicates_rubujo) instead of
+        permanent deletion. Restorable via restore().
         """
-        self._remove_from_fts(predicate_id)
         if soft:
-            from A import warning as _warn
-            _warn(
-                "PredicateService.delete(soft=True) is ignored — "
-                "predicates are always hard-deleted."
+            self._move_to_trash(predicate_id)
+        else:
+            self._remove_from_fts(predicate_id)
+            self.db.execute(
+                "DELETE FROM predicates WHERE predicate_id = ?",
+                (predicate_id,),
             )
-        self.db.execute(
-            "DELETE FROM predicates WHERE predicate_id = ?",
-            (predicate_id,),
+
+    def _move_to_trash(self, predicate_id: str) -> None:
+        """Move predicate to trash table using predicate_id column."""
+        entry = self.db.execute_one(
+            f"SELECT * FROM {self.table} WHERE predicate_id = ?", (predicate_id,)
+        )
+        if not entry:
+            return
+
+        if self._fts_config:
+            self._remove_from_fts(predicate_id)
+
+        entry["forigita_je"] = datetime.now(timezone.utc).isoformat()
+        entry.setdefault("modifita_je", entry["forigita_je"])
+
+        columns = list(entry.keys())
+        values = list(entry.values())
+        placeholders = ", ".join(["?"] * len(columns))
+        sql = f"INSERT OR REPLACE INTO {self._trash_table} ({', '.join(columns)}) VALUES ({placeholders})"
+
+        with self.db.transaction() as conn:
+            conn.execute(sql, values)
+            conn.execute(f"DELETE FROM {self.table} WHERE predicate_id = ?", (predicate_id,))
+
+    def restore(self, predicate_id: str) -> dict | None:
+        """Restore predicate from trash using predicate_id."""
+        entry = self.db.execute_one(
+            f"SELECT * FROM {self._trash_table} WHERE predicate_id = ?", (predicate_id,)
+        )
+        if not entry:
+            return None
+
+        entry["modifita_je"] = datetime.now(timezone.utc).isoformat()
+        entry.pop("forigita_je", None)
+
+        columns = list(entry.keys())
+        values = list(entry.values())
+        placeholders = ", ".join(["?"] * len(columns))
+        insert_sql = f"INSERT INTO {self.table} ({', '.join(columns)}) VALUES ({placeholders})"
+
+        with self.db.transaction() as conn:
+            conn.execute(insert_sql, values)
+            conn.execute(f"DELETE FROM {self._trash_table} WHERE predicate_id = ?", (predicate_id,))
+
+        if self._fts_config:
+            self._index_fts(predicate_id)
+
+        return entry
+
+    def permanent_delete(self, predicate_id: str) -> bool:
+        """Permanently delete a single entry from trash using predicate_id."""
+        sql = f"DELETE FROM {self._trash_table} WHERE predicate_id = ?"
+        with self.db.transaction() as conn:
+            cursor = conn.execute(sql, (predicate_id,))
+            return cursor.rowcount > 0
+
+    def empty_trash(self, days: int = 30) -> int:
+        """Permanently delete trash entries older than N days."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        sql = f"DELETE FROM {self._trash_table} WHERE forigita_je < ?"
+        with self.db.transaction() as conn:
+            cursor = conn.execute(sql, (cutoff,))
+            return cursor.rowcount
+
+    def empty_all_trash(self) -> int:
+        """Permanently delete ALL entries from the trash table."""
+        sql = f"DELETE FROM {self._trash_table}"
+        with self.db.transaction() as conn:
+            cursor = conn.execute(sql)
+            return cursor.rowcount
+
+    def get_trash(self, limit: int = 99999) -> list[dict]:
+        """List entries in the trash table."""
+        return self.db.execute(
+            f"SELECT * FROM {self._trash_table} ORDER BY forigita_je DESC LIMIT ?",
+            (limit,),
+        )
+
+    def get_trash_older_than(self, days: int, limit: int = 99999) -> list[dict]:
+        """Get trash entries older than N days."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        return self.db.execute(
+            f"SELECT * FROM {self._trash_table} WHERE forigita_je < ? ORDER BY predicate_id LIMIT ?",
+            (cutoff, limit),
         )
 
     def _sanitize_fts_query(self, query: str) -> str:
