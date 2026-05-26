@@ -11,6 +11,7 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi, warning
+from A.utils.interactive import confirm_action
 from A_semantika._cli_helpers import create_node_arcs, ensure_predicate, resolve_arc_targets
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import (
@@ -244,6 +245,38 @@ def aldoni(
         raise typer.Exit(1) from e
     node_id_val = node["node_id"]
 
+    # Check for duplicate: if node has labels, search for similar existing nodes
+    if labels_dict:
+        # Try to find existing node with same labels (using FTS search on first label)
+        eo_label = labels_dict.get("eo") or next(iter(labels_dict.values()), None)
+        if eo_label:
+            similar = node_svc.search(eo_label, limit=1)
+            if similar and similar[0]["node_id"] != node_id_val:
+                # Found a similar node - propose to update instead
+                existing_id = similar[0]["node_id"]
+                existing_label = resolve_node_label(node_svc, existing_id)
+                info(tr_multi(
+                    "Simila nodo jam ekzistas: {label} ({node_id})",
+                    "Similar node already exists: {label} ({node_id})",
+                    "Un nœud similaire existe déjà : {label} ({node_id})",
+                ).format(label=existing_label, node_id=existing_id[:16]))
+                # Only auto-prompt if not in skip-confirmation mode (-y)
+                if not yes:
+                    msg = tr_multi(
+                        "Ĉu ĝi estas la sama nodo?",
+                        "Is it the same node?",
+                        "Est-ce le même nœud ?",
+                    )
+                    if confirm_action(msg, default=False):
+                        # User wants to update existing node instead
+                        node_svc.delete(node_id_val)
+                        info(tr_multi(
+                            "Novnodo ne kreita. Uzu 'modifi' por ĝisdatigi.",
+                            "New node not created. Use 'modifi' to update it.",
+                            "Nouveau nœud non créé. Utilisez 'modifi' pour le mettre à jour.",
+                        ))
+                        raise typer.Exit(0)
+
     # Build full arc dicts with the now-known subject node_id
     arcs: list[dict] = [
         {"subject": node_id_val, "predicate": pred, "object": target_id, "object_type": "uri"}
@@ -280,6 +313,7 @@ def _parse_lang_tag_pairs(items: list[str]) -> dict[str, str]:
     """Parse ``LANG::TEKSTO`` or ``LANG:TEKSTO`` list into a dict.
 
     Warns about malformed entries (no separator).
+    Strips leading/trailing whitespace from lang and text.
     """
     result: dict[str, str] = {}
     for item in items:
@@ -294,6 +328,9 @@ def _parse_lang_tag_pairs(items: list[str]) -> dict[str, str]:
                 "Format d'étiquette invalide (' : ' ou ' :: ' manquant) : {i}",
             ).format(i=item))
             continue
+        # Strip whitespace from both language code and text
+        lang = lang.strip()
+        text = text.strip()
         if lang and text:
             result[lang] = text
         else:

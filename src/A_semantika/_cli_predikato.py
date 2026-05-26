@@ -11,7 +11,8 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi, warning as awarning
-from A_semantika._predicate_service import _label_from_etikedoj
+from A.utils.interactive import confirm_action
+from A_semantika.data.storage import label_from_json
 from A_semantika._preview import (
     build_predicate_modify_preview,
     confirm_predicate_creation,
@@ -45,6 +46,7 @@ def _parse_lang_value_pairs(items: list[str] | None) -> dict[str, str]:
 
     Accepts both ``LANGCODE::TEKSTO`` (double colon) and ``LANGCODE:TEKSTO``
     (single colon) separators.  Warns about entries with no separator.
+    Strips leading/trailing whitespace from lang and text.
     """
     from A import warning as awarning
 
@@ -63,6 +65,9 @@ def _parse_lang_value_pairs(items: list[str] | None) -> dict[str, str]:
                 "Format d'étiquette invalide (' : ' ou ' :: ' manquant) : {i}",
             ).format(i=item))
             continue
+        # Strip whitespace from both language code and text
+        lang = lang.strip()
+        text = text.strip()
         if lang and text:
             result[lang] = text
         else:
@@ -87,7 +92,7 @@ def _get_predicate_label(pred: dict, preferred_lang: str | None = None) -> str:
     except (json.JSONDecodeError, TypeError):
         labels = {}
     langs = (preferred_lang, "eo", "en") if preferred_lang else ("eo", "en")
-    return _label_from_etikedoj(labels, langs) or pred.get("predicate_id", "")
+    return label_from_json(labels, lang_fallback=langs) or pred.get("predicate_id", "")
 
 
 # ── Commands ─────────────────────────────────────────────────────────────────
@@ -179,7 +184,24 @@ def aldoni(
 
     existing = pred_svc.get_by_predicate_id(predicate_id)
     if existing:
-        error(tr_multi("Predikato jam ekzistas: {p}", "Predicate already exists: {p}", "Prédicat existe déjà : {p}").format(p=predicate_id))
+        existing_label = label_from_json(existing.get("etikedoj", {}))
+        info(tr_multi("Predikato jam ekzistas: {p}", "Predicate already exists: {p}", "Prédicat existe déjà : {p}").format(p=predicate_id))
+        # Only auto-prompt if not in skip-confirmation mode (-y)
+        if not yes:
+            msg = tr_multi(
+                "Ĉu ĝi estas la sama predikato? Se jes, mi ĝisdatigos ĝin anstataŭe.",
+                "Is it the same predicate? If yes, I will update it instead.",
+                "Est-ce le même prédicat ? Si oui, je vais le mettre à jour à la place.",
+            )
+            if confirm_action(msg, default=False):
+                # User wants to update existing predicate instead
+                info(tr_multi(
+                    "Nova predikato ne kreita. Uzu 'modifi' por ĝisdatigi.",
+                    "New predicate not created. Use 'modifi' to update it.",
+                    "Nouveau prédicat non créé. Utilisez 'modifi' pour le mettre à jour.",
+                ))
+                raise typer.Exit(0)
+        # If yes=-y, just exit (don't create)
         raise typer.Exit(1)
 
     # Parse labels and descriptions from LANGCODE::TEKSTO format

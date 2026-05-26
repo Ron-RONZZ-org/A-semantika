@@ -204,12 +204,15 @@ def aldoni(
             object_datatype=datatype,
             object_unit=unuo,
         )
+        # Display: URIs get truncated to 16 chars for readability; literal values stay full
+        o_display = object_uuid[:16] if object_type == "uri" else object_uuid
+        s_display = subject_uuid[:16] if isinstance(subject_uuid, str) and len(subject_uuid) > 16 else subject_uuid
         info(tr_multi(
             "Arko kreita: {s} --{p}--> {o}",
             "Arc created: {s} --{p}--> {o}",
             "Arc créé : {s} --{p}--> {o}",
         ).format(
-            s=subject_uuid[:16], p=predicate_id, o=object_uuid[:16],
+            s=s_display, p=predicate_id, o=o_display,
         ))
     except ValueError as e:
         error(tr_multi(
