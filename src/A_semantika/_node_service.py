@@ -1,4 +1,4 @@
-"""CRUDService for knowledge graph nodes — FTS5, label denormalization, UUID override."""
+"""CRUDService for knowledge graph nodes — FTS5, label denorm, UUID override."""
 from __future__ import annotations
 
 import json
@@ -28,15 +28,7 @@ def _fts_config() -> FTSConfig:
 
 
 class NodeService(CRUDService):
-    """Service for managing knowledge graph nodes.
-
-    Features:
-    - FTS5 full-text search on label_text + difin_text
-    - Auto-denormalization of etikedoj/difinoj JSON into flat text
-    - Human-readable node_id (not UUID) as primary key
-    - Optional auto-generated UUID if node_id not provided
-    - Undo/trash enabled (default undo_size=10)
-    """
+    """Service for managing knowledge graph nodes (FTS5, label denorm, node_id PK)."""
 
     def __init__(self, db: Any) -> None:
         super().__init__(
@@ -61,21 +53,24 @@ class NodeService(CRUDService):
             "kreita_je": timestamp,
             "modifita_je": timestamp,
         }
-        # Insert directly to bypass CRUDService's auto-UUID generation
+        # Insert directly to bypass CRUDService's auto-UUID generation.
+        # Wrap INSERT + FTS index in a transaction for consistency with
+        # update() and the base CRUDService.create() pattern.
         try:
-            self.db.execute(
-                "INSERT INTO nodes (node_id, etikedoj, label_text, difinoj, difin_text, kreita_je, modifita_je) "
-                "VALUES (:node_id, :etikedoj, :label_text, :difinoj, :difin_text, :kreita_je, :modifita_je)",
-                raw,
-            )
+            with self.db.transaction() as conn:
+                conn.execute(
+                    "INSERT INTO nodes (node_id, etikedoj, label_text, difinoj, difin_text, kreita_je, modifita_je) "
+                    "VALUES (:node_id, :etikedoj, :label_text, :difinoj, :difin_text, :kreita_je, :modifita_je)",
+                    raw,
+                )
+                # Re-index FTS for the denormalized values inside the same transaction
+                if self._fts_config:
+                    self._index_fts(node_id_val)
         except sqlite3.IntegrityError as e:
             raise ValueError(
                 f"Node with ID '{node_id_val}' already exists. "
                 f"Use 'A semantika nodo modifi {node_id_val}' to modify it."
             ) from e
-        # Re-index FTS for the denormalized values
-        if self._fts_config:
-            self._index_fts(node_id_val)
 
         # Track for undo
         if self._undo_manager is not None:
@@ -226,12 +221,13 @@ class NodeService(CRUDService):
         placeholders = ", ".join(["?"] * len(columns))
         sql = f"INSERT OR REPLACE INTO {self._trash_table} ({', '.join(columns)}) VALUES ({placeholders})"
 
-        if self._fts_config:
-            self._remove_from_fts(node_id)
-
         with self.db.transaction() as conn:
             conn.execute(sql, values)
             conn.execute(f"DELETE FROM {self.table} WHERE node_id = ?", (node_id,))
+            # Remove from FTS inside the transaction to prevent FTS/data
+            # inconsistency if the transaction later rolls back.
+            if self._fts_config:
+                self._remove_from_fts(node_id)
 
     # ── Override restore to use node_id column ───────────────────────────
 

@@ -35,3 +35,6 @@ a-core = { path = "../A-core", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "benchmark: Performance benchmark (informational, not part of regular CI)",
+]
