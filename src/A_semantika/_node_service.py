@@ -166,6 +166,107 @@ class NodeService(CRUDService):
 
         return self.get(node_id)
 
+    # ── Update node_id (rename) with manual cascade ───────────────────────
+
+    def update_node_id(
+        self, old_id: str, new_id: str, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Rename a node's node_id, cascading to all referencing triples.
+
+        This performs manual SQL UPDATEs in a single transaction to
+        bypass the ``object_node_uuid`` generated FK column limitation
+        (SQLite cannot cascade through generated columns).
+
+        Args:
+            old_id: Current node_id.
+            new_id: New node_id.
+            data: Additional field updates (etikedoj, difinoj, etc.).
+
+        Returns:
+            Updated node dict.
+
+        Raises:
+            ValueError: If old_id not found, new_id already exists, or
+                PK collision would occur on triples.
+        """
+        # Pre-checks (before transaction)
+        old = self.get(old_id)
+        if not old:
+            raise ValueError(f"Node not found: {old_id}")
+
+        existing = self.db.execute_one(
+            "SELECT node_id FROM nodes WHERE node_id = ?", (new_id,)
+        )
+        if existing:
+            raise ValueError(
+                f"New node ID '{new_id}' already exists"
+            )
+
+        from A_semantika._id_rename_helpers import (
+            check_triple_object_collision,
+            check_triple_subject_collision,
+        )
+        check_triple_subject_collision(self.db, old_id, new_id)
+        check_triple_object_collision(self.db, old_id, new_id)
+
+        # Build updates like update() does
+        updates = dict(data)
+        now_ts = now()
+        if "etikedoj" in updates:
+            etikedoj = updates["etikedoj"]
+            if isinstance(etikedoj, dict):
+                etikedoj = json.dumps(etikedoj)
+            updates["etikedoj"] = etikedoj
+            updates["label_text"] = extract_label_text(etikedoj)
+        if "difinoj" in updates:
+            difinoj = updates["difinoj"]
+            if isinstance(difinoj, dict):
+                difinoj = json.dumps(difinoj)
+            updates["difinoj"] = difinoj
+            updates["difin_text"] = extract_difin_text(difinoj)
+
+        updates["node_id"] = new_id
+        updates["modifita_je"] = now_ts
+
+        # Manual cascade in a single transaction.
+        # Defer FK checks until COMMIT: the PK change (step 1) temporarily
+        # orphans referencing triples, which are re-parented in steps 2-3.
+        with self.db.transaction() as conn:
+            conn.execute("PRAGMA defer_foreign_keys=ON")
+            # 1. Update the node's PK + fields
+            set_parts = []
+            params = []
+            for key, val in updates.items():
+                set_parts.append(f"{key} = ?")
+                params.append(val)
+            params.append(old_id)
+            conn.execute(
+                f"UPDATE nodes SET {', '.join(set_parts)} WHERE node_id = ?",
+                params,
+            )
+
+            # 2. Update triple subject references
+            conn.execute(
+                "UPDATE triples SET subject_uuid = ? WHERE subject_uuid = ?",
+                (new_id, old_id),
+            )
+
+            # 3. Update triple object references (URI nodes only)
+            conn.execute(
+                "UPDATE triples SET object_value = ? "
+                "WHERE object_type = 'uri' AND object_value = ?",
+                (new_id, old_id),
+            )
+            # object_node_uuid auto-recomputes from object_value (generated column)
+
+            # 4. Re-index FTS
+            if self._fts_config:
+                self._remove_from_fts(old_id)
+                self._index_fts(new_id)
+
+        # No undo tracking for ID renames (v1 limitation)
+        return self.get(new_id)
+
     # ── Override delete to use node_id column ────────────────────────────
 
     def delete(self, node_id: str, soft: bool = True) -> None:

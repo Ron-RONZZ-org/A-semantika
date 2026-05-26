@@ -257,6 +257,95 @@ class PredicateService(CRUDService):
 
         return self.get_by_predicate_id(predicate_id)
 
+    # ── Update predicate_id (rename) with manual cascade ──────────────────
+
+    def update_predicate_id(
+        self, old_id: str, new_id: str, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Rename a predicate's predicate_id, cascading to all references.
+
+        Manual SQL UPDATEs in a single transaction to handle FK
+        constraints on triples and predicate_group_members.
+
+        Args:
+            old_id: Current predicate_id.
+            new_id: New predicate_id.
+            data: Additional field updates (etikedoj, priskriboj, etc.).
+
+        Returns:
+            Updated predicate dict.
+
+        Raises:
+            ValueError: If old_id not found, new_id already exists, or
+                PK/UNIQUE collision would occur.
+        """
+        old = self.get_by_predicate_id(old_id)
+        if not old:
+            raise ValueError(f"Predicate not found: {old_id}")
+
+        existing = self.db.execute_one(
+            "SELECT predicate_id FROM predicates WHERE predicate_id = ?", (new_id,)
+        )
+        if existing:
+            raise ValueError(f"New predicate ID '{new_id}' already exists")
+
+        from A_semantika._id_rename_helpers import (
+            check_predicate_group_member_collision,
+            check_triple_predicate_collision,
+        )
+        check_triple_predicate_collision(self.db, old_id, new_id)
+        check_predicate_group_member_collision(self.db, old_id, new_id)
+
+        # Build updates like update() does
+        updates = dict(data)
+        if "etikedoj" in updates:
+            etikedoj_val = updates["etikedoj"]
+            if isinstance(etikedoj_val, dict):
+                etikedoj_val = json.dumps(etikedoj_val)
+            updates["etikedoj"] = etikedoj_val
+            updates["label_text"] = extract_label_text(etikedoj_val)
+        if "priskriboj" in updates:
+            updates["priskriboj"] = _ensure_json(updates["priskriboj"])
+        if "aliases" in updates:
+            updates["aliases"] = _ensure_json(updates["aliases"])
+
+        updates["predicate_id"] = new_id
+        updates["modifita_je"] = now()
+
+        # Manual cascade in a single transaction
+        with self.db.transaction() as conn:
+            conn.execute("PRAGMA defer_foreign_keys=ON")
+            # 1. Update the predicate's PK + fields
+            set_parts = []
+            params = []
+            for key, val in updates.items():
+                set_parts.append(f"{key} = ?")
+                params.append(val)
+            params.append(old_id)
+            conn.execute(
+                f"UPDATE predicates SET {', '.join(set_parts)} WHERE predicate_id = ?",
+                params,
+            )
+
+            # 2. Update triple predicate references
+            conn.execute(
+                "UPDATE triples SET predicate_id = ? WHERE predicate_id = ?",
+                (new_id, old_id),
+            )
+
+            # 3. Update predicate_group_member references
+            conn.execute(
+                "UPDATE predicate_group_members SET predicate_id = ? WHERE predicate_id = ?",
+                (new_id, old_id),
+            )
+
+            # 4. Re-index FTS
+            if self._fts_config:
+                self._remove_from_fts(old_id)
+                self._index_fts(new_id)
+
+        return self.get_by_predicate_id(new_id)
+
     # ── Trash support ───────────────────────────────────────────────────
 
     def delete(self, predicate_id: str, soft: bool = True) -> None:

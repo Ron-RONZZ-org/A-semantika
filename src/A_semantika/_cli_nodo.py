@@ -396,6 +396,7 @@ def modifi(
     node_id: str = typer.Argument(..., help=tr_multi("Nod-indekso", "Node ID", "ID du nœud")),
     etikedoj: Optional[list[str]] = typer.Option(None, "-e", "--etikedo", help=tr_multi("Etikedo en formo LANG::TEKSTO", "Label as LANG::TEXT", "Étiquette au format LANG::TEXTE")),
     difinoj: Optional[list[str]] = typer.Option(None, "-d", "--difino", help=tr_multi("Difino en formo LANG::TEKSTO", "Definition as LANG::TEXT", "Définition au format LANG::TEXTE")),
+    nova_id: Optional[str] = typer.Option(None, "--nova-id", "-ni", help=tr_multi("Nova nod-indekso (renomi)", "New node ID (rename)", "Nouvel ID du nœud (renommer)")),
     yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
     """Modifi nodon."""
@@ -435,7 +436,11 @@ def modifi(
         new_defns.update(parsed_defns)
         updates["difinoj"] = new_defns
 
-    if not updates:
+    # Handle no-op for --nova-id: same as current ID
+    if nova_id and nova_id == node["node_id"]:
+        nova_id = None
+
+    if not updates and not nova_id:
         error(tr_multi("Neniu ŝanĝo specifita.", "No changes specified.", "Aucun changement spécifié."))
         raise typer.Exit(1)
 
@@ -443,6 +448,7 @@ def modifi(
     noop = (
         (new_labels is None or new_labels == old_labels)
         and (new_defns is None or new_defns == old_defns)
+        and nova_id is None
     )
     if noop:
         info(tr_multi(
@@ -476,8 +482,22 @@ def modifi(
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
             raise typer.Exit(0)
 
-    updated = node_svc.update(node["node_id"], updates)
-    info(tr_multi("Nodo modifita: {u}", "Node modified: {u}", "Nœud modifié : {u}").format(u=updated["node_id"][:16]))
+    try:
+        if nova_id:
+            updated = node_svc.update_node_id(node["node_id"], nova_id, updates)
+            current_id = updated["node_id"]
+            info(tr_multi(
+                "Nodo renomita: {old} → {new}",
+                "Node renamed: {old} → {new}",
+                "Nœud renommé : {old} → {new}",
+            ).format(old=node["node_id"][:16], new=current_id[:16]))
+        else:
+            updated = node_svc.update(node["node_id"], updates)
+            current_id = updated["node_id"]
+            info(tr_multi("Nodo modifita: {u}", "Node modified: {u}", "Nœud modifié : {u}").format(u=current_id[:16]))
+    except ValueError as e:
+        error(str(e))
+        raise typer.Exit(1) from e
 
 
 @nodo_app.command("forigi")

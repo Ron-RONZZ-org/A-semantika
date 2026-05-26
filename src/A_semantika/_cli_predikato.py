@@ -261,6 +261,7 @@ def modifi(
     etikedoj: Optional[list[str]] = typer.Option(None, "-e", "--etikedo", help=tr_multi("Etikedo en formo LANGCODE::TEKSTO (ripetebla, kunfandema)", "Label as LANGCODE::TEXT (repeatable, merge)", "Étiquette au format LANGCODE::TEXTE (répétable, fusion)")),
     priskriboj: Optional[list[str]] = typer.Option(None, "-p", "--priskribo", help=tr_multi("Priskribo en formo LANGCODE::TEKSTO (ripetebla, kunfandema)", "Description as LANGCODE::TEXT (repeatable, merge)", "Description au format LANGCODE::TEXTE (répétable, fusion)")),
     anstatauxigi: bool = typer.Option(False, "-r", "--anstatauxigi", "--anstataŭigi", help=tr_multi("Anstataŭigi anstataŭ kunfandi etikedojn/priskribojn", "Replace instead of merging labels/descriptions", "Remplacer au lieu de fusionner les étiquettes/descriptions")),
+    nova_id: Optional[str] = typer.Option(None, "--nova-id", "-ni", help=tr_multi("Nova predikato-indekso (renomi)", "New predicate ID (rename)", "Nouvel ID du prédicat (renommer)")),
     yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
     """Modifi predikaton.
@@ -312,7 +313,11 @@ def modifi(
             new_priskriboj.update(parsed_descs)
         updates["priskriboj"] = new_priskriboj
 
-    if not updates:
+    # Handle no-op for --nova-id: same as current ID
+    if nova_id and nova_id == predicate_id:
+        nova_id = None
+
+    if not updates and not nova_id:
         error(tr_multi("Neniu ŝanĝo specifita.", "No changes specified.", "Aucun changement spécifié."))
         raise typer.Exit(1)
 
@@ -320,6 +325,7 @@ def modifi(
     noop = (
         (new_etikedoj is None or new_etikedoj == old_etikedoj)
         and (new_priskriboj is None or new_priskriboj == old_priskriboj)
+        and nova_id is None
     )
     if noop:
         info(tr_multi(
@@ -354,8 +360,16 @@ def modifi(
             raise typer.Exit(0)
 
     try:
-        pred_svc.update(pred["predicate_id"], updates)
-        info(tr_multi("Predikato modifita: {p}", "Predicate modified: {p}", "Prédicat modifié : {p}").format(p=predicate_id))
+        if nova_id:
+            pred_svc.update_predicate_id(pred["predicate_id"], nova_id, updates)
+            info(tr_multi(
+                "Predikato renomita: {old} → {new}",
+                "Predicate renamed: {old} → {new}",
+                "Prédicat renommé : {old} → {new}",
+            ).format(old=predicate_id, new=nova_id))
+        else:
+            pred_svc.update(pred["predicate_id"], updates)
+            info(tr_multi("Predikato modifita: {p}", "Predicate modified: {p}", "Prédicat modifié : {p}").format(p=predicate_id))
     except ValueError as e:
         error(tr_multi("Eraro: {e}", "Error: {e}", "Erreur : {e}").format(e=str(e)))
         raise typer.Exit(1) from e
