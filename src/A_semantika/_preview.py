@@ -147,12 +147,12 @@ def build_triple_preview_table(
 
         parts = [f"→ {dtype}"]
         if object_unit:
-            unit_label = resolve_node_label(node_svc, object_unit)
             try:
                 unit_node = node_svc.resolve_node_id_prefix(object_unit)
             except AmbiguousUUIDError as e:
                 warning(tr_multi("Ambigua unuo-prefikso: {e}", "Ambiguous unit prefix: {e}", "Préfixe unité ambigu : {e}").format(e=str(e)))
                 return None, ""
+            unit_label = resolve_node_label_from_node(unit_node) if unit_node else object_unit[:16]
             unit_id = unit_node["node_id"][:16] if unit_node else object_unit[:16]
             parts.append(f"unit: {unit_label} ({unit_id})")
         footnote = ", ".join(parts)
