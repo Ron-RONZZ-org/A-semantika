@@ -413,12 +413,14 @@ def create_node_arcs(
                 pass  # Silently skip — triple already exists, no harm
     except ValueError:
         # Rollback: remove already-created arcs first (FK constraint),
-        # then delete the node to prevent orphan with partial arcs.
+        # then hard-delete the node to prevent orphan with partial arcs
+        # (soft-delete would leave a trash entry, which is misleading
+        # since the node was never successfully created).
         # Wrap rollback in try/except so a rollback failure doesn't mask
         # the original ValueError that triggered it.
         try:
             triple_svc.remove_by_node(node_id_val)
-            node_svc.delete(node_id_val)
+            node_svc.delete(node_id_val, soft=False)
         except (sqlite3.Error, ValueError) as rollback_err:
             warning(
                 tr_multi(

@@ -6,7 +6,6 @@ restaŭrigi and restauxrigi are kept as hidden deprecated aliases.
 """
 from __future__ import annotations
 
-import sqlite3
 from typing import Optional
 
 import typer
@@ -14,8 +13,14 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi, warning
-from A_semantika._node_service import AmbiguousUUIDError
-from A_semantika.data.storage import get_db, label_from_json
+from A.utils.interactive import confirm_action
+from A_semantika._rubujo_helpers import (
+    batch_permanent_delete,
+    batch_restore,
+    build_trash_table,
+    get_label_from_etikedoj,
+)
+from A_semantika.data.storage import get_db
 from A_semantika.service import get_node_service
 
 rubujo_app = typer.Typer(
@@ -49,96 +54,30 @@ def ls(
         ))
         return
 
-    table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
-    table.add_column("ID", no_wrap=True)
-    table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
-    table.add_column(tr_multi("Forigita", "Deleted", "Supprimé"), no_wrap=True)
-
-    # Detect ambiguous 16-char prefixes and show full UUIDs if needed
-    prefixes: set[str] = set()
-    ambiguous: set[str] = set()
-    for n in items:
-        nid = n.get("node_id", "?")
-        pref = nid[:16] if len(nid) > 16 else nid
-        if pref in prefixes:
-            ambiguous.add(pref)
-        prefixes.add(pref)
-
-    for n in items:
-        label = label_from_json(n.get("etikedoj", "{}"))
-        deleted_at = (n.get("forigita_je") or "?")[:19]  # Truncate ISO to seconds; "?" for None
-        nid = n.get("node_id", "?")
-        if nid[:16] in ambiguous and len(nid) > 16:
-            disp = nid
-        else:
-            disp = nid[:16] if len(nid) > 16 else nid
-        table.add_row(disp, label, deleted_at)
-
+    table = build_trash_table(
+        items, "node_id",
+        tr_multi("ID", "ID", "ID"),
+        tr_multi("Etikedo", "Label", "Étiquette"),
+        tr_multi("Forigita", "Deleted", "Supprimé"),
+        get_label_from_etikedoj,
+    )
     info(table)
 
 
-# ── Shared helpers ──────────────────────────────────────────────────
-
-
-def _resolve_trash_node(node_id: str) -> dict | None:
-    """Resolve a node_id prefix against the trash table (nodes_rubujo)."""
-    db = get_db()
-
-    # Full match first (case-insensitive)
-    entry = db.execute_one(
-        "SELECT * FROM nodes_rubujo WHERE node_id = ? COLLATE NOCASE", (node_id,)
-    )
-    if entry:
-        return entry
-
-    # Prefix match (LIKE + COLLATE NOCASE for case-insensitive search)
-    # Escape LIKE wildcards so user's `_` and `%` are matched literally
-    escaped = node_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    entries = db.execute(
-        "SELECT * FROM nodes_rubujo WHERE node_id LIKE ? COLLATE NOCASE ESCAPE '\\'",
-        (f"{escaped}%",)
-    )
-    if not entries:
-        return None
-    if len(entries) > 1:
-        msg = f"Node ID prefix '{node_id}' is ambiguous ({len(entries)} matches)"
-        raise AmbiguousUUIDError(msg)
-    return entries[0]
-
-
-def _batch_resolve_trash_nodes(
-    node_ids: list[str],
-) -> tuple[list[dict], list[tuple[str, str]]]:
-    """Resolve multiple node_id prefixes against the trash table.
-
-    Returns (resolved_nodes, errors) where errors is a list of
-    (input, reason) tuples for unresolvable IDs.
-    """
-    resolved: list[dict] = []
-    errors: list[tuple[str, str]] = []
-
-    for nid in node_ids:
-        try:
-            node = _resolve_trash_node(nid)
-            if node:
-                resolved.append(node)
-            else:
-                errors.append((nid, tr_multi(
-                    "ne trovita en rubujo",
-                    "not found in trash",
-                    "non trouvé dans la corbeille",
-                )))
-        except AmbiguousUUIDError as e:
-            errors.append((nid, tr_multi(
-                "ambigua prefikso: {e}",
-                "ambiguous prefix: {e}",
-                "préfixe ambigu : {e}",
-            ).format(e=str(e))))
-
-    return resolved, errors
-
-
 # ── restaurigi (primary) ────────────────────────────────────────────
+
+
+def _do_batch_restore(node_ids: list[str], yes: bool) -> None:
+    """Execute batch restore using shared helpers."""
+    batch_restore(
+        node_ids,
+        get_node_service,
+        get_db(),
+        "nodes_rubujo",
+        "node_id",
+        label_getter=get_label_from_etikedoj,
+        yes=yes,
+    )
 
 
 @rubujo_app.command("restaurigi")
@@ -166,7 +105,7 @@ def restaurigi(
         rubujo restaurigi hundo
         rubujo restaurigi hundo mamulo
     """
-    _batch_restore(node_ids, yes)
+    _do_batch_restore(node_ids, yes)
 
 
 @rubujo_app.command("restaŭrigi", hidden=True, deprecated=True)
@@ -194,7 +133,7 @@ def restaurigi_deprecated_accent(
         "'restaŭrigi' is deprecated, use 'restaurigi'",
         "'restaŭrigi' est déprécié, utilisez 'restaurigi'",
     ))
-    _batch_restore(node_ids, yes)
+    _do_batch_restore(node_ids, yes)
 
 
 @rubujo_app.command("restauxrigi", hidden=True, deprecated=True)
@@ -222,78 +161,10 @@ def restaurigi_deprecated_x(
         "'restauxrigi' is deprecated, use 'restaurigi'",
         "'restauxrigi' est déprécié, utilisez 'restaurigi'",
     ))
-    _batch_restore(node_ids, yes)
+    _do_batch_restore(node_ids, yes)
 
 
-def _batch_restore(node_ids: list[str], yes: bool) -> None:
-    """Shared batch-restore logic."""
-    node_svc = get_node_service()
-
-    resolved, errors = _batch_resolve_trash_nodes(node_ids)
-
-    # Report resolution errors
-    for input_val, reason in errors:
-        error(tr_multi(
-            "Restarigi {i}: {r}",
-            "Restore {i}: {r}",
-            "Restaurer {i} : {r}",
-        ).format(i=input_val, r=reason))
-
-    if not resolved:
-        error(tr_multi(
-            "Nenio restaŭrebla.",
-            "Nothing to restore.",
-            "Rien à restaurer.",
-        ))
-        raise typer.Exit(1)
-
-    # Single item: skip confirmation (user already specified exact item)
-    if not yes and len(resolved) >= 2:
-        from A.utils.interactive import confirm_action
-
-        label_list = ", ".join(
-            label_from_json(n.get("etikedoj", "{}")) or (
-                n["node_id"][:16] if len(n["node_id"]) > 16 else n["node_id"]
-            )
-            for n in resolved
-        )
-        if not confirm_action(
-            tr_multi(
-                "Ĉu restarigi {n} nodojn: {labels}?",
-                "Restore {n} nodes: {labels}?",
-                "Restaurer {n} nœuds : {labels}?",
-            ).format(n=len(resolved), labels=label_list),
-            default=True,
-        ):
-            info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
-            raise typer.Exit(0)
-
-    restored = 0
-    for node in resolved:
-        try:
-            result = node_svc.restore(node["node_id"])
-            if result:
-                restored += 1
-                info(tr_multi(
-                    "Restarigita: {u}",
-                    "Restored: {u}",
-                    "Restauré : {u}",
-                ).format(u=node["node_id"][:16]))
-        except (sqlite3.Error, ValueError) as e:
-            error(tr_multi(
-                "Eraro restarigante {u}: {e}",
-                "Error restoring {u}: {e}",
-                "Erreur lors de la restauration de {u} : {e}",
-            ).format(u=node["node_id"][:16], e=str(e)))
-
-    info(tr_multi(
-        "Restarigis {r} el {t} nodoj.",
-        "Restored {r} of {t} nodes.",
-        "Restauré {r} sur {t} nœuds.",
-    ).format(r=restored, t=len(resolved)))
-
-
-# ── malplenigi ──────────────────────────────────────────────────────
+# ── malplenigi ────────────────────────────────────────────────────────
 
 
 @rubujo_app.command("malplenigi")
@@ -342,28 +213,20 @@ def malplenigi(
             return
 
     if not yes:
-        # Show warning and list of items
         warning(tr_multi(
             "AVERTO: tiu ago estas necivilebla!",
             "WARNING: this action is irreversible!",
             "AVERTISSEMENT : cette action est irréversible !",
         ))
 
-        table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
-        table.add_column("ID", no_wrap=True)
-        table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
-        table.add_column(tr_multi("Forigita", "Deleted", "Supprimé"), no_wrap=True)
-
-        for n in items:
-            label = label_from_json(n.get("etikedoj", "{}"))
-            deleted_at = n.get("forigita_je", "")[:19]
-            nid = n.get("node_id", "?")
-            display_id = nid[:16] if len(nid) > 16 else nid
-            table.add_row(display_id, label, deleted_at)
-
+        table = build_trash_table(
+            items, "node_id",
+            tr_multi("ID", "ID", "ID"),
+            tr_multi("Etikedo", "Label", "Étiquette"),
+            tr_multi("Forigita", "Deleted", "Supprimé"),
+            get_label_from_etikedoj,
+        )
         info(table)
-
-        from A.utils.interactive import confirm_action
 
         if not confirm_action(
             tr_multi(
@@ -388,7 +251,7 @@ def malplenigi(
     ).format(n=deleted_count))
 
 
-# ── forigi (permanent delete from trash) ────────────────────────────
+# ── forigi (permanent delete from trash) ─────────────────────────────
 
 
 @rubujo_app.command("forigi")
@@ -416,75 +279,12 @@ def forigi(
         rubujo forigi hundo
         rubujo forigi hundo mamulo
     """
-    node_svc = get_node_service()
-
-    resolved, errors = _batch_resolve_trash_nodes(node_ids)
-
-    # Report resolution errors
-    for input_val, reason in errors:
-        error(tr_multi(
-            "Forigi {i}: {r}",
-            "Delete {i}: {r}",
-            "Supprimer {i} : {r}",
-        ).format(i=input_val, r=reason))
-
-    if not resolved:
-        error(tr_multi(
-            "Nenio forigebla el rubujo.",
-            "Nothing to delete from trash.",
-            "Rien à supprimer de la corbeille.",
-        ))
-        raise typer.Exit(1)
-
-    # Single item: skip confirmation (user already specified exact item)
-    if not yes and len(resolved) >= 2:
-        # Show list of items to be permanently deleted
-        table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
-        table.add_column("ID", no_wrap=True)
-        table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
-        table.add_column(tr_multi("Forigita", "Deleted", "Supprimé"), no_wrap=True)
-
-        for n in resolved:
-            label = label_from_json(n.get("etikedoj", "{}"))
-            deleted_at = n.get("forigita_je", "")[:19]
-            nid = n.get("node_id", "?")
-            display_id = nid[:16] if len(nid) > 16 else nid
-            table.add_row(display_id, label, deleted_at)
-
-        info(table)
-
-        from A.utils.interactive import confirm_action
-
-        if not confirm_action(
-            tr_multi(
-                "Ĉu permanente forigi {n} nodojn el la rubujo?",
-                "Permanently delete {n} nodes from trash?",
-                "Supprimer définitivement {n} nœuds de la corbeille?",
-            ).format(n=len(resolved)),
-            default=False,
-        ):
-            info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
-            raise typer.Exit(0)
-
-    deleted = 0
-    for node in resolved:
-        try:
-            node_svc.permanent_delete(node["node_id"])
-            deleted += 1
-            info(tr_multi(
-                "Permanente forigita: {u}",
-                "Permanently deleted: {u}",
-                "Définitivement supprimé : {u}",
-            ).format(u=node["node_id"][:16]))
-        except (sqlite3.Error, ValueError) as e:
-            error(tr_multi(
-                "Eraro forigante {u}: {e}",
-                "Error deleting {u}: {e}",
-                "Erreur lors de la suppression de {u} : {e}",
-            ).format(u=node["node_id"][:16], e=str(e)))
-
-    info(tr_multi(
-        "Permanente forigis {d} el {t} nodoj.",
-        "Permanently deleted {d} of {t} nodes.",
-        "Définitivement supprimé {d} sur {t} nœuds.",
-    ).format(d=deleted, t=len(resolved)))
+    batch_permanent_delete(
+        node_ids,
+        get_node_service,
+        get_db(),
+        "nodes_rubujo",
+        "node_id",
+        label_getter=get_label_from_etikedoj,
+        yes=yes,
+    )

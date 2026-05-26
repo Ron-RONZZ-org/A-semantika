@@ -12,7 +12,7 @@ import typer
 from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
-from A import error, info, tr_multi
+from A import error, info, tr_multi, warning
 from A.utils.interactive import confirm_action
 from A_semantika._node_helpers import AmbiguousUUIDError, get_display_label, get_label_from_node
 from A_semantika._node_service import NodeService
@@ -81,11 +81,14 @@ def build_triple_preview_table(
     object_lang: str | None = None,
     object_datatype: str | None = None,
     object_unit: str | None = None,
-) -> tuple[Table, str]:
+) -> tuple[Table | None, str]:
     """Build a Rich table preview for a single triple.
 
     Returns:
-        Tuple of (Table, footnote_string).
+        Tuple of (Table or None if ambiguous, footnote_string).
+        When the table is None, the caller should handle the error
+        (e.g. show a message and exit) rather than letting this
+        helper raise a CLI-level exception.
     """
     table = Table(
         show_header=True,
@@ -101,8 +104,8 @@ def build_triple_preview_table(
     try:
         subj_node = node_svc.resolve_node_id_prefix(subject_uuid)
     except AmbiguousUUIDError as e:
-        error(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
-        raise typer.Exit(1) from e
+        warning(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
+        return None, ""
     subj_id = subj_node["node_id"][:16] if subj_node else subject_uuid[:16]
     subj_label = resolve_node_label_from_node(subj_node) if subj_node else subject_uuid[:16]
 
@@ -113,8 +116,8 @@ def build_triple_preview_table(
         try:
             obj_node = node_svc.resolve_node_id_prefix(object_value)
         except AmbiguousUUIDError as e:
-            error(tr_multi("Ambigua objekto-prefikso: {e}", "Ambiguous object prefix: {e}", "Préfixe objet ambigu : {e}").format(e=str(e)))
-            raise typer.Exit(1) from e
+            warning(tr_multi("Ambigua objekto-prefikso: {e}", "Ambiguous object prefix: {e}", "Préfixe objet ambigu : {e}").format(e=str(e)))
+            return None, ""
         obj_id = obj_node["node_id"][:16] if obj_node else object_value[:16]
         obj_label = resolve_node_label_from_node(obj_node) if obj_node else object_value[:16]
         # Labels row
@@ -148,8 +151,8 @@ def build_triple_preview_table(
             try:
                 unit_node = node_svc.resolve_node_id_prefix(object_unit)
             except AmbiguousUUIDError as e:
-                error(tr_multi("Ambigua unuo-prefikso: {e}", "Ambiguous unit prefix: {e}", "Préfixe unité ambigu : {e}").format(e=str(e)))
-                raise typer.Exit(1) from e
+                warning(tr_multi("Ambigua unuo-prefikso: {e}", "Ambiguous unit prefix: {e}", "Préfixe unité ambigu : {e}").format(e=str(e)))
+                return None, ""
             unit_id = unit_node["node_id"][:16] if unit_node else object_unit[:16]
             parts.append(f"unit: {unit_label} ({unit_id})")
         footnote = ", ".join(parts)
@@ -197,6 +200,9 @@ def confirm_triple(
         subject_uuid, predicate_id, object_value,
         object_type, object_lang, object_datatype, object_unit,
     )
+
+    if table is None:
+        return False
 
     info("")
     info(table)
