@@ -1027,6 +1027,44 @@ This is not valid RDF — consumers can't parse labels programmatically.
 
 **Tests:** All 401 tests pass. No behavioral changes.
 
+### Issue #45: Code Review Round 20 — Rubujo Refactor, FTS Transactions, Preview Cleanup, Tests (May 2026)
+
+**Scope:** Rubujo CLI refactor, FTS transaction fixes, preview no-typer.Exit, +25 regression tests.
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| M1 | Med | `_rubujo_helpers.py` (NEW) | **Shared trash helpers.** Extracted `resolve_trash_item()`, `batch_resolve_trash_items()`, `build_trash_table()`, `batch_restore()`, `batch_permanent_delete()` to eliminate ~85% code duplication between `_cli_rubujo.py` and `_cli_predikato_rubujo.py`. |
+| M2 | Med | `_node_service.py:create()` | **FTS transaction.** Wrapped INSERT + FTS index in a single transaction for consistency with `update()` and base CRUDService. |
+| M3 | Med | `_node_service.py:_move_to_trash()` | **FTS inside transaction.** Moved `_remove_from_fts()` inside the transaction block. Also reordered: FTS removal before DELETE from nodes, since `_remove_from_fts()` needs the rowid from the nodes table to issue the FTS5 `delete` command. |
+| M4 | Med | `_preview.py:build_triple_preview_table()` | **No typer.Exit in helper.** Returns `(None, "")` on ambiguous prefix instead of raising `typer.Exit(1)`. Also fixed unit label resolution: `resolve_node_label()` was called outside the `try/except AmbiguousUUIDError` block for typed literals with units. |
+| M5 | Low | `_cli_helpers.py:create_node_arcs()` | **Rollback hard-delete.** Changed `node_svc.delete(node_id_val)` to `node_svc.delete(node_id_val, soft=False)` to prevent misleading trash entries for nodes that were never successfully created. |
+| L1 | Low | `pyproject.toml` | Added `pytest.mark.benchmark` marker to suppress PytestUnknownMarkWarning. |
+
+**New files:**
+| File | Description |
+|------|-------------|
+| `src/A_semantika/_rubujo_helpers.py` | Shared trash CLI helpers (376 lines) |
+| `tests/test_review_round20.py` | 25 regression tests for all fixes |
+
+**Files simplified:**
+| File | Before | After |
+|------|--------|-------|
+| `_cli_rubujo.py` | ~490 lines | ~290 lines (-40%) |
+| `_cli_predikato_rubujo.py` | ~401 lines | ~229 lines (-43%) |
+
+**Tests added (25 in `test_review_round20.py`):**
+| Test | What it verifies |
+|------|-----------------|
+| `TestM1HardDeleteRollback` (3) | Rollback uses hard-delete (no trash), success keeps node, partial arcs removed |
+| `TestM2FtsTransactionInCreate` (2) | FTS searchable after create, multiple nodes all searchable |
+| `TestM3FtsRemovalInMoveToTrash` (2) | FTS table entry removed after soft-delete, reindexed after restore |
+| `TestM4PreviewReturnsNone` (5) | Ambiguous subject/object/unit returns `(None, "")`, valid prefix returns table, `confirm_triple` returns False |
+| `TestM5ResolveTrashItem` (10) | Exact/prefix/case-insensitive match, ambiguous raises, not-found returns None, LIKE `_` and `%` escaped, batch errors |
+
+**User simulation:** Verified: create nodes + FTS search, rollback with hard-delete (no trash), soft-delete + FTS removal, restore + FTS reindex, `resolve_trash_item` exact/case-insensitive, preview with ambiguous prefix returns `(None, "")`, `confirm_triple` returns False on ambiguous — all checks pass.
+
+**Tests:** All 426 tests pass (401 existing + 25 new).
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
