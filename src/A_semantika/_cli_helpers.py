@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
-from A import error, tr_multi, warning
+from A import error, info, tr_multi, warning
 from A.utils.interactive import select_candidate
 from A_semantika._node_service import AmbiguousUUIDError, NodeService
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
@@ -430,3 +430,76 @@ def create_node_arcs(
                 ).format(n=node_id_val, e=str(rollback_err))
             )
         raise
+
+
+def format_delete_error(nid: str, error: Exception) -> str:
+    """Format a human-readable delete error from an IntegrityError or DatabaseError.
+
+    Args:
+        nid: Node ID (for reference in the message).
+        error: The caught exception.
+
+    Returns:
+        A user-facing error message string (already localized via tr_multi).
+    """
+    err_msg = str(error)
+    if isinstance(error, sqlite3.IntegrityError):
+        if "UNIQUE constraint failed" in err_msg:
+            return tr_multi(
+                "Nodo {u} jam estas en la rubujo.",
+                "Node {u} is already in the trash.",
+                "Le nœud {u} est déjà dans la corbeille.",
+            ).format(u=nid)
+        if "FOREIGN KEY constraint failed" in err_msg:
+            return tr_multi(
+                "Nodo {u} havas arkojn. Forigu ilin unue aŭ uzu la flagon --jes.",
+                "Node {u} has arcs. Delete them first or use the --jes flag.",
+                "Le nœud {u} a des arcs. Supprimez-les d'abord ou utilisez le drapeau --jes.",
+            )
+        return err_msg
+    # Log the actual exception detail before returning user-facing message
+    warning(f"Delete error for {nid}: {type(error).__name__}: {err_msg}")
+    return tr_multi(
+        "Eraro forigante {u}: {e}",
+        "Error deleting {u}: {e}",
+        "Erreur lors de la suppression de {u} : {e}",
+    ).format(u=nid, e=err_msg)
+
+
+def parse_lang_tag_pairs(items: list[str] | None) -> dict[str, str]:
+    """Parse ``LANG::TEKSTO`` or ``LANG:TEKSTO`` list into a language->text dict.
+
+    Warns about malformed entries (no separator).  Accepts both single colon
+    and double colon as the separator.
+
+    Args:
+        items: List of strings in the form ``LANG::TEXT`` or ``LANG:TEXT``,
+            or ``None`` (returns empty dict).
+
+    Returns:
+        Dict mapping language codes to text values.
+    """
+    result: dict[str, str] = {}
+    if not items:
+        return result
+    for item in items:
+        if "::" in item:
+            lang, _, text = item.partition("::")
+        elif ":" in item:
+            lang, _, text = item.partition(":")
+        else:
+            warning(tr_multi(
+                "Nevalida formato (mankas ':' aŭ '::'): {i}",
+                "Invalid format (missing ':' or '::'): {i}",
+                "Format invalide (' : ' ou ' :: ' manquant) : {i}",
+            ).format(i=item))
+            continue
+        if lang and text:
+            result[lang] = text
+        else:
+            warning(tr_multi(
+                "Malplena lingvokodo aŭ teksto en: {i}",
+                "Empty language code or text in: {i}",
+                "Code de langue ou texte vide dans : {i}",
+            ).format(i=item))
+    return result

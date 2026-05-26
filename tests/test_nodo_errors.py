@@ -4,6 +4,8 @@ Extracted from test_edge_cases.py — TestNodoAldoniErrorHandling + TestNodoFori
 """
 from __future__ import annotations
 
+import json
+
 from typer.testing import CliRunner
 
 from A_semantika.cli import app
@@ -20,18 +22,33 @@ class TestNodoAldoniErrorHandling:
         assert result.exit_code == 0
         assert "kreita" in result.stdout or "Created" in result.stdout
 
-    def test_nodo_aldoni_duplicate_id_friendly(self, runner: CliRunner, node_svc):
-        """Using an existing node_id should show friendly error (C2+C3)."""
+    def test_nodo_aldoni_duplicate_id_noop(self, runner: CliRunner, node_svc):
+        """Duplicate ID with no changes shows 'already exists and is identical'."""
         existing_id = "DUPLICATO"
         node_svc.create({"node_id": existing_id, "etikedoj": {"eo": "Ekzistanta"}})
         result = runner.invoke(app, [
             "nodo", "aldoni", existing_id, "-y",
         ])
-        assert result.exit_code == 1
-        # Must show a meaningful error, not a traceback
-        assert "already exists" in result.stdout
-        assert "modifi" in result.stdout
+        # No error — shows no-op message since nothing changed
+        assert result.exit_code == 0
+        assert "identa" in result.stdout or "identical" in result.stdout
         assert "Traceback" not in result.stdout
+
+    def test_nodo_aldoni_duplicate_with_new_labels(self, runner: CliRunner, node_svc):
+        """Duplicate ID with new labels should merge and update."""
+        existing_id = "DUPLICATO"
+        node_svc.create({"node_id": existing_id, "etikedoj": {"eo": "Malnova"}})
+        result = runner.invoke(app, [
+            "nodo", "aldoni", existing_id, "-e", "en::New", "-y",
+        ])
+        assert result.exit_code == 0
+        assert "ĝisdatigita" in result.stdout or "updated" in result.stdout
+        # Verify the merge happened
+        node = node_svc.resolve_node_id_prefix(existing_id)
+        assert node is not None
+        labels = json.loads(node["etikedoj"])
+        assert labels.get("eo") == "Malnova"  # preserved
+        assert labels.get("en") == "New"       # added
 
     def test_nodo_aldoni_auto_id_no_collision(self, runner: CliRunner, node_svc):
         """Auto-generated node_id (no positional arg) should still work."""

@@ -11,8 +11,9 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi, warning as awarning
+from A_semantika._cli_helpers import parse_lang_tag_pairs
 from A_semantika._predicate_service import _label_from_etikedoj
-from A_semantika._preview import (
+from A_semantika._preview_predicate import (
     build_predicate_modify_preview,
     confirm_predicate_creation,
 )
@@ -40,38 +41,7 @@ predikato_app = typer.Typer(
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _parse_lang_value_pairs(items: list[str] | None) -> dict[str, str]:
-    """Parse ``LANGCODE::TEKSTO`` list into a language→text dict.
 
-    Accepts both ``LANGCODE::TEKSTO`` (double colon) and ``LANGCODE:TEKSTO``
-    (single colon) separators.  Warns about entries with no separator.
-    """
-    from A import warning as awarning
-
-    result: dict[str, str] = {}
-    if not items:
-        return result
-    for item in items:
-        if "::" in item:
-            lang, _, text = item.partition("::")
-        elif ":" in item:
-            lang, _, text = item.partition(":")
-        else:
-            awarning(tr_multi(
-                "Nevalida etikedo-formato (mankas ':' aŭ '::'): {i}",
-                "Invalid label format (missing ':' or '::'): {i}",
-                "Format d'étiquette invalide (' : ' ou ' :: ' manquant) : {i}",
-            ).format(i=item))
-            continue
-        if lang and text:
-            result[lang] = text
-        else:
-            awarning(tr_multi(
-                "Malplena lingvokodo aŭ teksto en: {i}",
-                "Empty language code or text in: {i}",
-                "Code de langue ou texte vide dans : {i}",
-            ).format(i=item))
-    return result
 
 
 def _get_predicate_label(pred: dict, preferred_lang: str | None = None) -> str:
@@ -183,8 +153,8 @@ def aldoni(
         raise typer.Exit(1)
 
     # Parse labels and descriptions from LANGCODE::TEKSTO format
-    labels_dict = _parse_lang_value_pairs(etikedoj)
-    descs_dict = _parse_lang_value_pairs(priskriboj)
+    labels_dict = parse_lang_tag_pairs(etikedoj)
+    descs_dict = parse_lang_tag_pairs(priskriboj)
 
     # Auto-fetch Wikidata details for Wikidata property IDs
     wd_details: dict | None = None
@@ -272,7 +242,7 @@ def modifi(
 
     # Handle etikedoj: merge or replace
     if etikedoj is not None:
-        parsed_labels = _parse_lang_value_pairs(etikedoj)
+        parsed_labels = parse_lang_tag_pairs(etikedoj)
         if anstatauxigi:
             new_etikedoj = parsed_labels
         else:
@@ -282,7 +252,7 @@ def modifi(
 
     # Handle priskriboj: merge or replace
     if priskriboj is not None:
-        parsed_descs = _parse_lang_value_pairs(priskriboj)
+        parsed_descs = parse_lang_tag_pairs(priskriboj)
         if anstatauxigi:
             new_priskriboj = parsed_descs
         else:

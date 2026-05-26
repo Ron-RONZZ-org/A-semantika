@@ -3,59 +3,29 @@
 from __future__ import annotations
 
 import json
-import sqlite3
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
-from A import error, info, tr_multi, warning
-from A_semantika._cli_helpers import create_node_arcs, ensure_predicate, resolve_arc_targets
+from A import error, info, tr_multi
+from A_semantika._cli_helpers import (
+    create_node_arcs,
+    ensure_predicate,
+    parse_lang_tag_pairs,
+    resolve_arc_targets,
+)
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import (
     build_node_modify_preview,
     confirm_node_creation,
     confirm_node_with_arcs,
     resolve_node_label,
-    resolve_predicate_label,
 )
 from A_semantika.data.storage import label_from_json
 from A_semantika.service import get_node_service, get_predicate_service, get_triple_service
 
-
-def _format_delete_error(nid: str, error: Exception) -> str:
-    """Format a human-readable delete error from an IntegrityError or DatabaseError.
-
-    Args:
-        nid: Node ID (for reference in the message).
-        error: The caught exception.
-
-    Returns:
-        A user-facing error message string (already localized via tr_multi).
-    """
-    err_msg = str(error)
-    if isinstance(error, sqlite3.IntegrityError):
-        if "UNIQUE constraint failed" in err_msg:
-            return tr_multi(
-                "Nodo {u} jam estas en la rubujo.",
-                "Node {u} is already in the trash.",
-                "Le nœud {u} est déjà dans la corbeille.",
-            ).format(u=nid)
-        if "FOREIGN KEY constraint failed" in err_msg:
-            return tr_multi(
-                "Nodo {u} havas arkojn. Forigu ilin unue aŭ uzu la flagon --jes.",
-                "Node {u} has arcs. Delete them first or use the --jes flag.",
-                "Le nœud {u} a des arcs. Supprimez-les d'abord ou utilisez le drapeau --jes.",
-            )
-        return err_msg
-    # Log the actual exception detail before returning user-facing message
-    warning(f"Delete error for {nid}: {type(error).__name__}: {err_msg}")
-    return tr_multi(
-        "Eraro forigante {u}: {e}",
-        "Error deleting {u}: {e}",
-        "Erreur lors de la suppression de {u} : {e}",
-    ).format(u=nid, e=err_msg)
 
 
 nodo_app = typer.Typer(
@@ -162,50 +132,8 @@ def aldoni(
     node_svc = get_node_service()
 
     # Parse labels and definitions
-    labels_dict: dict[str, str] = {}
-    defs_dict: dict[str, str] = {}
-    if etikedoj:
-        for e in etikedoj:
-            if "::" in e:
-                lang, _, text = e.partition("::")
-            elif ":" in e:
-                lang, _, text = e.partition(":")
-            else:
-                warning(tr_multi(
-                    "Nevalida etikedo-formato (mankas ':' aŭ '::'): {i}",
-                    "Invalid label format (missing ':' or '::'): {i}",
-                    "Format d'étiquette invalide (' : ' ou ' :: ' manquant) : {i}",
-                ).format(i=e))
-                continue
-            if lang and text:
-                labels_dict[lang] = text
-            else:
-                warning(tr_multi(
-                    "Malplena lingvokodo aŭ teksto en: {i}",
-                    "Empty language code or text in: {i}",
-                    "Code de langue ou texte vide dans : {i}",
-                ).format(i=e))
-    if difinoj:
-        for d in difinoj:
-            if "::" in d:
-                lang, _, text = d.partition("::")
-            elif ":" in d:
-                lang, _, text = d.partition(":")
-            else:
-                warning(tr_multi(
-                    "Nevalida difino-formato (mankas ':' aŭ '::'): {i}",
-                    "Invalid definition format (missing ':' or '::'): {i}",
-                    "Format de définition invalide (' : ' ou ' :: ' manquant) : {i}",
-                ).format(i=d))
-                continue
-            if lang and text:
-                defs_dict[lang] = text
-            else:
-                warning(tr_multi(
-                    "Malplena lingvokodo aŭ teksto en: {i}",
-                    "Empty language code or text in: {i}",
-                    "Code de langue ou texte vide dans : {i}",
-                ).format(i=d))
+    labels_dict = parse_lang_tag_pairs(etikedoj)
+    defs_dict = parse_lang_tag_pairs(difinoj)
 
     data: dict = {
         "etikedoj": labels_dict,
@@ -236,7 +164,100 @@ def aldoni(
             error(msg)
         raise typer.Exit(1)
 
-    # Now create the subject node (safe — all targets resolved successfully)
+    # ---- Duplicate detection: if node_id provided and node exists, propose update ----
+    existing_node: dict[str, Any] | None = None
+    if node_id:
+        try:
+            existing_node = node_svc.resolve_node_id_prefix(node_id)
+        except AmbiguousUUIDError:
+            # Ambiguous prefix — let create() raise the IntegrityError naturally
+            existing_node = None
+
+    if existing_node is not None:
+        # Parse existing labels/definitions
+        try:
+            old_labels = json.loads(existing_node.get("etikedoj", "{}"))
+        except (json.JSONDecodeError, TypeError):
+            old_labels = {}
+        try:
+            old_defns = json.loads(existing_node.get("difinoj", "{}"))
+        except (json.JSONDecodeError, TypeError):
+            old_defns = {}
+        if not isinstance(old_labels, dict):
+            old_labels = {}
+        if not isinstance(old_defns, dict):
+            old_defns = {}
+
+        # Merge new values into existing (same as modifi merge mode)
+        new_labels = dict(old_labels)
+        new_labels.update(labels_dict)
+        new_defns = dict(old_defns)
+        new_defns.update(defs_dict)
+
+        ex_id = existing_node["node_id"]
+        noop = (new_labels == old_labels and new_defns == old_defns)
+
+        if noop and not arc_templates:
+            info(tr_multi(
+                "Nodo {u} jam ekzistas kaj estas identa.",
+                "Node {u} already exists and is identical.",
+                "Le nœud {u} existe déjà et est identique.",
+            ).format(u=ex_id[:16]))
+            return
+
+        # Show diff preview before confirming
+        if not yes:
+            table = build_node_modify_preview(
+                ex_id, old_labels, new_labels, old_defns, new_defns,
+            )
+            if table:
+                info("")
+                info(table)
+
+            from A.utils.interactive import confirm_action
+
+            confirm_msg = tr_multi(
+                "Nodo {u} jam ekzistas. Ĉu ĝisdatigi?",
+                "Node {u} already exists. Update?",
+                "Le nœud {u} existe déjà. Mettre à jour ?",
+            ).format(u=ex_id[:16])
+            if not confirm_action(confirm_msg, default=True):
+                info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
+                raise typer.Exit(0)
+
+        # Apply updates
+        updates: dict[str, Any] = {}
+        if new_labels != old_labels:
+            updates["etikedoj"] = new_labels
+        if new_defns != old_defns:
+            updates["difinoj"] = new_defns
+        if updates:
+            node_svc.update(ex_id, updates)
+
+        # Handle arcs on the existing node
+        if arc_templates:
+            arcs: list[dict[str, Any]] = [
+                {"subject": ex_id, "predicate": pred, "object": target_id, "object_type": "uri"}
+                for target_id, pred in arc_templates
+            ]
+            label = resolve_node_label(node_svc, ex_id)
+            if not confirm_node_with_arcs(node_svc, pred_svc, label, ex_id, arcs, yes=yes):
+                info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
+                raise typer.Exit(0)
+            try:
+                create_node_arcs(triple_svc, node_svc, ex_id, arcs)
+            except ValueError as e:
+                error(str(e))
+                raise typer.Exit(1) from e
+
+        info(tr_multi(
+            "Nodo ĝisdatigita: {label} ({node_id})",
+            "Node updated: {label} ({node_id})",
+            "Nœud mis à jour : {label} ({node_id})",
+        ).format(label=resolve_node_label(node_svc, ex_id), node_id=ex_id[:16]))
+        return
+
+    # ---- No duplicate — normal creation path ----
     try:
         node = node_svc.create(data)
     except ValueError as e:
@@ -276,43 +297,23 @@ def aldoni(
     ).format(label=resolve_node_label(node_svc, node_id_val), node_id=node_id_val[:16]))
 
 
-def _parse_lang_tag_pairs(items: list[str]) -> dict[str, str]:
-    """Parse ``LANG::TEKSTO`` or ``LANG:TEKSTO`` list into a dict.
-
-    Warns about malformed entries (no separator).
-    """
-    result: dict[str, str] = {}
-    for item in items:
-        if "::" in item:
-            lang, _, text = item.partition("::")
-        elif ":" in item:
-            lang, _, text = item.partition(":")
-        else:
-            warning(tr_multi(
-                "Nevalida etikedo-formato (mankas ':' aŭ '::'): {i}",
-                "Invalid label format (missing ':' or '::'): {i}",
-                "Format d'étiquette invalide (' : ' ou ' :: ' manquant) : {i}",
-            ).format(i=item))
-            continue
-        if lang and text:
-            result[lang] = text
-        else:
-            warning(tr_multi(
-                "Malplena lingvokodo aŭ teksto en: {i}",
-                "Empty language code or text in: {i}",
-                "Code de langue ou texte vide dans : {i}",
-            ).format(i=item))
-    return result
-
-
 @nodo_app.command("modifi")
 def modifi(
     node_id: str = typer.Argument(..., help=tr_multi("Nod-indekso", "Node ID", "ID du nœud")),
     etikedoj: Optional[list[str]] = typer.Option(None, "-e", "--etikedo", help=tr_multi("Etikedo en formo LANG::TEKSTO", "Label as LANG::TEXT", "Étiquette au format LANG::TEXTE")),
     difinoj: Optional[list[str]] = typer.Option(None, "-d", "--difino", help=tr_multi("Difino en formo LANG::TEKSTO", "Definition as LANG::TEXT", "Définition au format LANG::TEXTE")),
+    anstatauigi: bool = typer.Option(False, "-r", "--anstatauigi", help=tr_multi("Anstataŭigi anstataŭ kunfandi etikedojn/difinojn", "Replace instead of merging labels/definitions", "Remplacer au lieu de fusionner les étiquettes/définitions")),
     yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:
-    """Modifi nodon."""
+    """Modifi nodon.
+
+    Defaŭlte -e kaj -d KUNFANDAS novajn valorojn kun ekzistantaj (aldonas/ĝisdatigas).
+    Uzu -r por ANSTATAŬIGI (forigi ĉiujn ekzistantajn kaj uzi nur la specifitajn).
+
+    Ekzemploj:
+      nodo modifi TERO -e eo::Tero          # aldoni/ĝisdatigi esperantan etikedon
+      nodo modifi TERO -e eo::Tero -r       # anstataŭigi per nur esperanta
+    """
     node_svc = get_node_service()
     try:
         node = node_svc.resolve_node_id_prefix(node_id)
@@ -338,15 +339,21 @@ def modifi(
     new_defns: dict[str, str] | None = None
 
     if etikedoj:
-        parsed_labels = _parse_lang_tag_pairs(etikedoj)
-        new_labels = dict(old_labels)
-        new_labels.update(parsed_labels)
+        parsed_labels = parse_lang_tag_pairs(etikedoj)
+        if anstatauigi:
+            new_labels = dict(parsed_labels)
+        else:
+            new_labels = dict(old_labels)
+            new_labels.update(parsed_labels)
         updates["etikedoj"] = new_labels
 
     if difinoj:
-        parsed_defns = _parse_lang_tag_pairs(difinoj)
-        new_defns = dict(old_defns)
-        new_defns.update(parsed_defns)
+        parsed_defns = parse_lang_tag_pairs(difinoj)
+        if anstatauigi:
+            new_defns = dict(parsed_defns)
+        else:
+            new_defns = dict(old_defns)
+            new_defns.update(parsed_defns)
         updates["difinoj"] = new_defns
 
     if not updates:
@@ -394,145 +401,7 @@ def modifi(
     info(tr_multi("Nodo modifita: {u}", "Node modified: {u}", "Nœud modifié : {u}").format(u=updated["node_id"][:16]))
 
 
-@nodo_app.command("forigi")
-def forigi(
-    node_ids: list[str] = typer.Argument(
-        ...,
-        help=tr_multi(
-            "Nod-indeksoj (pluraj)",
-            "Node IDs (multiple)",
-            "ID des nœuds (plusieurs)",
-        ),
-    ),
-    yes: bool = typer.Option(
-        False, "-y", "--jes", "--yes",
-        help=tr_multi(
-            "Preterpasi konfirmon",
-            "Skip confirmation",
-            "Ignorer la confirmation",
-        ),
-    ),
-) -> None:
-    """Forigi nodojn."""
-    node_svc = get_node_service()
-    triple_svc = get_triple_service()
 
-    # Phase 1: Resolve all identifiers
-    resolved: list[dict] = []
-    errors: list[tuple[str, str]] = []
-
-    for nid in node_ids:
-        try:
-            node = node_svc.resolve_node_id_prefix(nid)
-            if node:
-                resolved.append(node)
-            else:
-                errors.append((nid, tr_multi("ne trovita", "not found", "non trouvé")))
-        except AmbiguousUUIDError as e:
-            errors.append((nid, tr_multi(
-                "ambigua prefikso: {e}",
-                "ambiguous prefix: {e}",
-                "préfixe ambigu : {e}",
-            ).format(e=str(e))))
-
-    # Report resolution errors
-    for input_val, reason in errors:
-        error(tr_multi(
-            "Forigi {i}: {r}", "Delete {i}: {r}", "Supprimer {i} : {r}",
-        ).format(i=input_val, r=reason))
-
-    if not resolved:
-        error(tr_multi("Nenio forigebla.", "Nothing to delete.", "Rien à supprimer."))
-        raise typer.Exit(1)
-
-    # Collect triples referencing any of the resolved nodes (single bulk query)
-    pred_svc = get_predicate_service()
-    resolved_ids_list = [n["node_id"] for n in resolved]
-    all_triples = triple_svc.get_by_nodes(resolved_ids_list)
-
-    # Build set of resolved node_ids that have triples
-    nodes_with_triples: set[str] = set()
-    for t in all_triples:
-        nodes_with_triples.add(t["subject_uuid"])
-        if t["object_type"] == "uri":
-            nodes_with_triples.add(t["object_value"])
-    resolved_ids = {n["node_id"] for n in resolved}
-    nodes_with_triples &= resolved_ids
-
-    # Phase 2: Preview and confirmation
-    requires_confirm = len(resolved) >= 2 or all_triples
-    if not yes and requires_confirm:
-        # Nodes preview table
-        table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
-        table.add_column("ID", no_wrap=True)
-        table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
-
-        for node in resolved:
-            label = resolve_node_label(node_svc, node["node_id"])
-            table.add_row(node["node_id"][:16], label)
-        info(table)
-
-        # Triples to be deleted
-        if all_triples:
-            ttable = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
-            ttable.add_column(tr_multi("Subjekto", "Subject", "Sujet"))
-            ttable.add_column(tr_multi("Predikato", "Predicate", "Prédicat"))
-            ttable.add_column(tr_multi("Objekto", "Object", "Objet"))
-            for t in all_triples:
-                subj_label = resolve_node_label(node_svc, t["subject_uuid"])
-                pred_label = resolve_predicate_label(pred_svc, t["predicate_id"])
-                if t["object_type"] == "uri":
-                    obj_label = resolve_node_label(node_svc, t["object_value"])
-                else:
-                    obj_label = t["object_value"]
-                    if t.get("object_lang"):
-                        obj_label += f"@{t['object_lang']}"
-                ttable.add_row(subj_label, pred_label, obj_label)
-            info(tr_multi(
-                "Arkoj forigotaj:",
-                "Triples to be deleted:",
-                "Triplets à supprimer :",
-            ))
-            info(ttable)
-
-        # Build confirmation message with triple warning
-        confirm_msg = tr_multi(
-            "Ĉu forigi {n} nodojn?", "Delete {n} nodes?", "Supprimer {n} nœuds?",
-        ).format(n=len(resolved))
-        if all_triples:
-            confirm_msg = (
-                tr_multi(
-                    "Atenton: {t} arkoj estos forigitaj kune kun la nodoj. ",
-                    "Warning: {t} arcs will be deleted together with the nodes. ",
-                    "Attention : {t} arcs seront supprimés avec les nœuds. ",
-                ).format(t=len(all_triples))
-                + confirm_msg
-            )
-
-        from A.utils.interactive import confirm_action
-
-        if not confirm_action(confirm_msg, default=False):
-            info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
-            raise typer.Exit(0)
-
-    # Phase 3: Delete triples then nodes
-    deleted = 0
-    for node in resolved:
-        nid = node["node_id"]
-        try:
-            # Cascade: delete referencing triples first (FK constraint)
-            if nid in nodes_with_triples:
-                triple_svc.remove_by_node(nid)
-            node_svc.delete(nid)
-            deleted += 1
-        except (sqlite3.IntegrityError, sqlite3.DatabaseError) as e:
-            error(_format_delete_error(nid, e))
-
-    info(tr_multi(
-        "Forigis {d} el {t} nodoj.",
-        "Deleted {d} of {t} nodes.",
-        "Supprimé {d} sur {t} nœuds.",
-    ).format(d=deleted, t=len(resolved)))
 
 
 @nodo_app.command("serci")
@@ -564,3 +433,8 @@ def serci(
         table.add_row(n["node_id"][:16], label)
 
     info(table)
+
+
+# Side-effect import: registers the ``forigi`` command on ``nodo_app``.
+# Must be after all other functions (``nodo_app`` must exist first).
+from A_semantika import _cli_nodo_forigi  # noqa: E402, F401
