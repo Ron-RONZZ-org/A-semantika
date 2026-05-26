@@ -474,7 +474,7 @@ class NodeService(CRUDService):
         # content terms by lowercasing them instead of stripping them out.
         safe_tokens = []
         for word in query.strip().split():
-            cleaned = "".join(c for c in word if c.isalnum() or c in ("_", "."))
+            cleaned = "".join(c for c in word if c.isalnum() or c == "_")
             if not cleaned:
                 continue
             if cleaned.upper() in FTS5_KEYWORDS:

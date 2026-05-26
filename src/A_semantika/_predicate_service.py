@@ -367,7 +367,7 @@ class PredicateService(CRUDService):
         """
         safe_tokens = []
         for word in query.strip().split():
-            cleaned = "".join(c for c in word if c.isalnum() or c in ("_", "."))
+            cleaned = "".join(c for c in word if c.isalnum() or c == "_")
             if not cleaned:
                 continue
             if cleaned.upper() in _FTS5_KEYWORDS:

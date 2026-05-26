@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 from rich.box import SIMPLE as BOX_SIMPLE
@@ -241,7 +241,44 @@ def aldoni(
     try:
         node = node_svc.create(data)
     except ValueError as e:
-        error(str(e))
+        err_str = str(e)
+        # If node_id was provided and already exists, propose to update instead
+        if node_id and "already exists" in err_str:
+            existing = node_svc.get(node_id)
+            if existing:
+                existing_label = resolve_node_label(node_svc, node_id)
+                info(tr_multi(
+                    "Nodo {label} ({node_id}) jam ekzistas.",
+                    "Node {label} ({node_id}) already exists.",
+                    "Le nœud {label} ({node_id}) existe déjà.",
+                ).format(label=existing_label, node_id=node_id[:16]))
+                if not yes:
+                    msg = tr_multi(
+                        "Ĉu vi volas ĝisdatigi ĝin kun la novaj etikedoj/difinoj?",
+                        "Do you want to update it with the new labels/definitions?",
+                        "Voulez-vous le mettre à jour avec les nouvelles étiquettes/définitions ?",
+                    )
+                    if confirm_action(msg, default=False):
+                        update_data: dict[str, Any] = {}
+                        if labels_dict:
+                            update_data["etikedoj"] = labels_dict
+                        if defs_dict:
+                            update_data["difinoj"] = defs_dict
+                        if update_data:
+                            node_svc.update(node_id, update_data)
+                        info(tr_multi(
+                            "Nodo ĝisdatigita: {label} ({node_id})",
+                            "Node updated: {label} ({node_id})",
+                            "Nœud mis à jour : {label} ({node_id})",
+                        ).format(
+                            label=resolve_node_label(node_svc, node_id),
+                            node_id=node_id[:16],
+                        ))
+                        raise typer.Exit(0)
+                else:
+                    # -y mode: silently exit
+                    raise typer.Exit(0)
+        error(err_str)
         raise typer.Exit(1) from e
     node_id_val = node["node_id"]
 
@@ -250,10 +287,22 @@ def aldoni(
         # Try to find existing node with same labels (using FTS search on first label)
         eo_label = labels_dict.get("eo") or next(iter(labels_dict.values()), None)
         if eo_label:
-            similar = node_svc.search(eo_label, limit=1)
-            if similar and similar[0]["node_id"] != node_id_val:
-                # Found a similar node - propose to update instead
-                existing_id = similar[0]["node_id"]
+            # Use AND matching for duplicate detection: require ALL query words
+            # to appear in the matched node's label_text. OR-based FTS (used by
+            # node_svc.search) is too broad — "genetika algoritmo" should not
+            # match a node with label "Algoritmo" alone.
+            candidates = node_svc.search(eo_label, limit=10)
+            query_words = set(eo_label.lower().split())
+            similar = None
+            for c in candidates:
+                if c["node_id"] == node_id_val:
+                    continue
+                label_words = set(c.get("label_text", "").lower().split())
+                if query_words.issubset(label_words):
+                    similar = c
+                    break
+            if similar:
+                existing_id = similar["node_id"]
                 existing_label = resolve_node_label(node_svc, existing_id)
                 info(tr_multi(
                     "Simila nodo jam ekzistas: {label} ({node_id})",

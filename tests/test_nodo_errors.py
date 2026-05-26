@@ -21,16 +21,16 @@ class TestNodoAldoniErrorHandling:
         assert "kreita" in result.stdout or "Created" in result.stdout
 
     def test_nodo_aldoni_duplicate_id_friendly(self, runner: CliRunner, node_svc):
-        """Using an existing node_id should show friendly error (C2+C3)."""
+        """Using an existing node_id should inform and silently exit with -y."""
         existing_id = "DUPLICATO"
         node_svc.create({"node_id": existing_id, "etikedoj": {"eo": "Ekzistanta"}})
         result = runner.invoke(app, [
             "nodo", "aldoni", existing_id, "-y",
         ])
-        assert result.exit_code == 1
-        # Must show a meaningful error, not a traceback
-        assert "already exists" in result.stdout
-        assert "modifi" in result.stdout
+        # With -y: silently exit (no update without confirmation)
+        assert result.exit_code == 0
+        # Must show a meaningful message, not a traceback
+        assert "already exists" in result.stdout or "jam ekzistas" in result.stdout
         assert "Traceback" not in result.stdout
 
     def test_nodo_aldoni_auto_id_no_collision(self, runner: CliRunner, node_svc):

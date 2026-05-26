@@ -81,3 +81,19 @@ class TestFTS5Sanitization:
         node_svc.create({"etikedoj": {"eo": "Normal search term"}})
         results = node_svc.search("Normal")
         assert len(results) >= 1
+
+    def test_search_with_dot_in_label_prefix(self, node_svc):
+        """Words with trailing dots (e.g. 'L.' in 'John L. Holland') must not crash FTS5."""
+        node_svc.create({"etikedoj": {"en": "John L. Holland"}})
+        # This was crashing with "fts5: syntax error near ." because
+        # 'L.' was kept in the FTS5 token and 'L.*' was interpreted
+        # as column-prefix syntax.
+        results = node_svc.search("John L. Holland", limit=1)
+        assert len(results) >= 1
+        assert results[0]["label_text"] == "John L. Holland"
+
+    def test_search_predicate_with_dot(self, pred_svc):
+        """Predicate FTS5 search should also handle dots gracefully."""
+        pred_svc.create({"predicate_id": "test:dot", "etikedoj": '{"en": "Dr. Smith"}'})
+        results = pred_svc.search("Dr. Smith", limit=1)
+        assert len(results) >= 1
