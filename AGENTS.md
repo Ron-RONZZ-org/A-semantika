@@ -1012,6 +1012,21 @@ This is not valid RDF — consumers can't parse labels programmatically.
 
 **Tests:** All 399 tests pass (390 existing + 9 new coverage tests).
 
+### Issue #44: Code Review Round 19 — Minor Code Quality, Label Resolution Consolidation (May 2026)
+
+**Scope:** 4 code quality fixes from code review. 401 tests pass (399 existing, 0 new — no behavioral changes).
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| Q1 | Low | `_node_service.py` | Condensed module docstring from 6→1 line to keep file at exactly 500 lines (was 505) |
+| Q2 | Low | `_preview.py` | Inlined `pred_id_display` variable (3 occurrences) — eliminated unnecessary intermediate variable |
+| Q3 | Low | `_node_helpers.py` + `_preview.py` | **Label resolution consolidation.** Extracted `get_label_from_node()` helper from `get_display_label()`. `resolve_node_label_from_node()` now delegates to `get_label_from_node()` instead of duplicating the eo→en→first→ID fallback logic. `get_display_label()` language-code detection preserved for backward compat. |
+| Q4 | Low | `_cli_nodo.py` | Renamed `need_confirm` → `requires_confirm` to address naming convention concern |
+
+**User simulation:** Verified `get_display_label`, `get_label_from_node`, `resolve_node_label_from_node`, `build_triple_preview_table`, `resolve_predicate_label` all produce correct output across eo/en/first/fallback cases, URI/typed-literal/string-literal previews.
+
+**Tests:** All 401 tests pass. No behavioral changes.
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
