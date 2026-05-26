@@ -46,15 +46,25 @@ class TestResolveSubjects:
         uuids = resolve_subjects(node_svc, "a1000000-")
         assert uuids == ["a1000000-0000-0000-0000-000000000001"]
 
-    def test_ambiguous_uuid_prefix_returns_empty(self, node_svc) -> None:
-        """Ambiguous UUID prefix should fall through to label search."""
+    def test_short_unique_prefix_resolves(self, node_svc) -> None:
+        """Short unique prefix resolves via node_id prefix fallback."""
         from A_semantika._triple_search import resolve_subjects
 
-        # "a1" matches both a1000000-... and a2000000-... but is too short
-        # (2 chars, min 8). Falls straight to label search which also finds
-        # nothing → empty.
+        # "a1" is only 2 chars (below UUID prefix heuristic of 8) but
+        # uniquely matches a1000000-... via Step 3 fallback.
         uuids = resolve_subjects(node_svc, "a1")
-        assert uuids == []
+        assert uuids == ["a1000000-0000-0000-0000-000000000001"]
+
+    def test_prefix_resolve_then_label_fallback(self, node_svc) -> None:
+        """Short prefix that also matches labels: FTS5 results take priority."""
+        from A_semantika._triple_search import resolve_subjects
+
+        # "a" is 1 char — too short for UUID heuristic. FTS5/LIKE finds
+        # "Kato" and "Mamulo" (both contain "a"). Step 3 never reached.
+        uuids = resolve_subjects(node_svc, "a")
+        # a2000000-... ("Kato") and a3000000-... ("Mamulo") both contain "a"
+        assert "a2000000-0000-0000-0000-000000000002" in uuids
+        assert "a3000000-0000-0000-0000-000000000003" in uuids
 
     def test_label_search_fallback(self, node_svc) -> None:
         """Non-UUID text should fall back to FTS5 label search."""

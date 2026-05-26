@@ -25,7 +25,11 @@ class TestBuildTriplePreviewTable:
         assert "→ URI" in footnote
 
     def test_build_string_literal_preview(self, node_svc, pred_svc):
-        """String literal preview should show quoted value."""
+        """String literal preview must show value on Row 1, not Row 2."""
+        from io import StringIO
+
+        from rich.console import Console
+
         from A_semantika._preview import build_triple_preview_table
 
         subj = node_svc.create({"etikedoj": {"eo": "Hundo"}})
@@ -38,6 +42,19 @@ class TestBuildTriplePreviewTable:
         )
         assert table is not None
         assert "→ literal" in footnote or "lang" in footnote
+
+        # Verify row order: quoted value must appear before raw subject ID
+        buf = StringIO()
+        console = Console(file=buf, width=120)
+        console.print(table)
+        output = buf.getvalue()
+
+        value_pos = output.index('"Hundo"')
+        raw_id_pos = output.index(subj["node_id"][:16])
+        assert value_pos < raw_id_pos, (
+            "String literal value must appear on Row 1 (before raw subject ID), "
+            f"but value at {value_pos} comes after raw ID at {raw_id_pos}"
+        )
 
     def test_build_typed_literal_preview(self, node_svc, pred_svc):
         """Typed literal preview should show datatype."""

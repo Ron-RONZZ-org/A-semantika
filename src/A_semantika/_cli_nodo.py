@@ -13,7 +13,7 @@ from rich.table import Table
 from A import error, info, tr_multi, warning
 from A_semantika._cli_helpers import create_node_arcs, ensure_predicate, resolve_arc_targets
 from A_semantika._node_service import AmbiguousUUIDError
-from A_semantika._preview import confirm_node_with_arcs, resolve_node_label, resolve_predicate_label
+from A_semantika._preview import confirm_node_creation, confirm_node_with_arcs, resolve_node_label, resolve_predicate_label
 from A_semantika.data.storage import label_from_json
 from A_semantika.service import get_node_service, get_predicate_service, get_triple_service
 
@@ -67,6 +67,11 @@ nodo_app = typer.Typer(
 @nodo_app.command("ls")
 def ls(
     limit: int = typer.Option(50, "--limit", "-l", help=tr_multi("Maksimume rezultoj", "Max results", "Résultats max")),
+    lingvo: Optional[str] = typer.Option(None, "--lingvo", help=tr_multi(
+        "Lingva kodo por etikedoj (ekz. eo, en, fr)",
+        "Language code for labels (e.g. eo, en, fr)",
+        "Code de langue pour les étiquettes (ex. eo, en, fr)",
+    )),
 ) -> None:
     """Listi ĉiujn nodojn."""
     node_svc = get_node_service()
@@ -74,6 +79,8 @@ def ls(
     if not nodes:
         info(tr_multi("Neniuj nodoj.", "No nodes.", "Aucun nœud."))
         return
+
+    lang_fallback = (lingvo, "eo", "en") if lingvo else ("eo", "en")
 
     table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
     table.add_column("ID", no_wrap=True)
@@ -89,7 +96,7 @@ def ls(
         prefixes.add(pref)
 
     for n in nodes:
-        label = label_from_json(n["etikedoj"])
+        label = label_from_json(n["etikedoj"], lang_fallback)
         disp = n["node_id"] if n["node_id"][:16] in ambiguous else n["node_id"][:16]
         table.add_row(disp, label)
 
@@ -219,20 +226,10 @@ def aldoni(
         except ValueError as e:
             error(str(e))
             raise typer.Exit(1) from e
-    elif not yes:
-        from A.utils.interactive import confirm_action
-
-        if not confirm_action(
-            tr_multi(
-                "Ĉu krei nodon {label}?",
-                "Create node {label}?",
-                "Créer le nœud {label}?",
-            ).format(label=resolve_node_label(node_svc, node_id_val)),
-            default=True,
-        ):
-            node_svc.delete(node_id_val)
-            info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
-            raise typer.Exit(0)
+    elif not confirm_node_creation(node_id_val, labels_dict, defs_dict, yes=yes):
+        node_svc.delete(node_id_val)
+        info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
+        raise typer.Exit(0)
 
     info(tr_multi(
         "Nodo kreita: {label} ({node_id})",
@@ -442,6 +439,11 @@ def forigi(
 def serci(
     query: str = typer.Argument(..., help=tr_multi("Serĉa teksto", "Search text", "Texte de recherche")),
     limit: int = typer.Option(50, "--limit", "-l", help=tr_multi("Maksimume rezultoj", "Max results", "Résultats max")),
+    lingvo: Optional[str] = typer.Option(None, "--lingvo", help=tr_multi(
+        "Lingva kodo por etikedoj (ekz. eo, en, fr)",
+        "Language code for labels (e.g. eo, en, fr)",
+        "Code de langue pour les étiquettes (ex. eo, en, fr)",
+    )),
 ) -> None:
     """Serĉi nodojn per teksto (FTS5)."""
     node_svc = get_node_service()
@@ -451,12 +453,14 @@ def serci(
         info(tr_multi("Neniuj nodoj trovitaj.", "No nodes found.", "Aucun nœud trouvé."))
         return
 
+    lang_fallback = (lingvo, "eo", "en") if lingvo else ("eo", "en")
+
     table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
     table.add_column("ID", no_wrap=True)
     table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
 
     for n in results:
-        label = label_from_json(n["etikedoj"])
+        label = label_from_json(n["etikedoj"], lang_fallback)
         table.add_row(n["node_id"][:16], label)
 
     info(table)

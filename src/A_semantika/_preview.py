@@ -20,11 +20,17 @@ from A_semantika._predicate_service import PredicateService
 from A_semantika.data.storage import label_from_json
 
 
-def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
+def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str, preferred_lang: str | None = None) -> str:
     """Resolve a node UUID/prefix to a display label.
 
     Delegates to ``get_display_label()`` from ``_node_helpers`` to avoid
-    duplicating the eo→en→first fallback logic.
+    duplicating the label fallback logic.
+
+    Args:
+        node_svc: NodeService instance.
+        uuid_or_prefix: Node ID or prefix.
+        preferred_lang: Optional language code to try first
+            (defaults to ``eo → en → first`` fallback).
 
     Returns the label if found, the UUID prefix as fallback.
 
@@ -32,42 +38,48 @@ def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str) -> str:
         AmbiguousUUIDError: If the prefix matches multiple nodes.
     """
     try:
-        label, _ = get_display_label(node_svc.resolve_node_id_prefix, uuid_or_prefix)
+        label, _ = get_display_label(node_svc.resolve_node_id_prefix, uuid_or_prefix, preferred_lang)
         return label
     except AmbiguousUUIDError:
         raise
     except ValueError:
-        # ValueError comes from get_display_label when UUID format is
-        # invalid (not a prefix either). Falls back to raw prefix.
         return uuid_or_prefix[:16]
 
 
-def resolve_node_label_from_node(node: dict) -> str:
+def resolve_node_label_from_node(node: dict, preferred_lang: str | None = None) -> str:
     """Get display label from a pre-resolved node dict.
 
     Avoids redundant ``node_svc.resolve_node_id_prefix()`` calls when the
     node dict has already been fetched (e.g. in ``build_triple_preview_table()``).
 
-    Delegates to :func:`get_label_from_node` to share the same
-    ``eo → en → first → node_id[:16]`` fallback logic as
-    :func:`resolve_node_label` and :func:`get_display_label`.
+    Delegates to :func:`get_label_from_node` to share the same label
+    fallback logic as :func:`resolve_node_label`.
+
+    Args:
+        node: Pre-resolved node dict.
+        preferred_lang: Optional language code to try first.
     """
-    return get_label_from_node(node)
+    return get_label_from_node(node, preferred_lang=preferred_lang)
 
 
-def resolve_predicate_label(pred_svc: PredicateService, predicate_id: str) -> str:
+def resolve_predicate_label(pred_svc: PredicateService, predicate_id: str, preferred_lang: str | None = None) -> str:
     """Resolve a predicate ID to a display label.
 
-    Returns eo/en label from etikedoj JSON via label_from_json(),
-    falling back to predicate_id if no label is available.
-    Delegates to storage.label_from_json() to avoid duplicating
-    the eo→en→first fallback logic.
+    Returns label in the preferred language (if given), otherwise
+    ``eo → en → first`` fallback.  Falls back to predicate_id if no label
+    is available.  Delegates to storage.label_from_json().
+
+    Args:
+        pred_svc: PredicateService instance.
+        predicate_id: Predicate ID.
+        preferred_lang: Optional language code to try first.
     """
     pred = pred_svc.get_by_predicate_id(predicate_id)
     if not pred:
         return predicate_id
     etikedoj = pred.get("etikedoj", "{}")
-    label = label_from_json(etikedoj)
+    lang_fallback = (preferred_lang, "eo", "en") if preferred_lang else ("eo", "en")
+    label = label_from_json(etikedoj, lang_fallback)
     return label if label else predicate_id
 
 
@@ -142,8 +154,8 @@ def build_triple_preview_table(
         obj_display = tr_multi(
             "Tipita literal ({d})", "Typed literal ({d})", "Littéral typé ({d})",
         ).format(d=dtype)
-        table.add_row(subj_label, pred_label, obj_display)
-        table.add_row(subj_id, predicate_id, object_value)
+        table.add_row(subj_label, pred_label, object_value)
+        table.add_row(subj_id, predicate_id, obj_display)
 
         parts = [f"→ {dtype}"]
         if object_unit:
@@ -158,9 +170,9 @@ def build_triple_preview_table(
         footnote = ", ".join(parts)
     else:
         # String literal
-        table.add_row(subj_label, pred_label, "")
         quoted_val = f'"{object_value}"'
-        table.add_row(subj_id, predicate_id, quoted_val)
+        table.add_row(subj_label, pred_label, quoted_val)
+        table.add_row(subj_id, predicate_id, "")
 
         parts = [tr_multi("→ literal", "→ literal", "→ litteral")]
         if object_lang:
@@ -306,6 +318,147 @@ def confirm_node_with_arcs(
             f"Ĉu krei nodon kun {arc_count} arkoj?",
             f"Create node with {arc_count} arcs?",
             f"Créer le nœud avec {arc_count} arcs ?",
+        ),
+        default=True,
+    )
+
+
+# ── Node creation preview (no-arcs path) ────────────────────────────────
+
+
+def build_node_preview_table(node_id: str, labels: dict[str, str], defns: dict[str, str]) -> Table:
+    """Build a preview table showing node metadata before creation.
+
+    Args:
+        node_id: The node ID to display.
+        labels: Language→label dict (already parsed, not JSON).
+        defns: Language→definition dict (already parsed, not JSON).
+
+    Returns:
+        A Rich Table with node details.
+    """
+    table = Table(show_header=False, box=BOX_SIMPLE)
+    table.add_column(tr_multi("Detaloj", "Detail", "Détail"), no_wrap=True)
+    table.add_column("", no_wrap=True)
+
+    table.add_row(tr_multi("ID", "ID", "ID"), node_id if node_id else tr_multi(
+        "(aŭtomate generita)", "(auto-generated)", "(auto-généré)",
+    ))
+
+    if labels:
+        labels_str = "\n".join(f"{lang}: {val}" for lang, val in labels.items())
+        table.add_row(tr_multi("Etikedoj", "Labels", "Étiquettes"), labels_str)
+
+    if defns:
+        defns_str = "\n".join(f"{lang}: {val}" for lang, val in defns.items())
+        table.add_row(tr_multi("Difinoj", "Definitions", "Définitions"), defns_str)
+
+    return table
+
+
+def confirm_node_creation(
+    node_id: str,
+    labels: dict[str, str],
+    defns: dict[str, str],
+    yes: bool = False,
+) -> bool:
+    """Show a confirmation prompt for creating a node (no arcs).
+
+    Displays a Rich table with node details, then asks for confirmation.
+
+    Args:
+        node_id: The node ID.
+        labels: Language→label dict.
+        defns: Language→definition dict.
+        yes: If True, skip confirmation.
+
+    Returns:
+        True if confirmed, False otherwise.
+    """
+    if yes:
+        return True
+
+    table = build_node_preview_table(node_id, labels, defns)
+
+    info("")
+    info(table)
+
+    return confirm_action(
+        tr_multi(
+            "Ĉu krei tiun nodon?",
+            "Create this node?",
+            "Créer ce nœud ?",
+        ),
+        default=True,
+    )
+
+
+# ── Predicate creation preview ──────────────────────────────────────────
+
+
+def build_predicate_preview_table(pred_data: dict) -> Table:
+    """Build a preview table showing predicate metadata before creation.
+
+    Args:
+        pred_data: Predicate data dict with keys:
+            predicate_id, source, etikedoj (dict), priskriboj (dict).
+
+    Returns:
+        A Rich Table with predicate details.
+    """
+    table = Table(show_header=False, box=BOX_SIMPLE)
+    table.add_column(tr_multi("Detaloj", "Detail", "Détail"), no_wrap=True)
+    table.add_column("", no_wrap=True)
+
+    pid = pred_data.get("predicate_id", "")
+    table.add_row(tr_multi("ID", "ID", "ID"), pid)
+
+    source = pred_data.get("source", "")
+    if source:
+        table.add_row(tr_multi("Fonto", "Source", "Source"), source)
+
+    etikedoj = pred_data.get("etikedoj", {})
+    if isinstance(etikedoj, dict) and etikedoj:
+        labels_str = "\n".join(f"{lang}: {val}" for lang, val in etikedoj.items())
+        table.add_row(tr_multi("Etikedoj", "Labels", "Étiquettes"), labels_str)
+
+    priskriboj = pred_data.get("priskriboj", {})
+    if isinstance(priskriboj, dict) and priskriboj:
+        descs_str = "\n".join(f"{lang}: {val}" for lang, val in priskriboj.items())
+        table.add_row(tr_multi("Priskriboj", "Descriptions", "Descriptions"), descs_str)
+
+    return table
+
+
+def confirm_predicate_creation(
+    pred_data: dict,
+    yes: bool = False,
+) -> bool:
+    """Show a confirmation prompt for creating a predicate.
+
+    Displays a Rich table with predicate details, then asks for confirmation.
+
+    Args:
+        pred_data: Predicate data dict.
+        yes: If True, skip confirmation.
+
+    Returns:
+        True if confirmed, False otherwise.
+    """
+    if yes:
+        return True
+
+    table = build_predicate_preview_table(pred_data)
+
+    info("")
+    info(table)
+
+    pid = pred_data.get("predicate_id", "")
+    return confirm_action(
+        tr_multi(
+            f"Ĉu krei predikaton {pid}?",
+            f"Create predicate {pid}?",
+            f"Créer le prédicat {pid}?",
         ),
         default=True,
     )

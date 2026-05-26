@@ -52,15 +52,18 @@ def _is_numeric(text: str) -> bool:
 def _resolve_node_by_label(
     node_svc: NodeService, text: str,
 ) -> tuple[list[str], bool]:
-    """Resolve text to node IDs via UUID prefix or FTS5 label search.
+    """Resolve text to node IDs via UUID prefix, FTS5 label search, or node_id prefix.
 
     Shared helper used by both resolve_subjects() and resolve_objects()
-    — encapsulates the common UUID-prefix-then-FTS5 resolution pattern.
+    — encapsulates the common UUID-prefix-then-FTS5-then-node_id-prefix
+    resolution pattern.
 
     Resolution order:
     1. If text looks like a UUID prefix, try resolve_node_id_prefix()
     2. Fall back to NodeService.search() via FTS5 label search
-    3. Return empty list if no matches
+    3. If still no match, try resolve_node_id_prefix() for non-UUID text
+       (covers short human-readable node IDs like "H_GL")
+    4. Return empty list if no matches
 
     Returns:
         Tuple of (node_ids, ambiguous) where:
@@ -92,6 +95,25 @@ def _resolve_node_by_label(
     results = node_svc.search(text, limit=50)
     if results:
         return ([r["node_id"] for r in results], False)
+
+    # Step 3: Fallback — try node_id prefix resolution for non-UUID text.
+    # This covers short human-readable node IDs like "H_GL" (4 chars,
+    # non-hex) that don't look like UUID prefixes but are valid node_id
+    # prefixes.  FTS5 doesn't index node_id, so label search won't match.
+    if not _looks_like_uuid_prefix(text):
+        try:
+            node = node_svc.resolve_node_id_prefix(text)
+            if node:
+                return ([node["node_id"]], False)
+        except AmbiguousUUIDError:
+            _warning(tr_multi(
+                "Ambigua prefikso '{t}' — pluraj nodoj kongruas",
+                "Ambiguous prefix '{t}' — multiple nodes match",
+                "Préfixe ambigu '{t}' — plusieurs nœuds correspondent",
+            ).format(t=text))
+            return ([], True)
+        except ValueError:
+            pass
 
     return ([], False)
 

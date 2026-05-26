@@ -21,6 +21,11 @@ from A_semantika._node_helpers import extract_label_text
 from A_semantika.data.storage import label_from_json, now
 
 
+class AmbiguousPredicateError(ValueError):
+    """Raised when a predicate ID prefix matches multiple predicates."""
+    pass
+
+
 def _ensure_json(val: Any) -> str:
     """Serialize a dict to JSON, or return as-is if already a string."""
     if isinstance(val, str):
@@ -122,6 +127,48 @@ class PredicateService(CRUDService):
             "SELECT * FROM predicates WHERE predicate_id = ?",
             (predicate_id,),
         )
+
+    def resolve_predicate_id_prefix(self, prefix: str) -> dict | None:
+        """Resolve a predicate ID prefix to a full predicate dict.
+
+        Resolution order:
+        1. Exact predicate_id match (via :meth:`get_by_predicate_id`)
+        2. Prefix match via LIKE on predicate_id (wildcard-escaped)
+        3. If multiple prefix matches: raise :class:`AmbiguousPredicateError`
+        4. If no match: return None
+
+        Args:
+            prefix: Predicate ID or prefix string.
+
+        Returns:
+            The predicate dict if exactly one match is found.
+
+        Raises:
+            AmbiguousPredicateError: If the prefix matches multiple predicates.
+        """
+        if not prefix:
+            return None
+
+        # Step 1: Exact match
+        pred = self.get_by_predicate_id(prefix)
+        if pred:
+            return pred
+
+        # Step 2: Prefix match via LIKE (wildcard-escaped)
+        escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        matches = self.db.execute(
+            "SELECT * FROM predicates WHERE predicate_id LIKE ? ESCAPE '\\'",
+            (f"{escaped}%",),
+        )
+        if not matches:
+            return None
+        if len(matches) > 1:
+            msg = (
+                f"Predicate ID prefix '{prefix}' is ambiguous "
+                f"({len(matches)} matches)"
+            )
+            raise AmbiguousPredicateError(msg)
+        return matches[0]
 
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
         """Create a predicate with JSON-serialized etikedoj/priskriboj.

@@ -18,6 +18,7 @@ from A_semantika._cli_helpers import (
     validate_type_flags,
 )
 from A_semantika._node_service import AmbiguousUUIDError, NodeService
+from A_semantika._predicate_service import AmbiguousPredicateError
 from A_semantika._preview import confirm_triple, resolve_node_label, resolve_predicate_label
 from A_semantika._triple_service import TripleService
 from A_semantika.service import (
@@ -49,9 +50,9 @@ def aldoni(
         ...,
         metavar="OBJEKTO",
         help=tr_multi(
-            "Objekta valoro",
-            "Object value",
-            "Valeur de l'objet",
+            "Objekta valoro (uzu -- antaŭ valoroj komencantaj per -)",
+            "Object value (use -- before values starting with -)",
+            "Valeur de l'objet (utilisez -- avant les valeurs commençant par -)",
         ),
     ),
     str_: bool = typer.Option(
@@ -114,6 +115,9 @@ def aldoni(
     """Aldoni semantikan arkon: subjekto --predikato--> objekto.
 
     Defaŭlte objekto estas URI referenco (nod UUID). Uzu --str por teksta literal.
+
+    Se la objekta valoro komenciĝas per -, uzu -- antaŭ ĝi por eviti
+    misinterpretadon kiel flago: aldoni NODO predikato -f -- -1.5
     """
     datatype, object_type = validate_type_flags(str_, int_, float_, bool_, lingvo, unuo)
 
@@ -161,19 +165,29 @@ def aldoni(
             raise typer.Exit(1)
         object_uuid = obj_node["node_id"]
 
-    # Validate predicate exists (BEFORE confirmation preview)
-    if not pred_svc.get_by_predicate_id(predicate):
+    # Resolve predicate ID (supports prefix matching)
+    try:
+        pred = pred_svc.resolve_predicate_id_prefix(predicate)
+    except AmbiguousPredicateError as e:
+        error(tr_multi(
+            "Ambigua predikato-prefikso: {e}",
+            "Ambiguous predicate prefix: {e}",
+            "Préfixe prédicat ambigu : {e}",
+        ).format(e=str(e)))
+        raise typer.Exit(1) from e
+    if not pred:
         error(tr_multi(
             "Predikato ne trovita: {p}",
             "Predicate not found: {p}",
             "Prédicat non trouvé : {p}",
         ).format(p=predicate))
         raise typer.Exit(1)
+    predicate_id = pred["predicate_id"]  # Use resolved full ID
 
     # Confirm
     if not confirm_triple(
         node_svc, pred_svc,
-        subject_uuid, predicate, object_uuid,
+        subject_uuid, predicate_id, object_uuid,
         object_type, lingvo, datatype, unuo,
         yes=yes,
     ):
@@ -183,7 +197,7 @@ def aldoni(
     try:
         triple_svc.add(
             subject_uuid=subject_uuid,
-            predicate_id=predicate,
+            predicate_id=predicate_id,
             object_value=object_uuid,
             object_type=object_type,
             object_lang=lingvo if str_ else None,
@@ -195,7 +209,7 @@ def aldoni(
             "Arc created: {s} --{p}--> {o}",
             "Arc créé : {s} --{p}--> {o}",
         ).format(
-            s=subject_uuid[:16], p=predicate, o=object_uuid[:16],
+            s=subject_uuid[:16], p=predicate_id, o=object_uuid[:16],
         ))
     except ValueError as e:
         error(tr_multi(

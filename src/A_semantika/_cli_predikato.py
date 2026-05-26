@@ -12,6 +12,7 @@ from rich.table import Table
 
 from A import error, info, tr_multi, warning as awarning
 from A_semantika._predicate_service import _label_from_etikedoj
+from A_semantika._preview import confirm_predicate_creation
 from A_semantika._wikidata_helper import (
     is_wikidata_id,
     normalize_predicate_id,
@@ -52,13 +53,20 @@ def _parse_lang_value_pairs(items: list[str] | None) -> dict[str, str]:
     return result
 
 
-def _get_predicate_label(pred: dict) -> str:
-    """Get the display label for a predicate dict, from etikedoj JSON."""
+def _get_predicate_label(pred: dict, preferred_lang: str | None = None) -> str:
+    """Get the display label for a predicate dict, from etikedoj JSON.
+
+    Args:
+        pred: Predicate dict.
+        preferred_lang: Optional language code to try first
+            (defaults to ``eo → en → first`` fallback).
+    """
     try:
         labels = json.loads(pred.get("etikedoj", "{}"))
     except (json.JSONDecodeError, TypeError):
         labels = {}
-    return _label_from_etikedoj(labels) or pred.get("predicate_id", "")
+    langs = (preferred_lang, "eo", "en") if preferred_lang else ("eo", "en")
+    return _label_from_etikedoj(labels, langs) or pred.get("predicate_id", "")
 
 
 # ── Commands ─────────────────────────────────────────────────────────────────
@@ -67,6 +75,11 @@ def _get_predicate_label(pred: dict) -> str:
 @predikato_app.command("ls")
 def ls(
     limit: int = typer.Option(50, "--limit", "-l", help=tr_multi("Maksimume rezultoj", "Max results", "Résultats max")),
+    lingvo: Optional[str] = typer.Option(None, "--lingvo", help=tr_multi(
+        "Lingva kodo por etikedoj (ekz. eo, en, fr)",
+        "Language code for labels (e.g. eo, en, fr)",
+        "Code de langue pour les étiquettes (ex. eo, en, fr)",
+    )),
 ) -> None:
     """Listi ĉiujn predikatojn."""
     pred_svc = get_predicate_service()
@@ -82,7 +95,7 @@ def ls(
     table.add_column(tr_multi("Fonto", "Source", "Source"))
 
     for p in predicates:
-        label = _get_predicate_label(p)
+        label = _get_predicate_label(p, lingvo)
         table.add_row(p["predicate_id"], label, p.get("source", ""))
 
     info(table)
@@ -187,19 +200,9 @@ def aldoni(
                 "Impossible de récupérer les étiquettes depuis Wikidata. Création manuelle.",
             ))
 
-    if not yes:
-        from A.utils.interactive import confirm_action
-
-        if not confirm_action(
-            tr_multi(
-                f"Ĉu krei predikaton {predicate_id}?",
-                f"Create predicate {predicate_id}?",
-                f"Créer le prédicat {predicate_id}?",
-            ),
-            default=True,
-        ):
-            info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
-            raise typer.Exit(0)
+    if not confirm_predicate_creation(data, yes=yes):
+        info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
+        raise typer.Exit(0)
 
     try:
         pred_svc.create(data)
@@ -377,6 +380,11 @@ def serci(
     query: str = typer.Argument(..., help=tr_multi("Serĉa teksto", "Search text", "Texte de recherche")),
     wikidata: bool = typer.Option(False, "--wikidata", "-w", help=tr_multi("Ankaŭ serĉi en Vikidatumoj", "Also search Wikidata", "Chercher aussi dans Wikidata")),
     limit: int = typer.Option(50, "--limit", "-l", help=tr_multi("Maksimume rezultoj", "Max results", "Résultats max")),
+    lingvo: Optional[str] = typer.Option(None, "--lingvo", help=tr_multi(
+        "Lingva kodo por etikedoj (ekz. eo, en, fr)",
+        "Language code for labels (e.g. eo, en, fr)",
+        "Code de langue pour les étiquettes (ex. eo, en, fr)",
+    )),
 ) -> None:
     """Serĉi predikatojn per teksto."""
     pred_svc = get_predicate_service()
@@ -416,7 +424,7 @@ def serci(
         table.add_column(tr_multi("Fonto", "Source", "Source"))
 
     for p in results:
-        label = _get_predicate_label(p)
+        label = _get_predicate_label(p, lingvo)
         row: list[str] = [p["predicate_id"], label]
         if has_wikidata:
             row.append(tr_multi("loka", "local", "local"))

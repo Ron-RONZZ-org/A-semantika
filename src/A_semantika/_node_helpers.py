@@ -42,15 +42,19 @@ def extract_difin_text(difinoj: str | dict) -> str:
     return " ".join(str(v) for v in defns.values() if v)
 
 
-def get_label_from_node(node: dict) -> str:
+def get_label_from_node(node: dict, preferred_lang: str | None = None) -> str:
     """Extract display label from a pre-resolved node dict.
 
-    Same ``eo → en → first → node_id[:16]`` fallback logic as
-    :func:`get_display_label`, without the resolution step.
+    Resolution priority:
+    1. ``preferred_lang`` language (if given)
+    2. Default fallback ``eo → en``
+    3. First non-empty label in any language
+    4. ``node_id[:16]``
 
     Args:
         node: Pre-resolved node dict (as returned by
             ``NodeService.resolve_node_id_prefix()``).
+        preferred_lang: Optional language code to try first.
 
     Returns:
         Display label string.
@@ -64,7 +68,9 @@ def get_label_from_node(node: dict) -> str:
     if not isinstance(labels, dict):
         return node.get("node_id", "")[:16]
 
-    for lang in ("eo", "en"):
+    # Try preferred language first, then default fallback
+    lang_order = (preferred_lang, "eo", "en") if preferred_lang else ("eo", "en")
+    for lang in lang_order:
         val = labels.get(lang)
         if val and isinstance(val, str):
             return val
@@ -80,6 +86,7 @@ def get_label_from_node(node: dict) -> str:
 def get_display_label(
     resolve_fn,  # Callable[[str], dict[str, Any] | None]
     node_id_or_prefix: str,
+    preferred_lang: str | None = None,
 ) -> tuple[str, str]:
     """Get ``(display_label, language_code)`` for a node.
 
@@ -88,12 +95,17 @@ def get_display_label(
     :func:`get_label_from_node` so the ``eo → en → first`` fallback
     is consistent across all call sites.
 
+    Args:
+        resolve_fn: Callable that resolves node_id/prefix to node dict.
+        node_id_or_prefix: Node ID or prefix.
+        preferred_lang: Optional language code to try first.
+
     Returns ``(node_id_or_prefix, "")`` if the node is not found.
     """
     node = resolve_fn(node_id_or_prefix)
     if not node:
         return (node_id_or_prefix, "")
-    label = get_label_from_node(node)
+    label = get_label_from_node(node, preferred_lang=preferred_lang)
     # Detect language code from the node's etikedoj for the label
     try:
         etikedoj_raw = node.get("etikedoj", "{}")

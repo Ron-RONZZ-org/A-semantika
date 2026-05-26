@@ -1065,6 +1065,26 @@ This is not valid RDF — consumers can't parse labels programmatically.
 
 **Tests:** All 426 tests pass (401 existing + 25 new).
 
+### Issue #47: Improved Userspace for A-semantika
+
+**Scope:** 5 improvements across triple search, preview layout, predicate resolution, creation confirmation, and language filtering — plus follow-up debug fix.
+
+| Sub-task | Area | Files |
+|----------|------|-------|
+| I1 | Creation preview dialogs | `_preview.py`, `_cli_nodo.py`, `_cli_predikato.py` |
+| I2 | Language filter (`--lingvo`) on `ls`/`serci` | `_cli_nodo.py`, `_cli_predikato.py`, `_node_helpers.py`, `_preview.py` |
+| I3 | Literal preview row order (typed) | `_preview.py:157-158` |
+| I4 | Ambiguous predicate prefix resolution | `_predicate_service.py`, `_cli_triples.py` |
+| I5 | Step 3 node_id_prefix fallback in triple search | `_triple_search.py` |
+
+**Bug fixes:**
+| Fix | File | Description |
+|-----|------|-------------|
+| String literal Row 1 | `_preview.py:173-175` | String literal value was on Row 2 (raw IDs) instead of Row 1 (labels). Typed literal was fixed by I3 but string literal branch was overlooked. |
+| Negative-number doc | `_cli_triples.py:53-56,117-120` | Documented `--` usage for values starting with `-` (e.g. `aldoni NODO pred -f -- -1.5`) |
+
+**Tests:** 427 pass (426 existing + 1 updated assertion).
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
