@@ -79,10 +79,21 @@ class PredicateService(CRUDService):
             "  tokenize='unicode61'"
             ")"
         )
-        count = self.db.execute_one(
+        fts_count = self.db.execute_one(
             "SELECT COUNT(*) AS cnt FROM predicates_fts"
         )
-        if count and count["cnt"] == 0:
+        pred_count = self.db.execute_one(
+            "SELECT COUNT(*) AS cnt FROM predicates"
+        )
+        # Rebuild if FTS is empty OR if counts mismatch (stale index after
+        # rename/delete/restore operations that happened before the FTS
+        # re-index fix in commit 9f1feff).
+        needs_rebuild = (
+            fts_count is None
+            or fts_count["cnt"] == 0
+            or (pred_count and fts_count["cnt"] != pred_count["cnt"])
+        )
+        if needs_rebuild:
             self.db.execute(
                 "INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')"
             )
