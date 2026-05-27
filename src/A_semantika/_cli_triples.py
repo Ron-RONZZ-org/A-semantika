@@ -14,6 +14,8 @@ import typer
 from A import error, info, tr_multi
 from A_semantika._cli_helpers import (
     _find_triple_by_spo,
+    _prompt_select_ambiguous_node,
+    _prompt_select_ambiguous_predicate,
     pick_triple,
     validate_type_flags,
 )
@@ -129,12 +131,17 @@ def aldoni(
     try:
         subj_node = node_svc.resolve_node_id_prefix(subject)
     except AmbiguousUUIDError as e:
-        error(tr_multi(
-            "Ambigua subjekto-prefikso: {e}",
-            "Ambiguous subject prefix: {e}",
-            "Préfixe sujet ambigu : {e}",
-        ).format(e=str(e)))
-        raise typer.Exit(1) from e
+        if e.matches:
+            subj_node = _prompt_select_ambiguous_node(node_svc, e.matches)
+            if subj_node is None:
+                raise typer.Exit(1)
+        else:
+            error(tr_multi(
+                "Ambigua subjekto-prefikso: {e}",
+                "Ambiguous subject prefix: {e}",
+                "Préfixe sujet ambigu : {e}",
+            ).format(e=str(e)))
+            raise typer.Exit(1) from e
     if not subj_node:
         error(tr_multi(
             "Subjekto ne trovita: {s}",
@@ -150,12 +157,17 @@ def aldoni(
         try:
             obj_node = node_svc.resolve_node_id_prefix(object)
         except AmbiguousUUIDError as e:
-            error(tr_multi(
-                "Ambigua objekto-prefikso: {e}",
-                "Ambiguous object prefix: {e}",
-                "Préfixe objet ambigu : {e}",
-            ).format(e=str(e)))
-            raise typer.Exit(1) from e
+            if e.matches:
+                obj_node = _prompt_select_ambiguous_node(node_svc, e.matches)
+                if obj_node is None:
+                    raise typer.Exit(1)
+            else:
+                error(tr_multi(
+                    "Ambigua objekto-prefikso: {e}",
+                    "Ambiguous object prefix: {e}",
+                    "Préfixe objet ambigu : {e}",
+                ).format(e=str(e)))
+                raise typer.Exit(1) from e
         if not obj_node:
             error(tr_multi(
                 "Objekto ne trovita: {o}",
@@ -169,12 +181,17 @@ def aldoni(
     try:
         pred = pred_svc.resolve_predicate_id_prefix(predicate)
     except AmbiguousPredicateError as e:
-        error(tr_multi(
-            "Ambigua predikato-prefikso: {e}",
-            "Ambiguous predicate prefix: {e}",
-            "Préfixe prédicat ambigu : {e}",
-        ).format(e=str(e)))
-        raise typer.Exit(1) from e
+        if e.matches:
+            pred = _prompt_select_ambiguous_predicate(pred_svc, e.matches)
+            if pred is None:
+                raise typer.Exit(1)
+        else:
+            error(tr_multi(
+                "Ambigua predikato-prefikso: {e}",
+                "Ambiguous predicate prefix: {e}",
+                "Préfixe prédicat ambigu : {e}",
+            ).format(e=str(e)))
+            raise typer.Exit(1) from e
     if not pred:
         error(tr_multi(
             "Predikato ne trovita: {p}",
@@ -317,12 +334,17 @@ def forigi(
     try:
         subj_node = node_svc.resolve_node_id_prefix(subject)
     except AmbiguousUUIDError as e:
-        error(tr_multi(
-            "Ambigua subjekto-prefikso: {e}",
-            "Ambiguous subject prefix: {e}",
-            "Préfixe sujet ambigu : {e}",
-        ).format(e=str(e)))
-        raise typer.Exit(1) from e
+        if e.matches:
+            subj_node = _prompt_select_ambiguous_node(node_svc, e.matches)
+            if subj_node is None:
+                raise typer.Exit(1)
+        else:
+            error(tr_multi(
+                "Ambigua subjekto-prefikso: {e}",
+                "Ambiguous subject prefix: {e}",
+                "Préfixe sujet ambigu : {e}",
+            ).format(e=str(e)))
+            raise typer.Exit(1) from e
     if not subj_node:
         error(tr_multi(
             "Subjekto ne trovita: {s}",

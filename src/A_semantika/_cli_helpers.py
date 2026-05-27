@@ -26,6 +26,81 @@ from A_semantika._triple_service import DuplicateTripleError, TripleService
 
 
 
+# ── Ambiguous prefix → interactive selection ──────────────────────────
+
+
+def _prompt_select_ambiguous_predicate(
+    pred_svc: "PredicateService",
+    matches: list[dict],
+) -> dict | None:
+    """Show an interactive numbered picker for ambiguous predicate prefixes.
+
+    Args:
+        pred_svc: PredicateService instance.
+        matches: List of matching predicate dicts.
+
+    Returns:
+        Selected predicate dict, or ``None`` if cancelled.
+    """
+    from A_semantika._preview import resolve_predicate_label
+
+    result = select_candidate(
+        matches,
+        columns=[
+            {"header": tr_multi("ID", "ID", "ID")},
+            {"header": tr_multi("Etikedo", "Label", "Étiquette")},
+        ],
+        row_formatter=lambda m, i: [
+            m["predicate_id"],
+            resolve_predicate_label(pred_svc, m["predicate_id"]),
+        ],
+        prompt_text=tr_multi(
+            "Elektu predikaton (aŭ Enter por nuligi)",
+            "Select predicate (or Enter to cancel)",
+            "Choisissez un prédicat (ou Entrée pour annuler)",
+        ),
+    )
+    if result is None:
+        return None
+    return result[1]
+
+
+def _prompt_select_ambiguous_node(
+    node_svc: "NodeService",
+    matches: list[dict],
+) -> dict | None:
+    """Show an interactive numbered picker for ambiguous node ID prefixes.
+
+    Args:
+        node_svc: NodeService instance.
+        matches: List of matching node dicts.
+
+    Returns:
+        Selected node dict, or ``None`` if cancelled.
+    """
+    from A_semantika._preview import resolve_node_label
+
+    result = select_candidate(
+        matches,
+        columns=[
+            {"header": tr_multi("ID", "ID", "ID")},
+            {"header": tr_multi("Etikedo", "Label", "Étiquette")},
+        ],
+        row_formatter=lambda m, i: [
+            m["node_id"],
+            resolve_node_label(node_svc, m["node_id"]),
+        ],
+        prompt_text=tr_multi(
+            "Elektu nodon (aŭ Enter por nuligi)",
+            "Select node (or Enter to cancel)",
+            "Choisissez un nœud (ou Entrée pour annuler)",
+        ),
+    )
+    if result is None:
+        return None
+    return result[1]
+
+
 # ── Deprecated alias resolution ───────────────────────────────────────
 
 

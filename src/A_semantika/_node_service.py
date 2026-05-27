@@ -545,7 +545,7 @@ class NodeService(CRUDService):
             return None
         if len(matches) > 1:
             msg = f"Node ID prefix '{prefix}' is ambiguous ({len(matches)} matches)"
-            raise AmbiguousUUIDError(msg)
+            raise AmbiguousUUIDError(msg, matches=matches)
         return matches[0]
 
     # ── Backward-compat alias: resolve_uuid_prefix -> resolve_node_id_prefix ──

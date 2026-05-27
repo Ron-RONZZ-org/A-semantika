@@ -11,6 +11,7 @@ import typer
 
 from A import error, info, tr_multi
 from A_semantika._cli_helpers import (
+    _prompt_select_ambiguous_node,
     build_modify_preview,
     find_triple_direct,
     pick_triple,
@@ -50,12 +51,17 @@ def _resolve_subject_id(
     try:
         node = node_svc.resolve_node_id_prefix(text)
     except AmbiguousUUIDError as e:
-        error(tr_multi(
-            f"Ambigua {label}-prefikso: {{e}}",
-            f"Ambiguous {label} prefix: {{e}}",
-            f"Préfixe {label} ambigu : {{e}}",
-        ).format(e=str(e)))
-        raise typer.Exit(1) from e
+        if e.matches:
+            node = _prompt_select_ambiguous_node(node_svc, e.matches)
+            if node is None:
+                raise typer.Exit(1)
+        else:
+            error(tr_multi(
+                f"Ambigua {label}-prefikso: {{e}}",
+                f"Ambiguous {label} prefix: {{e}}",
+                f"Préfixe {label} ambigu : {{e}}",
+            ).format(e=str(e)))
+            raise typer.Exit(1) from e
     if not node:
         error(tr_multi(
             f"{label.capitalize()} ne trovita: {{s}}",

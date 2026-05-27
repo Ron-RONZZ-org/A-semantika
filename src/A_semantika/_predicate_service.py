@@ -22,8 +22,14 @@ from A_semantika.data.storage import label_from_json, now
 
 
 class AmbiguousPredicateError(ValueError):
-    """Raised when a predicate ID prefix matches multiple predicates."""
-    pass
+    """Raised when a predicate ID prefix matches multiple predicates.
+
+    Attributes:
+        matches: List of matching predicate dicts (for interactive selection).
+    """
+    def __init__(self, message: str, matches: list[dict] | None = None) -> None:
+        super().__init__(message)
+        self.matches: list[dict] = matches or []
 
 
 def _ensure_json(val: Any) -> str:
@@ -167,7 +173,7 @@ class PredicateService(CRUDService):
                 f"Predicate ID prefix '{prefix}' is ambiguous "
                 f"({len(matches)} matches)"
             )
-            raise AmbiguousPredicateError(msg)
+            raise AmbiguousPredicateError(msg, matches=matches)
         return matches[0]
 
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -340,9 +346,11 @@ class PredicateService(CRUDService):
             )
 
             # 4. Re-index FTS
-            if self._fts_config:
-                self._remove_from_fts(old_id)
-                self._index_fts(new_id)
+            # Always update FTS — predicates_fts is managed manually
+            # (not via CRUDService._fts_config) since PredicateService
+            # uses predicate_id, not uuid, as the content-row key.
+            self._remove_from_fts(old_id)
+            self._index_fts(new_id)
 
         return self.get_by_predicate_id(new_id)
 
@@ -371,8 +379,8 @@ class PredicateService(CRUDService):
         if not entry:
             return
 
-        if self._fts_config:
-            self._remove_from_fts(predicate_id)
+        # Always remove from FTS — predicates_fts is managed manually.
+        self._remove_from_fts(predicate_id)
 
         entry["forigita_je"] = datetime.now(timezone.utc).isoformat()
         entry.setdefault("modifita_je", entry["forigita_je"])
@@ -406,8 +414,8 @@ class PredicateService(CRUDService):
             conn.execute(insert_sql, values)
             conn.execute(f"DELETE FROM {self._trash_table} WHERE predicate_id = ?", (predicate_id,))
 
-        if self._fts_config:
-            self._index_fts(predicate_id)
+        # Always re-index FTS — predicates_fts is managed manually.
+        self._index_fts(predicate_id)
 
         return entry
 

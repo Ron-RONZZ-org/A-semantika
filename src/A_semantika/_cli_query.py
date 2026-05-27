@@ -14,7 +14,10 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi, warning
-from A_semantika._cli_helpers import resolve_deprecated
+from A_semantika._cli_helpers import (
+    _prompt_select_ambiguous_node,
+    resolve_deprecated,
+)
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
 from A_semantika._triple_search import search_triples_by_labels
@@ -25,6 +28,18 @@ from A_semantika.service import get_node_service, get_predicate_service, get_tri
 
 
 def serci(
+    search_term: Optional[str] = typer.Argument(
+        None,
+        metavar="[SEARCH_TERM]",
+        help=tr_multi(
+            "Serĉi tra ĉiuj kampoj (subjekto, predikato, objekto)"
+            " — unue provas kongruigi ID, poste etikedojn",
+            "Search across all fields (subject, predicate, object)"
+            " — first tries ID match, then labels",
+            "Rechercher dans tous les champs (sujet, prédicat, objet)"
+            " — essaie d'abord l'ID, puis les étiquettes",
+        ),
+    ),
     subjekto: Optional[str] = typer.Option(
         None, "--subjekto", "-s",
         help=tr_multi(
@@ -87,6 +102,14 @@ def serci(
     node_svc = get_node_service()
     pred_svc = get_predicate_service()
     triple_svc = get_triple_service()
+
+    # If a positional search_term is given without explicit flags,
+    # search across all three fields (subject, predicate, object).
+    # Explicit flags take priority over search_term.
+    if search_term and not (subject or predicate or object):
+        subject = search_term
+        predicate = search_term
+        object = search_term  # noqa: A002
 
     # If any filter is provided, use partial label matching
     if subject or predicate or object:
@@ -157,12 +180,17 @@ def vidi(
     try:
         subj_node = node_svc.resolve_node_id_prefix(subject_uuid)
     except AmbiguousUUIDError as e:
-        error(tr_multi(
-            "Ambigua subjekto-prefikso: {e}",
-            "Ambiguous subject prefix: {e}",
-            "Préfixe sujet ambigu : {e}",
-        ).format(e=str(e)))
-        raise typer.Exit(1) from e
+        if e.matches:
+            subj_node = _prompt_select_ambiguous_node(node_svc, e.matches)
+            if subj_node is None:
+                raise typer.Exit(1)
+        else:
+            error(tr_multi(
+                "Ambigua subjekto-prefikso: {e}",
+                "Ambiguous subject prefix: {e}",
+                "Préfixe sujet ambigu : {e}",
+            ).format(e=str(e)))
+            raise typer.Exit(1) from e
     if not subj_node:
         error(tr_multi(
             "Nodo ne trovita: {s}",

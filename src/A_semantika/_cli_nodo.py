@@ -275,6 +275,13 @@ def aldoni(
                             node_id=node_id[:16],
                         ))
                         raise typer.Exit(0)
+                    else:
+                        info(tr_multi(
+                            "Nuligita.",
+                            "Cancelled.",
+                            "Annulé.",
+                        ))
+                        raise typer.Exit(0)
                 else:
                     # -y mode: silently exit
                     raise typer.Exit(0)
