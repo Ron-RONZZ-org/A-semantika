@@ -4,6 +4,8 @@ Extracted from test_edge_cases.py — TestBuildTriplePreviewTable + TestConfirmN
 """
 from __future__ import annotations
 
+from A import tr_multi
+
 
 class TestBuildTriplePreviewTable:
     """build_triple_preview_table() should produce correct tables."""
@@ -41,7 +43,8 @@ class TestBuildTriplePreviewTable:
             "literal", object_lang="eo",
         )
         assert table is not None
-        assert "→ literal" in footnote or "lang" in footnote
+        # Footnote is empty for string literals (Row 2 Objekto already shows "literal")
+        assert footnote == ""
 
         # Verify row order: quoted value must appear before raw subject ID
         buf = StringIO()
@@ -55,6 +58,14 @@ class TestBuildTriplePreviewTable:
             "String literal value must appear on Row 1 (before raw subject ID), "
             f"but value at {value_pos} comes after raw ID at {raw_id_pos}"
         )
+
+        # Row 2 Objekto must show language info (not empty)
+        assert "lingvo: eo" in output, (
+            "String literal preview Row 2 must show language info, "
+            f"but 'lingvo: eo' not found in:\n{output}"
+        )
+        # Footnote is empty for string literals (Row 2 Objekto already shows "literal")
+        assert footnote == "", f"Expected empty footnote, got: {footnote}"
 
     def test_build_typed_literal_preview(self, node_svc, pred_svc):
         """Typed literal preview should show datatype."""

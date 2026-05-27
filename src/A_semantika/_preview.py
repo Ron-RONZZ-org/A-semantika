@@ -172,10 +172,16 @@ def build_triple_preview_table(
         # String literal
         quoted_val = f'"{object_value}"'
         table.add_row(subj_label, pred_label, quoted_val)
-        table.add_row(subj_id, predicate_id, "")
+        lang_info = tr_multi(
+            "literal, lingvo: {l}", "literal, lang: {l}", "littéral, langue : {l}",
+        ).format(l=object_lang) if object_lang else tr_multi(
+            "literal", "literal", "littéral",
+        )
+        table.add_row(subj_id, predicate_id, lang_info)
 
-        # lang is already shown in the table row above; no need to duplicate
-        footnote = tr_multi("→ literal", "→ literal", "→ litteral")
+        # String literal — Row 2's object column already shows "literal",
+        # so no additional footnote is needed.
+        footnote = ""
 
     return table, footnote
 

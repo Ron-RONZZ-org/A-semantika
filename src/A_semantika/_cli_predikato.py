@@ -41,6 +41,20 @@ predikato_app = typer.Typer(
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
+def _format_predicate_delete_error(err_msg: str) -> str:
+    """Convert raw error strings into user-friendly messages.
+
+    Detects FK constraint failures and translates them.
+    """
+    if "FOREIGN KEY constraint failed" in err_msg or "triple(s) still reference it" in err_msg:
+        return tr_multi(
+            "havas referencajn arkojn. Uzu --forte por perforte forigi.",
+            "has referencing arcs. Use --forte to force delete.",
+            "a des arcs de référence. Utilisez --forte pour forcer la suppression.",
+        )
+    return err_msg
+
+
 def _parse_lang_value_pairs(items: list[str] | None) -> dict[str, str]:
     """Parse ``LANGCODE::TEKSTO`` list into a language→text dict.
 
@@ -415,9 +429,19 @@ def forigi(
             "Ignorer la confirmation",
         ),
     ),
+    forte: bool = typer.Option(
+        False, "--forte", "--force",
+        help=tr_multi(
+            "Perforte forigi — ankaŭ forigi arkojn kiuj referencas la predikaton",
+            "Force delete — also delete triples referencing the predicate",
+            "Forcer la suppression — supprimer aussi les triplets référençant le prédicat",
+        ),
+    ),
 ) -> None:
     """Forigi predikatojn."""
     pred_svc = get_predicate_service()
+    from A_semantika.service import get_triple_service
+    triple_svc = get_triple_service()
 
     # Phase 1: Resolve all identifiers
     resolved: list[dict] = []
@@ -438,6 +462,29 @@ def forigi(
 
     if not resolved:
         error(tr_multi("Nenio forigebla.", "Nothing to delete.", "Rien à supprimer."))
+        raise typer.Exit(1)
+
+    # Phase 1b: Check for referencing triples on all resolved predicates
+    ref_counts: dict[str, int] = {}
+    for pred in resolved:
+        pid = pred["predicate_id"]
+        rc = pred_svc.count_referencing_triples(pid)
+        if rc > 0:
+            ref_counts[pid] = rc
+
+    if ref_counts and not forte:
+        for pid, rc in ref_counts.items():
+            label = _get_predicate_label(pred_svc.get_by_predicate_id(pid))
+            error(tr_multi(
+                "Predikato {p} ({l}) havas {n} arko(j)n. ",
+                "Predicate {p} ({l}) has {n} arc(s). ",
+                "Le prédicat {p} ({l}) a {n} arc(s). ",
+            ).format(p=pid, l=label, n=rc))
+        error(tr_multi(
+            "Uzu --forte por perforte forigi arkojn kune kun la predikato.",
+            "Use --forte to force delete arcs along with the predicate.",
+            "Utilisez --forte pour forcer la suppression des arcs avec le prédicat.",
+        ))
         raise typer.Exit(1)
 
     # Phase 2: Batch preview and confirmation
@@ -462,7 +509,12 @@ def forigi(
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
             raise typer.Exit(0)
 
-    # Phase 3: Delete each
+    # Phase 3: Cascade-delete referencing triples if --forte
+    if forte:
+        for pid in ref_counts:
+            triple_svc.remove(predicate_id=pid)
+
+    # Phase 4: Delete each predicate
     deleted = 0
     for pred in resolved:
         try:
@@ -473,7 +525,13 @@ def forigi(
                 "Eraro forigante {p}: {e}",
                 "Error deleting {p}: {e}",
                 "Erreur lors de la suppression de {p} : {e}",
-                ).format(p=pred.get("predicate_id", "")[:16], e=str(e)))
+                ).format(p=pred.get("predicate_id", "")[:16], e=_format_predicate_delete_error(str(e))))
+            if forte:
+                awarning(tr_multi(
+                    "—forte estis uzata sed arkoj eble ne estis tute forigitaj.",
+                    "--forte was used but arcs may not have been fully deleted.",
+                    "--forte a été utilisé mais les arcs n'ont peut-être pas été entièrement supprimés.",
+                ))
 
     info(tr_multi(
         "Forigis {d} el {t} predikatojn.",

@@ -538,12 +538,29 @@ class PredicateService(CRUDService):
 
     # ── Trash support ───────────────────────────────────────────────────
 
+    def count_referencing_triples(self, predicate_id: str) -> int:
+        """Return the number of triples referencing this predicate."""
+        row = self.db.execute_one(
+            "SELECT COUNT(*) AS cnt FROM triples WHERE predicate_id = ?",
+            (predicate_id,),
+        )
+        return row["cnt"] if row else 0
+
     def delete(self, predicate_id: str, soft: bool = True) -> None:
         """Delete a predicate.
+
+        Raises ``ValueError`` if triples still reference the predicate
+        (use ``--forte`` on the CLI to cascade-delete them).
 
         If soft=True, moves to trash (predicates_rubujo) instead of
         permanent deletion. Restorable via restore().
         """
+        ref_count = self.count_referencing_triples(predicate_id)
+        if ref_count > 0:
+            raise ValueError(
+                f"Cannot delete predicate '{predicate_id}': {ref_count} triple(s) "
+                f"still reference it."
+            )
         if soft:
             self._move_to_trash(predicate_id)
         else:
@@ -554,7 +571,16 @@ class PredicateService(CRUDService):
             )
 
     def _move_to_trash(self, predicate_id: str) -> None:
-        """Move predicate to trash table using predicate_id column."""
+        """Move predicate to trash table using predicate_id column.
+
+        Raises ``ValueError`` if triples still reference the predicate.
+        """
+        ref_count = self.count_referencing_triples(predicate_id)
+        if ref_count > 0:
+            raise ValueError(
+                f"Cannot delete predicate '{predicate_id}': {ref_count} triple(s) "
+                f"still reference it."
+            )
         entry = self.db.execute_one(
             f"SELECT * FROM {self.table} WHERE predicate_id = ?", (predicate_id,)
         )
