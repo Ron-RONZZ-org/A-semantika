@@ -1104,6 +1104,25 @@ This is not valid RDF — consumers can't parse labels programmatically.
 - ✓ Whitespace stripped from labels on creation
 - ✓ Duplicate detection triggers and shows confirmation prompt
 
+### Issue #55: Modifi UX/Correctness Fixes (May 2026)
+
+**Scope:** 3 fixes for triple `modifi` and `predikato modifi` commands.
+
+| Item | Severity | Files | Description |
+|------|----------|-------|-------------|
+| 1 | Medium | `_cli_predikato.py` | Rename preview (`Predikato renomita: ...`) now shown **before** confirmation prompt instead of only after execution |
+| 2 | Low | `_preview.py` | String literal footnote `→ literal, lang: en` removed redundant language info already shown in table row |
+| 3 | High | `_cli_modify.py` | `modifi -np` no longer tries URI resolution on old literal value. **Critical fix:** old `object_datatype` (e.g. `xsd:integer`) now preserved when only changing predicate/subject — previously silently dropped to `NULL` |
+
+**Tests added (3):**
+| Test | File |
+|------|------|
+| `test_cli_rename_preview_before_confirm` | `test_predikato_id_rename.py` |
+| `test_modifi_new_predicate_only_with_literal` | `test_triple_modifi_edge.py` |
+| `test_modifi_new_predicate_only_with_typed_literal_preserves_datatype` | `test_triple_modifi_edge.py` |
+
+**Tests:** 451 total (448 existing + 3 new).
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
