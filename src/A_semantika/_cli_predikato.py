@@ -345,6 +345,19 @@ def modifi(
 
     # Show change summary and confirm
     if not yes:
+        # Show rename preview even when table has no label/desc changes
+        rename_preview = (
+            tr_multi(
+                "Predikato renomita: {old} → {new}",
+                "Predicate renamed: {old} → {new}",
+                "Prédicat renommé : {old} → {new}",
+            ).format(old=predicate_id, new=nova_id)
+            if nova_id else None
+        )
+        if rename_preview:
+            info("")
+            info(rename_preview)
+
         table = build_predicate_modify_preview(
             predicate_id,
             old_etikedoj, new_etikedoj,
@@ -354,18 +367,19 @@ def modifi(
             info("")
             info(table)
 
-        from A.utils.interactive import confirm_action
+        if rename_preview or table:
+            from A.utils.interactive import confirm_action
 
-        if not confirm_action(
-            tr_multi(
-                f"Ĉu modifi predikaton {predicate_id}?",
-                f"Modify predicate {predicate_id}?",
-                f"Modifier le prédicat {predicate_id}?",
-            ),
-            default=True,
-        ):
-            info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
-            raise typer.Exit(0)
+            if not confirm_action(
+                tr_multi(
+                    f"Ĉu modifi predikaton {predicate_id}?",
+                    f"Modify predicate {predicate_id}?",
+                    f"Modifier le prédicat {predicate_id}?",
+                ),
+                default=True,
+            ):
+                info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
+                raise typer.Exit(0)
 
     try:
         if nova_id:

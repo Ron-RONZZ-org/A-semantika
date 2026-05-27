@@ -87,6 +87,23 @@ class TestPredicateRenameCLI:
         assert pred_svc.get_by_predicate_id("old:test") is None
         assert pred_svc.get_by_predicate_id("new:test") is not None
 
+    def test_cli_rename_preview_before_confirm(self, runner: CliRunner, pred_svc):
+        """predikato modifi --nova-id should show rename preview BEFORE confirmation prompt."""
+        pred_svc.create({"predicate_id": "old:preview", "etikedoj": {"eo": "Antaŭvido"}})
+        # Run without -y, answer "J" (yes) when prompted
+        result = runner.invoke(app, [
+            "predikato", "modifi", "old:preview", "--nova-id", "new:preview",
+        ], input="J\n")
+        assert result.exit_code == 0
+        # The rename preview should appear before the confirmation prompt
+        # We can verify by checking the stdout contains the rename line
+        assert "renomita" in result.stdout or "renamed" in result.stdout
+        assert "old:preview" in result.stdout
+        assert "new:preview" in result.stdout
+        # Verify the rename actually happened
+        assert pred_svc.get_by_predicate_id("old:preview") is None
+        assert pred_svc.get_by_predicate_id("new:preview") is not None
+
     def test_cli_rename_collision(self, runner: CliRunner, pred_svc):
         """predikato modifi --nova-id with existing ID shows error."""
         pred_svc.create({"predicate_id": "a:one", "etikedoj": {"eo": "Unu"}})

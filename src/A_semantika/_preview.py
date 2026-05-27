@@ -174,10 +174,8 @@ def build_triple_preview_table(
         table.add_row(subj_label, pred_label, quoted_val)
         table.add_row(subj_id, predicate_id, "")
 
-        parts = [tr_multi("→ literal", "→ literal", "→ litteral")]
-        if object_lang:
-            parts.append(f"lang: {object_lang}")
-        footnote = ", ".join(parts)
+        # lang is already shown in the table row above; no need to duplicate
+        footnote = tr_multi("→ literal", "→ literal", "→ litteral")
 
     return table, footnote
 

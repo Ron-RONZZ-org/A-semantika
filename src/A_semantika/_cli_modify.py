@@ -285,6 +285,7 @@ def modifi(
         old_object_type = object_type
         old_object_value = object
         old_object_lang = object_lang
+        old_object_datatype = triple.get("object_datatype")
     else:
         # ── Direct mode: full triplet provided ────────────────────
         subject_uuid = _resolve_subject_id(node_svc, subject)
@@ -303,20 +304,33 @@ def modifi(
 
         old_object_value = existing["object_value"]
         old_object_lang = old_object_lang or existing.get("object_lang")
+        old_object_datatype = existing.get("object_datatype")
 
     # ── Resolve new values ────────────────────────────────────────
     new_subj = new_subject or subject
     new_pred = new_predicate or predicate
-    new_obj_raw = new_object if new_object is not None else old_object_value
+
+    # Determine if user is explicitly setting a new object value or type
+    has_new_object = new_object is not None
+    has_type_flags = any([str_, int_, float_, bool_])
+
+    if not has_new_object and not has_type_flags:
+        # User is only changing subject/predicate — inherit old object
+        # value, type, lang, and datatype (don't try URI resolution)
+        new_obj_value = old_object_value
+        new_obj_lang = old_object_lang
+        new_object_type = old_object_type
+        new_datatype = old_object_datatype
+    else:
+        # User specified a new object value or type flags — resolve
+        new_obj_raw = new_object if new_object is not None else old_object_value
+        new_obj_value, new_obj_lang = _resolve_new_object_value(
+            node_svc, new_object_type, new_obj_raw,
+            old_object_value, lingvo, str_,
+        )
 
     # Resolve new subject UUID
     new_subj_uuid = _resolve_subject_id(node_svc, new_subj, label="nova subjekto")
-
-    # Resolve new object (URI → node lookup, literal → raw value)
-    new_obj_value, new_obj_lang = _resolve_new_object_value(
-        node_svc, new_object_type, new_obj_raw,
-        old_object_value, lingvo, str_,
-    )
 
     # ── Preview & confirm ─────────────────────────────────────────
     if not yes:

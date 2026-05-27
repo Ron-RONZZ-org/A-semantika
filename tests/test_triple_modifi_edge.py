@@ -158,6 +158,61 @@ class TestTripleModifiEdgeCases:
         assert result.exit_code == 1
         assert "ne trovita" in result.stdout or "not found" in result.stdout
 
+    def test_modifi_new_predicate_only_with_literal(self, runner: CliRunner):
+        """modifi -np with string literal should NOT try URI resolution on old value."""
+        subj_uuid = "fa000000-0000-0000-0000-00000000000a"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::NPSubj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:label", "-e", "eo::etikedo", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:comment", "-e", "eo::komento", "--jes"])
+
+        # Create string literal triple
+        result = runner.invoke(app, [
+            "aldoni", subj_uuid, "rdfs:label", "Hundo",
+            "--str", "-l", "eo", "--jes",
+        ])
+        assert result.exit_code == 0, f"aldoni failed: {result.stdout}"
+
+        # Change predicate only (-np) — should NOT try to resolve "Hundo" as URI
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "rdfs:label", "Hundo",
+            "--nova-predikato", "rdfs:comment",
+            "--jes",
+        ])
+        assert result.exit_code == 0, f"modifi -np literal failed: {result.stdout}"
+        assert "modifita" in result.stdout or "modified" in result.stdout
+
+    def test_modifi_new_predicate_only_with_typed_literal_preserves_datatype(self, runner: CliRunner):
+        """modifi -np with typed literal should preserve the object datatype."""
+        subj_uuid = "fb000000-0000-0000-0000-00000000000b"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::DTPSubj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "wdt:P1082", "-e", "eo::loĝantaro", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "wdt:P2046", "-e", "eo::areo", "--jes"])
+
+        # Create integer literal triple
+        result = runner.invoke(app, [
+            "aldoni", subj_uuid, "wdt:P1082", "5000",
+            "--int", "--jes",
+        ])
+        assert result.exit_code == 0, f"aldoni failed: {result.stdout}"
+
+        # Change predicate only (-np) — should preserve object_value AND object_datatype
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "wdt:P1082", "5000",
+            "--nova-predikato", "wdt:P2046",
+            "--jes",
+        ])
+        assert result.exit_code == 0, f"modifi -np typed literal failed: {result.stdout}"
+        assert "modifita" in result.stdout or "modified" in result.stdout
+
+        # Verify the new triple has the correct datatype (xsd:integer)
+        from A_semantika.service import get_triple_service
+        triple_svc = get_triple_service()
+        triples = triple_svc.get_by_sp(subj_uuid, "wdt:P2046")
+        assert len(triples) == 1
+        assert triples[0]["object_value"] == "5000"
+        assert triples[0]["object_datatype"] == "xsd:integer"
+        assert triples[0]["object_type"] == "literal"
+
 
 class TestConfirmTriple:
     """confirm_triple() edge cases."""
