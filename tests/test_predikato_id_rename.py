@@ -1,6 +1,8 @@
 """Tests for PredicateService.update_predicate_id() and predikato modifi --nova-id."""
 from __future__ import annotations
 
+import json
+
 import pytest
 from typer.testing import CliRunner
 
@@ -53,22 +55,57 @@ class TestPredicateRenameService:
         with pytest.raises(ValueError, match="not found"):
             pred_svc.update_predicate_id("ghost", "new", {})
 
-    def test_rename_to_existing_id(self, pred_svc):
-        """Renaming to an existing predicate_id raises ValueError."""
-        pred_svc.create({"predicate_id": "existing", "etikedoj": {"eo": "Ekzistanta"}})
-        pred_svc.create({"predicate_id": "source", "etikedoj": {"eo": "Fonto"}})
-        with pytest.raises(ValueError, match="already exists"):
-            pred_svc.update_predicate_id("source", "existing", {})
+    def test_merge_into_existing_id(self, pred_svc):
+        """Renaming to an existing predicate_id merges instead of raising."""
+        pred_svc.create({"predicate_id": "existing", "etikedoj": {"eo": "Ekzistanta", "en": "Existing"}})
+        pred_svc.create({"predicate_id": "source", "etikedoj": {"eo": "Fonto", "fr": "Source"}})
 
-    def test_rename_to_existing_caught_by_precheck(self, pred_svc):
-        """Renaming to an existing ID is caught by the 'already exists' pre-check
-        before reaching the PK collision check. PK collision cannot occur
-        independently because FK constraints prevent triples/group members
-        from referencing a non-existent predicate_id."""
+        result = pred_svc.update_predicate_id("source", "existing", {})
+
+        # source should no longer exist
+        assert pred_svc.get_by_predicate_id("source") is None
+        # existing should survive with merged labels
+        assert result["predicate_id"] == "existing"
+        # eo from source is overwritten by existing's eo (new wins)
+        assert json.loads(result["etikedoj"])["eo"] == "Ekzistanta"
+        # fr from source is preserved (gap fill)
+        assert json.loads(result["etikedoj"])["fr"] == "Source"
+        # en from existing is preserved
+        assert json.loads(result["etikedoj"])["en"] == "Existing"
+
+    def test_merge_with_triples_and_group_members(self, node_svc, pred_svc, triple_svc, group_svc):
+        """Merge rewires triples and group members, resolving PK collisions."""
+        node_svc.create({"node_id": "S", "etikedoj": {"eo": "Subjekto"}})
+        node_svc.create({"node_id": "O", "etikedoj": {"eo": "Objekto"}})
+        node_svc.create({"node_id": "T", "etikedoj": {"eo": "Alia"}})
         pred_svc.create({"predicate_id": "existing", "etikedoj": {"eo": "Ekzistanta"}})
         pred_svc.create({"predicate_id": "source", "etikedoj": {"eo": "Fonto"}})
-        with pytest.raises(ValueError, match="already exists"):
-            pred_svc.update_predicate_id("source", "existing", {})
+        group_svc.create({"group_name": "testgroup"})
+        group_svc.add_member("testgroup", "source")
+        group_svc.add_member("testgroup", "existing")
+
+        # source triple: collides with existing triple
+        triple_svc.add("S", "source", "O", object_type="uri")
+        # existing triple: same SPO → collision
+        triple_svc.add("S", "existing", "O", object_type="uri")
+        # source-only triple: no collision
+        triple_svc.add("S", "source", "T", object_type="uri")
+
+        pred_svc.update_predicate_id("source", "existing", {})
+
+        # Colliding triple: existing wins (O → existing kept, source → deleted)
+        existing_triples = triple_svc.get_by_predicate("existing")
+        assert len(existing_triples) == 2  # (S,existing,O) kept, (S,existing,T) added
+        assert any(t["object_value"] == "O" for t in existing_triples)
+        assert any(t["object_value"] == "T" for t in existing_triples)
+
+        # source no longer has any triples
+        assert len(triple_svc.get_by_predicate("source")) == 0
+
+        # Group members: both source and existing in same group → source removed
+        members = group_svc.list_members("testgroup")
+        assert len(members) == 1
+        assert members[0]["predicate_id"] == "existing"
 
 
 class TestPredicateRenameCLI:
@@ -104,12 +141,15 @@ class TestPredicateRenameCLI:
         assert pred_svc.get_by_predicate_id("old:preview") is None
         assert pred_svc.get_by_predicate_id("new:preview") is not None
 
-    def test_cli_rename_collision(self, runner: CliRunner, pred_svc):
-        """predikato modifi --nova-id with existing ID shows error."""
+    def test_cli_merge_on_collision(self, runner: CliRunner, pred_svc):
+        """predikato modifi --nova-id with existing ID merges instead."""
         pred_svc.create({"predicate_id": "a:one", "etikedoj": {"eo": "Unu"}})
         pred_svc.create({"predicate_id": "a:two", "etikedoj": {"eo": "Du"}})
         result = runner.invoke(app, [
             "predikato", "modifi", "a:one", "--nova-id", "a:two", "-y",
         ])
-        assert result.exit_code == 1
-        assert "already exists" in result.stdout
+        assert result.exit_code == 0
+        assert "renomita" in result.stdout or "renamed" in result.stdout
+        # a:one should be gone (merged into a:two)
+        assert pred_svc.get_by_predicate_id("a:one") is None
+        assert pred_svc.get_by_predicate_id("a:two") is not None

@@ -274,62 +274,37 @@ class PredicateService(CRUDService):
 
         return self.get_by_predicate_id(predicate_id)
 
-    # ── Update predicate_id (rename) with manual cascade ──────────────────
+    # ── Update predicate_id (rename/merge) with manual cascade ─────────────
 
-    def update_predicate_id(
-        self, old_id: str, new_id: str, data: dict[str, Any]
+    _SOURCE_PRIORITY: dict[str, int] = {
+        "wikidata": 5,
+        "owl": 4,
+        "rdfs": 3,
+        "rdf": 2,
+        "manual": 1,
+    }
+
+    def _rename_predicate(
+        self, old_id: str, new_id: str, updates: dict[str, Any]
     ) -> dict[str, Any]:
-        """Rename a predicate's predicate_id, cascading to all references.
+        """Rename a predicate to a *non‑existing* new_id.
 
-        Manual SQL UPDATEs in a single transaction to handle FK
-        constraints on triples and predicate_group_members.
+        FTS cleanup runs *before* the transaction (so rowids are still
+        resolvable), SQL mutations inside a transaction with deferred FK
+        checks, then FTS indexing after.
 
         Args:
             old_id: Current predicate_id.
-            new_id: New predicate_id.
-            data: Additional field updates (etikedoj, priskriboj, etc.).
+            new_id: New predicate_id (guaranteed *not* in the table).
+            updates: Prepared field dict (keys = column names).
 
         Returns:
             Updated predicate dict.
-
-        Raises:
-            ValueError: If old_id not found, new_id already exists, or
-                PK/UNIQUE collision would occur.
         """
-        old = self.get_by_predicate_id(old_id)
-        if not old:
-            raise ValueError(f"Predicate not found: {old_id}")
+        # Phase 1: FTS cleanup while both rows are addressable
+        self._remove_from_fts(old_id)
 
-        existing = self.db.execute_one(
-            "SELECT predicate_id FROM predicates WHERE predicate_id = ?", (new_id,)
-        )
-        if existing:
-            raise ValueError(f"New predicate ID '{new_id}' already exists")
-
-        from A_semantika._id_rename_helpers import (
-            check_predicate_group_member_collision,
-            check_triple_predicate_collision,
-        )
-        check_triple_predicate_collision(self.db, old_id, new_id)
-        check_predicate_group_member_collision(self.db, old_id, new_id)
-
-        # Build updates like update() does
-        updates = dict(data)
-        if "etikedoj" in updates:
-            etikedoj_val = updates["etikedoj"]
-            if isinstance(etikedoj_val, dict):
-                etikedoj_val = json.dumps(etikedoj_val)
-            updates["etikedoj"] = etikedoj_val
-            updates["label_text"] = extract_label_text(etikedoj_val)
-        if "priskriboj" in updates:
-            updates["priskriboj"] = _ensure_json(updates["priskriboj"])
-        if "aliases" in updates:
-            updates["aliases"] = _ensure_json(updates["aliases"])
-
-        updates["predicate_id"] = new_id
-        updates["modifita_je"] = now()
-
-        # Manual cascade in a single transaction
+        # Phase 2: Atomic SQL operations
         with self.db.transaction() as conn:
             conn.execute("PRAGMA defer_foreign_keys=ON")
             # 1. Update the predicate's PK + fields
@@ -356,14 +331,210 @@ class PredicateService(CRUDService):
                 (new_id, old_id),
             )
 
-            # 4. Re-index FTS
-            # Always update FTS — predicates_fts is managed manually
-            # (not via CRUDService._fts_config) since PredicateService
-            # uses predicate_id, not uuid, as the content-row key.
-            self._remove_from_fts(old_id)
-            self._index_fts(new_id)
+        # Phase 3: FTS index after commit
+        self._index_fts(new_id)
 
         return self.get_by_predicate_id(new_id)
+
+    def _merge_predicate(
+        self, old_id: str, new_id: str, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Merge *old* predicate into an *existing* *new* predicate.
+
+        1. Merge labels / descriptions / aliases (data overrides all).
+        2. Rewire triples and group-member references (collisions resolved
+           by keeping the *new* wins row).
+        3. Delete the old predicate row.
+        4. Rebuild FTS index for *new*.
+
+        Args:
+            old_id: Current predicate_id (will be deleted).
+            new_id: Target predicate_id (must already exist in the table).
+            data: Additional field updates (etikedoj, priskriboj, etc.).
+
+        Returns:
+            Updated predicate dict.
+        """
+        old = self.get_by_predicate_id(old_id)
+        new = self.get_by_predicate_id(new_id)
+        # Both guaranteed to exist by caller.
+
+        # ── Merge metadata ──────────────────────────────────────
+        old_etikedoj: dict = json.loads(old.get("etikedoj", "{}"))
+        new_etikedoj: dict = json.loads(new.get("etikedoj", "{}"))
+        data_etikedoj = data.get("etikedoj", {})
+        if isinstance(data_etikedoj, str):
+            data_etikedoj = json.loads(data_etikedoj)
+        merged_etikedoj = {**old_etikedoj, **new_etikedoj, **data_etikedoj}
+
+        old_priskriboj: dict = json.loads(old.get("priskriboj", "{}"))
+        new_priskriboj: dict = json.loads(new.get("priskriboj", "{}"))
+        merged_priskriboj = {
+            **old_priskriboj,
+            **new_priskriboj,
+            **(
+                json.loads(data["priskriboj"])
+                if isinstance(data.get("priskriboj"), str)
+                else data.get("priskriboj", {})
+            ),
+        }
+
+        old_aliases: list = json.loads(old.get("aliases", "[]"))
+        new_aliases: list = json.loads(new.get("aliases", "[]"))
+        if "aliases" in data:
+            raw = data["aliases"]
+            merged_aliases = json.loads(raw) if isinstance(raw, str) else raw
+        else:
+            merged_aliases = list(dict.fromkeys(old_aliases + new_aliases))
+
+        old_source_prio = self._SOURCE_PRIORITY.get(old["source"], 0)
+        new_source_prio = self._SOURCE_PRIORITY.get(new["source"], 0)
+        merged_source = old["source"] if old_source_prio > new_source_prio else new["source"]
+        if "source" in data:
+            merged_source = data["source"]
+
+        merged_kreita_je = min(old["kreita_je"], new["kreita_je"])
+        merged_modifita_je = now()
+        merged_label_text = extract_label_text(json.dumps(merged_etikedoj))
+
+        # ── Phase 1: FTS cleanup (both rows still exist) ────────
+        self._remove_from_fts(old_id)
+        self._remove_from_fts(new_id)
+
+        # ── Phase 2: Atomic SQL operations ──────────────────────
+        with self.db.transaction() as conn:
+            conn.execute("PRAGMA defer_foreign_keys=ON")
+
+            # 1. Update new predicate row with merged data
+            conn.execute(
+                """UPDATE predicates SET etikedoj = ?, label_text = ?,
+                   priskriboj = ?, aliases = ?, source = ?,
+                   kreita_je = ?, modifita_je = ?
+                   WHERE predicate_id = ?""",
+                (
+                    json.dumps(merged_etikedoj, ensure_ascii=False),
+                    merged_label_text,
+                    json.dumps(merged_priskriboj, ensure_ascii=False),
+                    json.dumps(merged_aliases, ensure_ascii=False),
+                    merged_source,
+                    merged_kreita_je,
+                    merged_modifita_je,
+                    new_id,
+                ),
+            )
+
+            # 2. Delete old triples that would PK-collide with new triples
+            conn.execute(
+                """DELETE FROM triples WHERE predicate_id = ?
+                   AND (subject_uuid, object_value, object_type) IN (
+                       SELECT subject_uuid, object_value, object_type
+                       FROM triples WHERE predicate_id = ?
+                   )""",
+                (old_id, new_id),
+            )
+
+            # 3. Update remaining old triples → new_id
+            conn.execute(
+                "UPDATE triples SET predicate_id = ? WHERE predicate_id = ?",
+                (new_id, old_id),
+            )
+
+            # 4. Delete old group members that collide with new
+            conn.execute(
+                """DELETE FROM predicate_group_members WHERE predicate_id = ?
+                   AND group_uuid IN (
+                       SELECT group_uuid FROM predicate_group_members
+                       WHERE predicate_id = ?
+                   )""",
+                (old_id, new_id),
+            )
+
+            # 5. Update remaining old group members → new_id
+            conn.execute(
+                "UPDATE predicate_group_members SET predicate_id = ? WHERE predicate_id = ?",
+                (new_id, old_id),
+            )
+
+            # 6. Delete old predicate row
+            conn.execute(
+                "DELETE FROM predicates WHERE predicate_id = ?",
+                (old_id,),
+            )
+
+        # Phase 3: FTS index after commit
+        self._index_fts(new_id)
+
+        return self.get_by_predicate_id(new_id)
+
+    def update_predicate_id(
+        self, old_id: str, new_id: str, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Rename/merge a predicate's predicate_id, cascading to all
+        references.
+
+        If *new_id* does **not** exist → simple rename (fast path).
+        If *new_id* **already** exists → merge: labels are merged
+        (new wins on conflict), triples/group-members are re-wired,
+        and the old predicate row is deleted.
+
+        Manual SQL in a single transaction handles FK constraints on
+        triples and predicate_group_members.  FTS cleanup runs *before*
+        the transaction, indexing *after*, to avoid committing the
+        transaction prematurely (FTS methods use ``self.db.execute()``
+        which auto-commits).
+
+        Args:
+            old_id: Current predicate_id.
+            new_id: New predicate_id.
+            data: Additional field updates (etikedoj, priskriboj, etc.).
+
+        Returns:
+            Updated predicate dict.
+
+        Raises:
+            ValueError: If *old_id* not found.
+        """
+        if old_id == new_id:
+            return self.update(old_id, data)
+
+        old = self.get_by_predicate_id(old_id)
+        if not old:
+            raise ValueError(f"Predicate not found: {old_id}")
+
+        existing = self.get_by_predicate_id(new_id)
+        if existing:
+            return self._merge_predicate(old_id, new_id, data)
+
+        # ── fresh rename ────────────────────────────────────────
+        from A_semantika._id_rename_helpers import (
+            check_predicate_group_member_collision,
+            check_triple_predicate_collision,
+        )
+        check_triple_predicate_collision(self.db, old_id, new_id)
+        check_predicate_group_member_collision(self.db, old_id, new_id)
+
+        updates: dict[str, Any] = {}
+        updates["predicate_id"] = new_id
+        updates["modifita_je"] = now()
+
+        if "etikedoj" in data:
+            etikedoj_val = data["etikedoj"]
+            if isinstance(etikedoj_val, dict):
+                etikedoj_val = json.dumps(etikedoj_val)
+            updates["etikedoj"] = etikedoj_val
+            updates["label_text"] = extract_label_text(etikedoj_val)
+        if "priskriboj" in data:
+            updates["priskriboj"] = _ensure_json(data["priskriboj"])
+        if "aliases" in data:
+            updates["aliases"] = _ensure_json(data["aliases"])
+        if "source" in data:
+            updates["source"] = data["source"]
+        # Pass through any other fields the caller may have set
+        for k, v in data.items():
+            if k not in ("etikedoj", "priskriboj", "aliases", "source"):
+                updates[k] = v
+
+        return self._rename_predicate(old_id, new_id, updates)
 
     # ── Trash support ───────────────────────────────────────────────────
 
