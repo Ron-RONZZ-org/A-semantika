@@ -107,7 +107,18 @@ class NodeSearchMixin:
             WHERE nodes_fts MATCH ?
             LIMIT ?
         """
-        results = self.db.execute(fts_sql, (fts_query, limit))
+        try:
+            results = self.db.execute(fts_sql, (fts_query, limit))
+        except sqlite3.DatabaseError:
+            # FTS index has dangling references (e.g. rows that were
+            # deleted without a matching 'delete' command). Rebuild from
+            # current content table and retry.
+            _warning("FTS index inconsistent — rebuilding and retrying search.")
+            self.db.execute(
+                f"INSERT INTO {self._fts_config.fts_table}"
+                f"({self._fts_config.fts_table}) VALUES('rebuild')"
+            )
+            results = self.db.execute(fts_sql, (fts_query, limit))
         if results:
             return results
 
@@ -150,11 +161,18 @@ class NodeSearchMixin:
     def _remove_from_fts(self, node_id: str) -> None:
         """Remove node from FTS index using FTS5 'delete' command.
 
-        Uses the FTS5 ``'delete'`` command rather than a direct
-        ``DELETE FROM fts_table`` because the latter causes ``database
-        disk image is malformed`` on SQLite with external content tables.
-        If the 'delete' command fails, auto-rebuilds the entire FTS index
-        (following A-encik's pattern of silent auto-recovery).
+        Uses the FTS5 ``'delete'`` command (rowid-only form) rather than
+        a direct ``DELETE FROM fts_table`` because the latter causes
+        ``database disk image is malformed`` on SQLite with external
+        content tables.
+
+        .. caution::
+
+           The caller **must** ensure the content-table row still exists
+           when this method is called — the 'delete' command needs the
+           ``rowid`` from the content table. Use
+           :meth:`_remove_fts_by_rowid` after deletion if the row has
+           already been removed.
         """
         if not self._fts_config:
             return
@@ -163,19 +181,32 @@ class NodeSearchMixin:
         )
         if not row or row.get("rowid") is None:
             return
+        self._remove_fts_by_rowid(node_id, row["rowid"])
+
+    def _remove_fts_by_rowid(self, node_id: str, rowid: int) -> None:
+        """Remove a rowid from the FTS index.
+
+        Unlike :meth:`_remove_from_fts`, this method works **after** the
+        content-table row has been deleted — it only needs the saved
+        rowid.  If the ``'delete'`` command fails, a warning is logged
+        rather than triggering an automatic rebuild: a rebuild at this
+        point would scan the current content table (which no longer
+        contains the deleted row) and produce a correct index anyway.
+        """
+        if not self._fts_config:
+            return
         try:
             self.db.execute(
                 f"INSERT INTO {self._fts_config.fts_table}"
                 f"({self._fts_config.fts_table}, rowid)"
                 " VALUES('delete', ?)",
-                (row["rowid"],),
+                (rowid,),
             )
-        except sqlite3.DatabaseError:
-            # FTS5 'delete' failed (transient content mismatch) — rebuild
-            # entire FTS index from current data instead of per-row cleanup.
-            self.db.execute(
-                f"INSERT INTO {self._fts_config.fts_table}"
-                f"({self._fts_config.fts_table}) VALUES('rebuild')"
+        except sqlite3.DatabaseError as exc:
+            _warning(
+                f"FTS 'delete' failed for {node_id} (rowid={rowid}): "
+                f"{exc}. FTS index may be stale — a search query will "
+                f"trigger a rebuild automatically."
             )
 
     # ── Override _index_fts to use node_id column ─────────────────────────

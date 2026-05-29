@@ -15,6 +15,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from A import warning as _warning
 from A.core.service import CRUDService
 from A_semantika._constants import FTS5_KEYWORDS as _FTS5_KEYWORDS
 from A_semantika._node_helpers import extract_label_text
@@ -84,8 +85,13 @@ class PredicateService(CRUDService):
     def _remove_from_fts(self, predicate_id: str) -> None:
         """Remove a predicate from FTS index using FTS5 'delete' command.
 
-        If the 'delete' command fails, auto-rebuilds the entire FTS index
-        (following A-encik's pattern of silent auto-recovery).
+        .. caution::
+
+           The caller **must** ensure the content-table row still exists
+           when this method is called — the 'delete' command needs the
+           ``rowid`` from the content table. Use
+           :meth:`_remove_fts_by_rowid` after deletion if the row has
+           already been removed.
         """
         row = self.db.execute_one(
             "SELECT rowid FROM predicates WHERE predicate_id = ?",
@@ -93,15 +99,30 @@ class PredicateService(CRUDService):
         )
         if not row or row.get("rowid") is None:
             return
+        self._remove_fts_by_rowid(predicate_id, row["rowid"])
+
+    def _remove_fts_by_rowid(self, predicate_id: str, rowid: int) -> None:
+        """Remove a rowid from the predicates FTS index.
+
+        Unlike :meth:`_remove_from_fts`, this method works **after** the
+        content-table row has been deleted — it only needs the saved
+        rowid.  If the ``'delete'`` command fails, a warning is logged
+        rather than triggering an automatic rebuild: a rebuild at this
+        point would scan the current content table (which no longer
+        contains the deleted predicate) and produce a correct index
+        anyway.
+        """
         try:
             self.db.execute(
                 "INSERT INTO predicates_fts(predicates_fts, rowid)"
                 " VALUES('delete', ?)",
-                (row["rowid"],),
+                (rowid,),
             )
-        except sqlite3.DatabaseError:
-            self.db.execute(
-                "INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')"
+        except sqlite3.DatabaseError as exc:
+            _warning(
+                f"FTS 'delete' failed for {predicate_id} (rowid={rowid}): "
+                f"{exc}. FTS index may be stale — a search query will "
+                f"trigger a rebuild automatically."
             )
 
     def _index_fts(self, predicate_id: str) -> None:
@@ -357,11 +378,19 @@ class PredicateService(CRUDService):
         if soft:
             self._move_to_trash(predicate_id)
         else:
-            self._remove_from_fts(predicate_id)
+            saved_rowid: int | None = None
+            if self._fts_config:
+                row = self.db.execute_one(
+                    "SELECT rowid FROM predicates WHERE predicate_id = ?",
+                    (predicate_id,),
+                )
+                saved_rowid = row["rowid"] if row else None
             self.db.execute(
                 "DELETE FROM predicates WHERE predicate_id = ?",
                 (predicate_id,),
             )
+            if saved_rowid is not None:
+                self._remove_fts_by_rowid(predicate_id, saved_rowid)
 
     def _move_to_trash(self, predicate_id: str) -> None:
         """Move predicate to trash table using predicate_id column."""
@@ -371,8 +400,13 @@ class PredicateService(CRUDService):
         if not entry:
             return
 
+        saved_rowid: int | None = None
         if self._fts_config:
-            self._remove_from_fts(predicate_id)
+            row = self.db.execute_one(
+                f"SELECT rowid FROM {self.table} WHERE predicate_id = ?",
+                (predicate_id,),
+            )
+            saved_rowid = row["rowid"] if row else None
 
         entry["forigita_je"] = datetime.now(timezone.utc).isoformat()
         entry.setdefault("modifita_je", entry["forigita_je"])
@@ -385,6 +419,9 @@ class PredicateService(CRUDService):
         with self.db.transaction() as conn:
             conn.execute(sql, values)
             conn.execute(f"DELETE FROM {self.table} WHERE predicate_id = ?", (predicate_id,))
+
+        if saved_rowid is not None:
+            self._remove_fts_by_rowid(predicate_id, saved_rowid)
 
     def restore(self, predicate_id: str) -> dict | None:
         """Restore predicate from trash using predicate_id."""
@@ -485,7 +522,14 @@ class PredicateService(CRUDService):
                 WHERE predicates_fts MATCH ?
                 LIMIT ?
             """
-            results = self.db.execute(fts_sql, (fts_query, limit))
+            try:
+                results = self.db.execute(fts_sql, (fts_query, limit))
+            except sqlite3.DatabaseError:
+                _warning("Predicates FTS index inconsistent — rebuilding and retrying search.")
+                self.db.execute(
+                    "INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')"
+                )
+                results = self.db.execute(fts_sql, (fts_query, limit))
             if results:
                 return results
 

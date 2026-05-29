@@ -15,6 +15,9 @@ venv/
 Thumbs.db
 os
 
+# Agent tooling
+.serena/
+
 # IDE
 .vscode/
 .idea/

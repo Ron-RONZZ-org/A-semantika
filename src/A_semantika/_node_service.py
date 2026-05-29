@@ -272,11 +272,20 @@ class NodeService(NodeSearchMixin, CRUDService):
         if soft:
             self._move_to_trash(node_id)
         else:
+            # Save rowid **before** deletion so we can remove the FTS
+            # entry after the node is gone.
+            saved_rowid: int | None = None
             if self._fts_config:
-                self._remove_from_fts(node_id)
+                row = self.db.execute_one(
+                    f"SELECT rowid FROM {self.table} WHERE node_id = ?",
+                    (node_id,),
+                )
+                saved_rowid = row["rowid"] if row else None
             sql = f"DELETE FROM {self.table} WHERE node_id = ?"
             with self.db.transaction() as conn:
                 conn.execute(sql, (node_id,))
+            if saved_rowid is not None:
+                self._remove_fts_by_rowid(node_id, saved_rowid)
 
         if self._undo_manager is not None and old_data:
             from A.core.service import create_undo_operation
@@ -313,17 +322,28 @@ class NodeService(NodeSearchMixin, CRUDService):
         placeholders = ", ".join(["?"] * len(columns))
         sql = f"INSERT OR REPLACE INTO {self._trash_table} ({', '.join(columns)}) VALUES ({placeholders})"
 
+        # Save the rowid **before** deletion so we can remove the FTS
+        # entry after the node is gone.  Removing FTS after deletion
+        # ensures that if the 'delete' command fails and falls back to
+        # a rebuild, the node is already absent from the content table
+        # and won't be re-indexed.
+        saved_rowid: int | None = None
+        if self._fts_config:
+            row = self.db.execute_one(
+                f"SELECT rowid FROM {self.table} WHERE node_id = ?", (node_id,)
+            )
+            saved_rowid = row["rowid"] if row else None
+
         with self.db.transaction() as conn:
-            # Remove from FTS BEFORE deleting from nodes — _remove_from_fts
-            # needs the rowid from the nodes table to issue the FTS5 'delete'
-            # command. Deleting from nodes first would make the rowid
-            # inaccessible, leaving a dangling FTS reference that causes
-            # "fts5: missing row N from content table" errors on subsequent
-            # MATCH queries.
-            if self._fts_config:
-                self._remove_from_fts(node_id)
             conn.execute(sql, values)
             conn.execute(f"DELETE FROM {self.table} WHERE node_id = ?", (node_id,))
+
+        # Remove from FTS AFTER the node is deleted from the content
+        # table.  If the 'delete' command raises DatabaseError, a
+        # warning is logged (no rebuild — the stale FTS entry is
+        # benign; the next search() will rebuild on demand).
+        if saved_rowid is not None:
+            self._remove_fts_by_rowid(node_id, saved_rowid)
 
     # ── Override restore to use node_id column ───────────────────────────
 
