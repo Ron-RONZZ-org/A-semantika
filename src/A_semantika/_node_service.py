@@ -1,4 +1,4 @@
-"""CRUDService for knowledge graph nodes — FTS5, label denorm, UUID override."""
+"""CRUDService for knowledge graph nodes — FTS5, label denorm, node_id PK."""
 from __future__ import annotations
 
 import json
@@ -8,26 +8,17 @@ from typing import Any
 
 from A import warning as _warning
 from A.core.service import CRUDService
-from A.data.search import FTSConfig
 from A_semantika._node_helpers import (
     AmbiguousUUIDError,
-    FTS5_KEYWORDS,
     extract_difin_text,
     extract_label_text,
     get_display_label,
 )
+from A_semantika._node_search import NodeSearchMixin, _fts_config
 from A_semantika.data.storage import now
 
 
-def _fts_config() -> FTSConfig:
-    """FTS config for nodes: search across label and definition text."""
-    return FTSConfig(
-        table="nodes",
-        fts_columns=["label_text", "difin_text"],
-    )
-
-
-class NodeService(CRUDService):
+class NodeService(NodeSearchMixin, CRUDService):
     """Service for managing knowledge graph nodes (FTS5, label denorm, node_id PK)."""
 
     def __init__(self, db: Any) -> None:
@@ -420,182 +411,4 @@ class NodeService(CRUDService):
             cursor = conn.execute(sql)
             return cursor.rowcount
 
-    # ── Override _ensure_fts — use node_id instead of uuid in FTS schema ──
 
-    def _ensure_fts(self) -> None:
-        """Create FTS5 virtual table with node_id column (not uuid)."""
-        if not self._fts_config:
-            return
-        config = self._fts_config
-        columns_def = ", ".join(config.fts_columns)
-        self.db.execute(
-            f"CREATE VIRTUAL TABLE IF NOT EXISTS {config.fts_table}"
-            f" USING fts5("
-            f"  node_id UNINDEXED,"
-            f"  {columns_def},"
-            f"  content={config.table},"
-            f"  content_rowid=rowid,"
-            f"  tokenize='{config.tokenize}'"
-            f")"
-        )
-
-        # Populate FTS if empty
-        count = self.db.execute_one(
-            f"SELECT COUNT(*) AS cnt FROM {config.fts_table}"
-        )
-        if count and count["cnt"] == 0:
-            self.db.execute(
-                f"INSERT INTO {config.fts_table}({config.fts_table}) VALUES('rebuild')"
-            )
-
-    # ── Override _remove_from_fts (FTS5 'delete' command) ────────────────
-
-    def _remove_from_fts(self, node_id: str) -> None:
-        """Remove node from FTS index using FTS5 'delete' command.
-
-        Uses the FTS5 ``'delete'`` command rather than a direct
-        ``DELETE FROM fts_table`` because the latter causes ``database
-        disk image is malformed`` on SQLite with external content tables.
-        If the 'delete' command fails, auto-rebuilds the entire FTS index
-        (following A-encik's pattern of silent auto-recovery).
-        """
-        if not self._fts_config:
-            return
-        row = self.db.execute_one(
-            f"SELECT rowid FROM {self.table} WHERE node_id = ?", (node_id,)
-        )
-        if not row or row.get("rowid") is None:
-            return
-        try:
-            self.db.execute(
-                f"INSERT INTO {self._fts_config.fts_table}"
-                f"({self._fts_config.fts_table}, rowid)"
-                " VALUES('delete', ?)",
-                (row["rowid"],),
-            )
-        except sqlite3.DatabaseError:
-            # FTS5 'delete' failed (transient content mismatch) — rebuild
-            # entire FTS index from current data instead of per-row cleanup.
-            self.db.execute(
-                f"INSERT INTO {self._fts_config.fts_table}"
-                f"({self._fts_config.fts_table}) VALUES('rebuild')"
-            )
-
-    # ── Override _index_fts to use node_id column ─────────────────────────
-
-    def _index_fts(self, node_id: str) -> None:
-        """Index a single node in FTS5.
-
-        Override to use node_id instead of uuid column.
-        Self-contained — avoids A-core build_index_sql which hardcodes uuid.
-        """
-        if not self._fts_config:
-            return
-        entry = self.db.execute_one(
-            f"SELECT rowid, node_id, "
-            f"{', '.join(self._fts_config.fts_columns)} "
-            f"FROM {self.table} WHERE node_id = ?",
-            (node_id,)
-        )
-        if not entry:
-            return
-
-        # Build INSERT with node_id instead of uuid
-        values = [entry["rowid"], node_id]
-        for col in self._fts_config.fts_columns:
-            val = entry.get(col, "")
-            if col in self._fts_config.normalize:
-                val = self._fts_config.normalize[col](val)
-            values.append(val)
-
-        placeholders = ", ".join(["?"] * (len(self._fts_config.fts_columns) + 2))
-        fts_cols = ", ".join(["node_id"] + self._fts_config.fts_columns)
-        sql = (
-            f"INSERT INTO {self._fts_config.fts_table} (rowid, {fts_cols})"
-            f" VALUES ({placeholders})"
-        )
-        self.db.execute(sql, values)
-
-    # ── node_id prefix resolution ────────────────────────────────────────
-
-    def resolve_node_id_prefix(self, prefix: str) -> dict | None:
-        """Resolve a node_id prefix to a full node.
-
-        Returns the node dict if exactly one match, None if no match.
-        Raises AmbiguousUUIDError if prefix is ambiguous (multiple matches).
-        Searches are case-insensitive (COLLATE NOCASE).
-        """
-        if not prefix:
-            return None
-
-        # Full node_id match via exact match (case-insensitive)
-        node = self.db.execute_one(
-            "SELECT * FROM nodes WHERE node_id = ? COLLATE NOCASE", (prefix,)
-        )
-        if node:
-            return node
-
-        # Prefix search via LIKE (case-insensitive, with wildcard escaping)
-        escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        matches = self.db.execute(
-            "SELECT * FROM nodes WHERE node_id LIKE ? COLLATE NOCASE ESCAPE '\\'",
-            (f"{escaped}%",),
-        )
-        if not matches:
-            return None
-        if len(matches) > 1:
-            msg = f"Node ID prefix '{prefix}' is ambiguous ({len(matches)} matches)"
-            raise AmbiguousUUIDError(msg)
-        return matches[0]
-
-    # ── Backward-compat alias: resolve_uuid_prefix -> resolve_node_id_prefix ──
-
-    def resolve_uuid_prefix(self, prefix: str) -> dict | None:
-        """Deprecated: use :meth:`resolve_node_id_prefix` instead."""
-        import warnings
-        warnings.warn(
-            "resolve_uuid_prefix() is deprecated, use resolve_node_id_prefix()",
-            DeprecationWarning, stacklevel=2,
-        )
-        return self.resolve_node_id_prefix(prefix)
-
-    # ── Search ──────────────────────────────────────────────────────────
-
-    def search(self, query: str, limit: int = 50) -> list[dict]:
-        """Full-text search on nodes via FTS5.
-
-        Falls back to LIKE on label_text if FTS returns nothing.
-        """
-        if not query or not query.strip():
-            return self.list(limit=limit)
-
-        # Try FTS first
-        # Sanitize FTS5 query: strip special characters that can crash MATCH,
-        # but treat FTS5 keywords (AND, OR, NOT, NEAR, COLUMN) as regular
-        # content terms by lowercasing them instead of stripping them out.
-        safe_tokens = []
-        for word in query.strip().split():
-            cleaned = "".join(c for c in word if c.isalnum() or c == "_")
-            if not cleaned:
-                continue
-            if cleaned.upper() in FTS5_KEYWORDS:
-                cleaned = cleaned.lower()
-            safe_tokens.append(f"{cleaned}*")
-        if not safe_tokens:
-            return self.list(limit=limit)
-        fts_query = " OR ".join(safe_tokens)
-        fts_sql = """
-            SELECT n.* FROM nodes n
-            JOIN nodes_fts f ON n.node_id = f.node_id
-            WHERE nodes_fts MATCH ?
-            LIMIT ?
-        """
-        results = self.db.execute(fts_sql, (fts_query, limit))
-        if results:
-            return results
-
-        # Fallback: LIKE on label_text (case-insensitive)
-        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        like_sql = "SELECT * FROM nodes WHERE label_text LIKE ? ESCAPE '\\' COLLATE NOCASE LIMIT ?"
-        pattern = f"%{escaped}%"
-        return self.db.execute(like_sql, (pattern, limit))

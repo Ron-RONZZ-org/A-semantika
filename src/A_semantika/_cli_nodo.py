@@ -651,9 +651,32 @@ def serci(
         "Code de langue pour les étiquettes (ex. eo, en, fr)",
     )),
 ) -> None:
-    """Serĉi nodojn per teksto (FTS5)."""
+    """Serĉi nodojn per teksto aŭ ID (FTS5 + ID LIKE)."""
     node_svc = get_node_service()
-    results = node_svc.search(query, limit=limit)
+
+    # Search by label/definition (FTS5) AND by node_id (LIKE)
+    label_results = node_svc.search(query, limit=limit)
+
+    # Also search by node_id
+    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    id_results = node_svc.db.execute(
+        "SELECT * FROM nodes WHERE node_id LIKE ? COLLATE NOCASE LIMIT ?",
+        (f"%{escaped}%", limit),
+    )
+
+    # Merge and deduplicate (label_results first, then append new IDs)
+    seen: set[str] = set()
+    results: list[dict] = []
+    for n in label_results:
+        nid = n["node_id"]
+        if nid not in seen:
+            seen.add(nid)
+            results.append(n)
+    for n in id_results:
+        nid = n["node_id"]
+        if nid not in seen:
+            seen.add(nid)
+            results.append(n)
 
     if not results:
         info(tr_multi("Neniuj nodoj trovitaj.", "No nodes found.", "Aucun nœud trouvé."))

@@ -44,11 +44,23 @@ def test_nodo_vidi(runner: CliRunner) -> None:
 
 
 def test_nodo_serci(runner: CliRunner) -> None:
-    """Searching nodes should find matches."""
+    """Searching nodes by label should find matches."""
     runner.invoke(app, ["nodo", "aldoni", "-e", "eo::Birdo", "-y"])
     result = runner.invoke(app, ["nodo", "serci", "Birdo"])
     assert result.exit_code == 0
     assert "Birdo" in result.stdout
+
+
+def test_nodo_serci_finds_by_id(runner: CliRunner) -> None:
+    """Searching nodes by node_id should also find matches (ID + label search)."""
+    # Create a node with a custom ID that contains "GPS"
+    runner.invoke(app, ["nodo", "aldoni", "GPS_TK", "-e", "eo::aparata tempo-korekto por GPS", "-y"])
+    # Search by the ID prefix "GPS"
+    result = runner.invoke(app, ["nodo", "serci", "GPS"])
+    assert result.exit_code == 0
+    assert "GPS_TK" in result.stdout
+    # The label should also be visible
+    assert "aparata" in result.stdout or "tempo" in result.stdout
 
 
 def test_nodo_aldoni_with_uuid(runner: CliRunner) -> None:

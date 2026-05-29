@@ -221,7 +221,68 @@ def test_triple_forigi_interactive_no_match(runner: CliRunner) -> None:
     assert "Neniuj" in result.stdout or "No matching" in result.stdout
 
 
-def test_triple_serci_backward_compat_uuid_prefix(runner: CliRunner) -> None:
+def test_triple_aldoni_i_alias(runner: CliRunner) -> None:
+    """The -i flag should work as an alias for --int."""
+    runner.invoke(app, ["nodo", "aldoni", "IntSubj", "-e", "eo::IntSubj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "wdt:P1082", "-e", "eo::populacho", "--jes"])
+
+    result = runner.invoke(app, [
+        "aldoni", "IntSubj", "wdt:P1082", "42", "-i", "--jes",
+    ])
+    assert result.exit_code == 0, f"-i alias failed: {result.stdout}"
+    assert "kreita" in result.stdout or "created" in result.stdout or "Arc" in result.stdout
+
+
+def test_triple_aldoni_str_dosiero_happy(runner: CliRunner, tmp_path: str) -> None:
+    """--str-dosiero should read a .md file and store as string literal."""
+    runner.invoke(app, ["nodo", "aldoni", "MdSubj", "-e", "eo::MdSubj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    from pathlib import Path
+    md_file = Path(tmp_path) / "test.md"
+    md_file.write_text("# Noto\n\nĈi tio estas testa noto.", encoding="utf-8")
+
+    result = runner.invoke(app, [
+        "aldoni", "MdSubj", "rdf:type", "--str-dosiero", str(md_file), "--jes",
+    ])
+    assert result.exit_code == 0, f"--str-dosiero failed: {result.stdout}"
+    assert "kreita" in result.stdout or "created" in result.stdout or "Arc" in result.stdout
+
+
+def test_triple_aldoni_str_dosiero_file_not_found(runner: CliRunner) -> None:
+    """--str-dosiero should give a clear error when file does not exist."""
+    runner.invoke(app, ["nodo", "aldoni", "NotFoundSubj", "-e", "eo::NotFoundSubj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    result = runner.invoke(app, [
+        "aldoni", "NotFoundSubj", "rdf:type", "--str-dosiero", "/nonexistent/file.md", "--jes",
+    ])
+    assert result.exit_code == 1
+    assert "ne trovita" in result.stdout or "not found" in result.stdout or "non trouvé" in result.stdout
+
+
+def test_triple_aldoni_needs_object_or_str_dosiero(runner: CliRunner) -> None:
+    """At least one of OBJEKTO or --str-dosiero must be provided."""
+    runner.invoke(app, ["nodo", "aldoni", "NoObjSubj", "-e", "eo::NoObjSubj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    result = runner.invoke(app, [
+        "aldoni", "NoObjSubj", "rdf:type", "--jes",
+    ])
+    assert result.exit_code == 1
+    assert "Bezonas" in result.stdout or "Requires" in result.stdout or "Nécessite" in result.stdout
+
+
+def test_triple_aldoni_str_dosiero_mutual_exclusion(runner: CliRunner) -> None:
+    """Object positional arg and --str-dosiero should be mutually exclusive."""
+    result = runner.invoke(app, [
+        "aldoni", "SomeSubj", "rdf:type", "SomeObj", "--str-dosiero", "test.md", "--jes",
+    ])
+    assert result.exit_code == 1
+    assert "Ne eblas" in result.stdout or "Cannot" in result.stdout or "Impossible" in result.stdout
+
+
+def test_serci_backward_compat_uuid_prefix(runner: CliRunner) -> None:
     """serci --subject should still work with UUID prefixes."""
     runner.invoke(app, ["nodo", "aldoni", "-e", "eo::CompatTest", "--jes"])
     ls_result = runner.invoke(app, ["nodo", "ls"])

@@ -7,6 +7,7 @@ Extracted into separate files to keep each file under 500 lines:
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -46,13 +47,21 @@ def aldoni(
         metavar="PREDIKATO",
         help=tr_multi("Predikato ID", "Predicate ID", "ID du prédicat"),
     ),
-    object: str = typer.Argument(  # noqa: A002
-        ...,
+    object: Optional[str] = typer.Argument(  # noqa: A002
+        None,
         metavar="OBJEKTO",
         help=tr_multi(
             "Objekta valoro (uzu -- antaŭ valoroj komencantaj per -)",
             "Object value (use -- before values starting with -)",
             "Valeur de l'objet (utilisez -- avant les valeurs commençant par -)",
+        ),
+    ),
+    str_dosiero: Optional[str] = typer.Option(
+        None, "--str-dosiero", "-d",
+        help=tr_multi(
+            "Legu dosieron kiel tekstan literal (anstataŭ OBJEKTO)",
+            "Read file as string literal (instead of OBJEKTO)",
+            "Lire le fichier comme un littéral textuel (au lieu de OBJEKTO)",
         ),
     ),
     str_: bool = typer.Option(
@@ -64,7 +73,7 @@ def aldoni(
         ),
     ),
     int_: bool = typer.Option(
-        False, "--int",
+        False, "-i", "--int",
         help=tr_multi(
             "Objekto estas entjera literal (not URI)",
             "Object is an integer literal (not URI)",
@@ -90,9 +99,9 @@ def aldoni(
     lingvo: Optional[str] = typer.Option(
         None, "-l", "--lingvo",
         help=tr_multi(
-            "Lingva etikedo (nur kun --str)",
-            "Language tag (only with --str)",
-            "Étiquette de langue (seulement avec --str)",
+            "Lingva etikedo (nur kun --str aŭ --str-dosiero)",
+            "Language tag (only with --str or --str-dosiero)",
+            "Étiquette de langue (seulement avec --str ou --str-dosiero)",
         ),
     ),
     unuo: Optional[str] = typer.Option(
@@ -114,11 +123,58 @@ def aldoni(
 ) -> None:
     """Aldoni semantikan arkon: subjekto --predikato--> objekto.
 
-    Defaŭlte objekto estas URI referenco (nod UUID). Uzu --str por teksta literal.
+    Defaŭlte objekto estas URI referenco (nod UUID). Uzu --str por teksta literal,
+    --str-dosiero por legi dosieron kiel tekstan literal.
 
     Se la objekta valoro komenciĝas per -, uzu -- antaŭ ĝi por eviti
     misinterpretadon kiel flago: aldoni NODO predikato -f -- -1.5
     """
+    # Handle -d/--str-dosiero: read file content as string literal
+    if str_dosiero is not None and object is not None:
+        error(tr_multi(
+            "Ne eblas uzi samtempe OBJEKTO kaj --str-dosiero",
+            "Cannot use both OBJEKTO and --str-dosiero",
+            "Impossible d'utiliser OBJEKTO et --str-dosiero à la fois",
+        ))
+        raise typer.Exit(1)
+    if str_dosiero is not None:
+        # --str-dosiero implies --str (string literal)
+        str_ = True
+        file_path = Path(str_dosiero)
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            error(tr_multi(
+                "Dosiero ne trovita: {f}",
+                "File not found: {f}",
+                "Fichier non trouvé : {f}",
+            ).format(f=str_dosiero))
+            raise typer.Exit(1) from None
+        except IsADirectoryError:
+            error(tr_multi(
+                "{f} estas dosierujo, ne dosiero",
+                "{f} is a directory, not a file",
+                "{f} est un dossier, pas un fichier",
+            ).format(f=str_dosiero))
+            raise typer.Exit(1) from None
+        except UnicodeDecodeError:
+            error(tr_multi(
+                "{f} ne estas valida UTF-8 dosiero",
+                "{f} is not a valid UTF-8 file",
+                "{f} n'est pas un fichier UTF-8 valide",
+            ).format(f=str_dosiero))
+            raise typer.Exit(1) from None
+        object_value = content
+    elif object is None:
+        error(tr_multi(
+            "Bezonas OBJEKTO aŭ --str-dosiero",
+            "Requires OBJEKTO or --str-dosiero",
+            "Nécessite OBJEKTO ou --str-dosiero",
+        ))
+        raise typer.Exit(1)
+    else:
+        object_value = object
+
     datatype, object_type = validate_type_flags(str_, int_, float_, bool_, lingvo, unuo)
 
     node_svc = get_node_service()
@@ -145,10 +201,10 @@ def aldoni(
     subject_uuid = subj_node["node_id"]
 
     # Resolve object UUID if URI type
-    object_uuid = object
+    object_uuid = object_value
     if object_type == "uri":
         try:
-            obj_node = node_svc.resolve_node_id_prefix(object)
+            obj_node = node_svc.resolve_node_id_prefix(object_value)
         except AmbiguousUUIDError as e:
             error(tr_multi(
                 "Ambigua objekto-prefikso: {e}",
@@ -161,7 +217,7 @@ def aldoni(
                 "Objekto ne trovita: {o}",
                 "Object not found: {o}",
                 "Objet non trouvé : {o}",
-            ).format(o=object))
+            ).format(o=object_value))
             raise typer.Exit(1)
         object_uuid = obj_node["node_id"]
 
