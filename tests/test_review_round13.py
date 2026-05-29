@@ -16,7 +16,7 @@ import pytest
 from typer.testing import CliRunner
 
 from A_semantika.cli import app
-from A_semantika._cli_nodo import _format_delete_error
+from A_semantika._cli_nodo_forigi import _format_delete_error
 from A_semantika._cli_predikat_grupo import _match_groups_by_prefix
 from A_semantika._node_service import NodeService
 
