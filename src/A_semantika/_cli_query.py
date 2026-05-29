@@ -140,7 +140,10 @@ def serci(
     table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
     table.add_column(tr_multi("Subjekto", "Subject", "Sujet"), no_wrap=True)
     table.add_column(tr_multi("Predikato", "Predicate", "Predicat"), no_wrap=True)
-    table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=True)
+    # Object column allows wrapping: literal values can be long text
+    # (paragraphs, sentences).  no_wrap=True would truncate them or
+    # force truncation of other columns to fit the terminal width.
+    table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=False)
     table.add_column(tr_multi("Tipo", "Type", "Type"), no_wrap=True)
 
     for r in results:
@@ -223,7 +226,7 @@ def vidi(
 
     table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
     table.add_column(tr_multi("Predikato", "Predicate", "Predicat"), no_wrap=True)
-    table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=True)
+    table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=False)
     table.add_column(tr_multi("Tipo", "Type", "Type"), no_wrap=True)
 
     for r in results:

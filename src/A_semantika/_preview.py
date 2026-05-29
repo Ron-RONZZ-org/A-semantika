@@ -109,7 +109,7 @@ def build_triple_preview_table(
     )
     table.add_column(tr_multi("Subjekto", "Subject", "Sujet"), no_wrap=True)
     table.add_column(tr_multi("Predikato", "Predicate", "Predicat"), no_wrap=True)
-    table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=True)
+    table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=False)
 
     # Pre-resolve subject node once, then use cached data for both
     # display label and raw ID (avoids redundant DB calls).
@@ -257,7 +257,7 @@ def confirm_node_with_arcs(
     table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
     table.add_column("", no_wrap=True)
     table.add_column(tr_multi("Subjekto", "Subject", "Sujet"), no_wrap=True)
-    table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=True)
+    table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=False)
 
     # Node summary row
     table.add_row(
