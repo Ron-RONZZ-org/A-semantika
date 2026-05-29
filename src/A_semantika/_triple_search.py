@@ -311,11 +311,13 @@ def search_triples_by_labels(
     if object:
         object_uuids, object_literals = resolve_objects(node_svc, object)
 
-    # Delegate to TripleService.search_triples()
+    # Delegate to TripleService.search_triples().
+    # Pass None (not []) for empty lists so that object_values_like
+    # doesn't get blocked by the empty-list early return in search_triples.
     return triple_svc.search_triples(
         subject_uuids=subject_uuids,
         predicate_ids=predicate_ids,
-        object_values=object_uuids,
-        object_values_like=object_literals,
+        object_values=object_uuids if object_uuids else None,
+        object_values_like=object_literals if object_literals else None,
         limit=limit,
     )
