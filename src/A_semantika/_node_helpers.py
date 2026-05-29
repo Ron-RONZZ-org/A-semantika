@@ -13,8 +13,14 @@ from A_semantika._constants import FTS5_KEYWORDS
 
 
 class AmbiguousUUIDError(ValueError):
-    """Raised when a UUID prefix matches multiple nodes."""
-    pass
+    """Raised when a UUID prefix matches multiple nodes.
+
+    Attributes:
+        matches: List of matching node dicts (for interactive selection).
+    """
+    def __init__(self, message: str, matches: list[dict] | None = None) -> None:
+        super().__init__(message)
+        self.matches: list[dict] = matches or []
 
 
 def extract_label_text(etikedoj: str | dict) -> str:

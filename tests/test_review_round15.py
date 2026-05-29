@@ -121,7 +121,7 @@ class TestAmbiguousUUIDErrorHandling:
     """AmbiguousUUIDError must not be silently swallowed by except ValueError."""
 
     def test_resolve_subjects_ambiguous_warns(self, node_svc, capsys):
-        """Ambiguous prefix in resolve_subjects warns and returns empty."""
+        """Ambiguous prefix in resolve_subjects returns ALL matching node IDs."""
         # Create two nodes sharing the same 8-char prefix
         id1 = "ab000000-0000-0000-0000-000000000001"
         id2 = "ab000000-0000-0000-0000-000000000002"
@@ -132,18 +132,23 @@ class TestAmbiguousUUIDErrorHandling:
         prefix = id1[:8]
 
         result = resolve_subjects(node_svc, prefix)
-        assert result == [], "Ambiguous prefix should return empty list"
+        assert len(result) == 2, "Ambiguous prefix should return ALL matching node IDs"
+        assert id1 in result
+        assert id2 in result
 
     def test_resolve_objects_ambiguous_warns(self, node_svc):
-        """Ambiguous prefix in resolve_objects warns and returns empty."""
+        """Ambiguous prefix in resolve_objects returns ALL matching node UUIDs."""
         id1 = "ac000000-0000-0000-0000-000000000001"
         id2 = "ac000000-0000-0000-0000-000000000002"
         node_svc.create({"node_id": id1, "etikedoj": {"eo": "NodoTri"}})
         node_svc.create({"node_id": id2, "etikedoj": {"eo": "NodoKvar"}})
 
         prefix = id1[:8]
-        result = resolve_objects(node_svc, prefix)
-        assert result == [], "Ambiguous object prefix should return empty list"
+        node_uuids, literal_values = resolve_objects(node_svc, prefix)
+        assert len(node_uuids) == 2, "Ambiguous prefix should return ALL matching node UUIDs"
+        assert id1 in node_uuids
+        assert id2 in node_uuids
+        assert literal_values == [], "Should not fall through to literal mode"
 
     def test_resolve_subjects_not_found_falls_through(self, node_svc):
         """Non-ambiguous but not-found UUID falls through to FTS5."""

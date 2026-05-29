@@ -141,51 +141,59 @@ class TestResolveObjects:
         """UUID prefix should resolve to node UUID."""
         from A_semantika._triple_search import resolve_objects
 
-        values = resolve_objects(node_svc, "a3000000-")
-        assert values == ["a3000000-0000-0000-0000-000000000003"]
+        node_uuids, literal_values = resolve_objects(node_svc, "a3000000-")
+        assert node_uuids == ["a3000000-0000-0000-0000-000000000003"]
+        assert literal_values == []
 
     def test_label_search_fallback(self, node_svc) -> None:
         """Non-UUID text should fall back to FTS5 label search."""
         from A_semantika._triple_search import resolve_objects
 
-        values = resolve_objects(node_svc, "Mamulo")
-        assert len(values) >= 1
-        assert "a3000000-0000-0000-0000-000000000003" in values
+        node_uuids, literal_values = resolve_objects(node_svc, "Mamulo")
+        assert len(node_uuids) >= 1
+        assert "a3000000-0000-0000-0000-000000000003" in node_uuids
+        assert literal_values == []
 
     def test_no_match_returns_raw_text(self, node_svc) -> None:
         """No matches should return the raw text for literal matching."""
         from A_semantika._triple_search import resolve_objects
 
-        values = resolve_objects(node_svc, "1000000")
-        assert values == ["1000000"]
+        node_uuids, literal_values = resolve_objects(node_svc, "1000000")
+        assert node_uuids == []
+        assert literal_values == ["1000000"]
 
     def test_empty_input(self, node_svc) -> None:
-        """Empty input should return empty list."""
+        """Empty input should return empty lists."""
         from A_semantika._triple_search import resolve_objects
 
-        assert resolve_objects(node_svc, "") == []
+        node_uuids, literal_values = resolve_objects(node_svc, "")
+        assert node_uuids == []
+        assert literal_values == []
 
     def test_numeric_literal_suppresses_warning(self, node_svc) -> None:
         """Numeric values should NOT trigger the fallback warning (B2)."""
         from A_semantika._triple_search import resolve_objects
 
         # No nodes exist for "1000000" — but it's numeric, so no warning
-        values = resolve_objects(node_svc, "1000000")
-        assert values == ["1000000"]
+        node_uuids, literal_values = resolve_objects(node_svc, "1000000")
+        assert node_uuids == []
+        assert literal_values == ["1000000"]
 
     def test_multi_word_literal_suppresses_warning(self, node_svc) -> None:
         """Multi-word phrases should NOT trigger the fallback warning (B2)."""
         from A_semantika._triple_search import resolve_objects
 
-        values = resolve_objects(node_svc, "some long description")
-        assert values == ["some long description"]
+        node_uuids, literal_values = resolve_objects(node_svc, "some long description")
+        assert node_uuids == []
+        assert literal_values == ["some long description"]
 
     def test_quoted_string_suppresses_warning(self, node_svc) -> None:
         """Quoted strings should NOT trigger the fallback warning (B2)."""
         from A_semantika._triple_search import resolve_objects
 
-        values = resolve_objects(node_svc, '"quoted value"')
-        assert values == ['"quoted value"']
+        node_uuids, literal_values = resolve_objects(node_svc, '"quoted value"')
+        assert node_uuids == []
+        assert literal_values == ['"quoted value"']
 
     def test_single_word_non_numeric_still_warns(self, node_svc) -> None:
         """Single non-numeric word without matching node still warns (B2)."""
@@ -193,8 +201,9 @@ class TestResolveObjects:
 
         # "Neniu" is a single word, non-numeric — should still warn
         # We just check it returns raw text; the warning itself is fire-and-forget
-        values = resolve_objects(node_svc, "Neniu")
-        assert values == ["Neniu"]
+        node_uuids, literal_values = resolve_objects(node_svc, "Neniu")
+        assert node_uuids == []
+        assert literal_values == ["Neniu"]
 
 
 # ── search_triples_by_labels ──────────────────────────────────────────────────

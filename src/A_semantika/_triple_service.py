@@ -312,6 +312,7 @@ class TripleService:
         predicate_ids: list[str] | None = None,
         object_values: list[str] | None = None,
         object_types: list[str] | None = None,
+        object_values_like: list[str] | None = None,
         limit: int = 100,
     ) -> list[dict]:
         """Search triples by pre-resolved lists.
@@ -322,8 +323,12 @@ class TripleService:
         Args:
             subject_uuids: List of subject UUIDs to match (OR).
             predicate_ids: List of predicate IDs to match (OR).
-            object_values: List of object values to match (OR).
+            object_values: List of object values to match (OR, exact match).
             object_types: List of object types to match (OR).
+            object_values_like: List of literal patterns to match against
+                ``object_value`` using ``LIKE %val%`` (OR). Values are
+                automatically wildcard-escaped. Use this for partial
+                matching on literal values instead of ``object_values``.
             limit: Maximum number of results.
 
         Returns:
@@ -352,6 +357,16 @@ class TripleService:
             placeholders = ",".join("?" * len(object_values))
             clauses.append(f"object_value IN ({placeholders})")
             params.extend(object_values)
+
+        if object_values_like is not None:
+            if not object_values_like:
+                return []
+            like_parts = []
+            for val in object_values_like:
+                escaped = val.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                like_parts.append("object_value LIKE ? ESCAPE '\\'")
+                params.append(f"%{escaped}%")
+            clauses.append(f"({' OR '.join(like_parts)})")
 
         if object_types is not None:
             if not object_types:

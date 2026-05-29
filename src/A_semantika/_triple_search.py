@@ -51,7 +51,7 @@ def _is_numeric(text: str) -> bool:
 
 def _resolve_node_by_label(
     node_svc: NodeService, text: str,
-) -> tuple[list[str], bool]:
+) -> list[str]:
     """Resolve text to node IDs via UUID prefix, FTS5 label search, or node_id prefix.
 
     Shared helper used by both resolve_subjects() and resolve_objects()
@@ -66,35 +66,35 @@ def _resolve_node_by_label(
     4. Return empty list if no matches
 
     Returns:
-        Tuple of (node_ids, ambiguous) where:
-        - node_ids: List of matching node IDs, or empty list if no match.
-        - ambiguous: True if the text was a UUID prefix that matched
-          multiple nodes (prevents callers from falling through to
-          literal-mode fallback).
+        List of matching node IDs, or empty list if no match.
+        For ambiguous prefixes this includes ALL matching node IDs
+        (not just the first one).
     """
     if not text or not text.strip():
-        return ([], False)
+        return []
 
     # Step 1: Try UUID prefix resolution
     if _looks_like_uuid_prefix(text):
         try:
             node = node_svc.resolve_node_id_prefix(text)
             if node:
-                return ([node["node_id"]], False)
-        except AmbiguousUUIDError:
+                return [node["node_id"]]
+        except AmbiguousUUIDError as e:
             _warning(tr_multi(
                 "Ambigua prefikso '{t}' — pluraj nodoj kongruas",
                 "Ambiguous prefix '{t}' — multiple nodes match",
                 "Préfixe ambigu '{t}' — plusieurs nœuds correspondent",
             ).format(t=text))
-            return ([], True)  # Don't fall through to FTS5 — ambiguous prefix
+            # Include ALL matching nodes so the caller can search for any
+            # of them — more useful than silently returning empty.
+            return [m["node_id"] for m in e.matches]
         except ValueError:
             pass  # Not found — fall through to label search
 
     # Step 2: FTS5 label search
     results = node_svc.search(text, limit=50)
     if results:
-        return ([r["node_id"] for r in results], False)
+        return [r["node_id"] for r in results]
 
     # Step 3: Fallback — try node_id prefix resolution for non-UUID text.
     # This covers short human-readable node IDs like "H_GL" (4 chars,
@@ -104,29 +104,28 @@ def _resolve_node_by_label(
         try:
             node = node_svc.resolve_node_id_prefix(text)
             if node:
-                return ([node["node_id"]], False)
-        except AmbiguousUUIDError:
+                return [node["node_id"]]
+        except AmbiguousUUIDError as e:
             _warning(tr_multi(
                 "Ambigua prefikso '{t}' — pluraj nodoj kongruas",
                 "Ambiguous prefix '{t}' — multiple nodes match",
                 "Préfixe ambigu '{t}' — plusieurs nœuds correspondent",
             ).format(t=text))
-            return ([], True)
+            return [m["node_id"] for m in e.matches]
         except ValueError:
             pass
 
-    return ([], False)
+    return []
 
 
 def resolve_subjects(node_svc: NodeService, text: str) -> list[str]:
     """Resolve subject text to a list of node UUIDs.
 
     Delegates to :func:`_resolve_node_by_label` for the common
-    UUID-prefix-then-FTS5 pattern. Ambiguous prefixes return empty
-    (no literal-mode fallback for subjects).
+    UUID-prefix-then-FTS5 pattern. Ambiguous prefixes return ALL
+    matching node IDs, not just the first one.
     """
-    node_ids, _ = _resolve_node_by_label(node_svc, text)
-    return node_ids
+    return _resolve_node_by_label(node_svc, text)
 
 
 # ── Predicate resolution ──────────────────────────────────────────────────────
@@ -159,25 +158,31 @@ def resolve_predicates(pred_svc: PredicateService, text: str) -> list[str]:
 # ── Object resolution ─────────────────────────────────────────────────────────
 
 
-def resolve_objects(node_svc: NodeService, text: str) -> list[str]:
-    """Resolve object text to a list of object values.
+def resolve_objects(node_svc: NodeService, text: str) -> tuple[list[str], list[str]]:
+    """Resolve object text to (node_uuids, literal_values).
 
-    For URI objects, this resolves to node UUIDs.
-    For literal objects, the raw text is returned as-is.
+    Returns separate lists for node UUIDs (URI objects, exact match)
+    and literal values (string/int/float objects, LIKE match).
 
     Resolution order:
     1. Delegate to :func:`_resolve_node_by_label` (UUID prefix → FTS5)
-    2. If still no matches, return the raw text as a literal match candidate
+    2. If still no matches, return the raw text as a literal value
+       match candidate (for LIKE-based partial matching).
+
+    Returns:
+        Tuple of (node_uuids, literal_values):
+        - node_uuids: Resolved node UUIDs for exact URI matching, or
+          empty list if no node matched.
+        - literal_values: Raw text as literal value for LIKE matching,
+          or empty list if node(s) were found.
     """
     if not text or not text.strip():
-        return []
+        return ([], [])
 
     # Step 1: Try UUID prefix resolution → FTS5 label search
-    resolved, ambiguous = _resolve_node_by_label(node_svc, text)
-    if resolved:
-        return resolved
-    if ambiguous:
-        return []  # Don't fall through to literal mode — ambiguous prefix
+    node_ids = _resolve_node_by_label(node_svc, text)
+    if node_ids:
+        return (node_ids, [])  # node UUIDs for exact match
 
     # Step 2: Return raw text as literal value match candidate.
     # Only warn if the text looks like it could be a mistyped node identifier
@@ -193,10 +198,79 @@ def resolve_objects(node_svc: NodeService, text: str) -> list[str]:
         _warning(
             f"No node found for '{text[:60]}' — searching as literal value"
         )
-    return [text]
+    return ([], [text])  # literal value for LIKE match
 
 
 # ── Combined search orchestration ─────────────────────────────────────────────
+
+
+def search_triples_any_field(
+    triple_svc: TripleService,
+    node_svc: NodeService,
+    pred_svc: PredicateService,
+    search_term: str,
+    limit: int = 100,
+) -> list[dict]:
+    """Search triples where *search_term* matches subject, predicate, OR object.
+
+    Resolution is done independently per field, then triples are queried
+    separately for each non-empty field resolution and merged with
+    deduplication.  This gives true OR semantics across fields, unlike
+    :func:`search_triples_by_labels` which ANDs across fields.
+
+    Literal object values use LIKE-based partial matching so that
+    searching for e.g. ``"Lament"`` finds arcs with ``"A Mathematician's Lament"``.
+
+    Args:
+        triple_svc: TripleService instance.
+        node_svc: NodeService instance.
+        pred_svc: PredicateService instance.
+        search_term: The text to search across all fields.
+        limit: Maximum results to return.
+
+    Returns:
+        List of unique matching triple dicts.
+    """
+    if not search_term or not search_term.strip():
+        return []
+
+    # Resolve each field independently
+    subject_uuids = resolve_subjects(node_svc, search_term)
+    predicate_ids = resolve_predicates(pred_svc, search_term)
+    object_uuids, object_literals = resolve_objects(node_svc, search_term)
+
+    seen: set[tuple[str, str, str, str]] = set()
+    results: list[dict] = []
+
+    # Helper: query one field and deduplicate
+    def _query_and_merge(**field_params: list[str] | None) -> None:
+        has_values = any(
+            v is not None and len(v) > 0
+            for v in field_params.values()
+        )
+        if not has_values:
+            return
+        for triple in triple_svc.search_triples(**field_params, limit=limit):
+            key = (
+                triple["subject_uuid"],
+                triple["predicate_id"],
+                triple["object_value"],
+                triple["object_type"],
+            )
+            if key not in seen:
+                seen.add(key)
+                results.append(triple)
+
+    if subject_uuids:
+        _query_and_merge(subject_uuids=subject_uuids)
+    if predicate_ids:
+        _query_and_merge(predicate_ids=predicate_ids)
+    if object_uuids:
+        _query_and_merge(object_values=object_uuids)
+    if object_literals:
+        _query_and_merge(object_values_like=object_literals)
+
+    return results
 
 
 def search_triples_by_labels(
@@ -214,6 +288,9 @@ def search_triples_by_labels(
     AND across parameters). Empty resolution for any parameter means
     'no restriction' (not 'no results').
 
+    Literal object values use LIKE-based partial matching so that
+    searching for e.g. ``"Lament"`` finds ``"A Mathematician's Lament"``.
+
     Args:
         triple_svc: TripleService instance.
         node_svc: NodeService instance.
@@ -229,12 +306,16 @@ def search_triples_by_labels(
     # Resolve each parameter independently
     subject_uuids = resolve_subjects(node_svc, subject) if subject else None
     predicate_ids = resolve_predicates(pred_svc, predicate) if predicate else None
-    object_values = resolve_objects(node_svc, object) if object else None
+    object_uuids: list[str] | None = None
+    object_literals: list[str] | None = None
+    if object:
+        object_uuids, object_literals = resolve_objects(node_svc, object)
 
     # Delegate to TripleService.search_triples()
     return triple_svc.search_triples(
         subject_uuids=subject_uuids,
         predicate_ids=predicate_ids,
-        object_values=object_values,
+        object_values=object_uuids,
+        object_values_like=object_literals,
         limit=limit,
     )
