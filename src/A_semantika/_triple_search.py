@@ -267,6 +267,12 @@ def search_triples_any_field(
         _query_and_merge(predicate_ids=predicate_ids)
     if object_uuids:
         _query_and_merge(object_values=object_uuids)
+        # Also search by LIKE on the original search_term for prefix
+        # matching — e.g. searching "H_GL" should also find triples
+        # where object_value is "H_GLEMAITRE" (a longer node_id that
+        # starts with the same prefix).  Without this fallback the
+        # search only hits exact node_id matches.
+        _query_and_merge(object_values_like=[search_term])
     if object_literals:
         _query_and_merge(object_values_like=object_literals)
 
