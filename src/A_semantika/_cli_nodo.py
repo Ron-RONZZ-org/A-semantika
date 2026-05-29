@@ -127,10 +127,11 @@ def serci(
     # Search by label/definition (FTS5) AND by node_id (LIKE)
     label_results = node_svc.search(query, limit=limit)
 
-    # Also search by node_id
+    # Also search by node_id (LIKE with wildcard escaping, same pattern
+    # as resolve_node_id_prefix() in _node_search.py)
     escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     id_results = node_svc.db.execute(
-        "SELECT * FROM nodes WHERE node_id LIKE ? COLLATE NOCASE LIMIT ?",
+        "SELECT * FROM nodes WHERE node_id LIKE ? COLLATE NOCASE ESCAPE '\\' LIMIT ?",
         (f"%{escaped}%", limit),
     )
 

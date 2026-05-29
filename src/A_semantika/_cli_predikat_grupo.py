@@ -332,9 +332,10 @@ def serci(
 ) -> None:
     """Serĉi grupojn laŭ nomo."""
     group_svc = get_predicate_group_service()
-    pattern = f"%{query}%"
+    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{escaped}%"
     results = group_svc.db.execute(
-        "SELECT * FROM predicate_groups WHERE group_name LIKE ? LIMIT ?",
+        "SELECT * FROM predicate_groups WHERE group_name LIKE ? ESCAPE '\\' LIMIT ?",
         (pattern, limit),
     )
 
