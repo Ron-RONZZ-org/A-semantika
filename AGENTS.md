@@ -42,9 +42,10 @@ src/A_semantika/
 ├── _cli_predikat_grupo.py # Predikat-grupo subcommand CLI
 ├── _cli_query.py          # Root query commands: serci, vidi, eksporti (Issue #10 EO)
 ├── _cli_rubujo.py         # Rubujo (trash) subcommand group: ls, restaurigi, malplenigi, forigi
-├── _cli_triples.py        # Root triple CLI: aldoni, forigi
+├── _cli_triples.py        # Root triple CLI: aldoni (-i, --str-dosiero), forigi
 ├── _node_helpers.py       # Shared helpers: label/difin extraction, FTS5 keywords
-├── _node_service.py       # NodeService (CRUDService + FTS5)
+├── _node_search.py        # NodeSearchMixin: FTS mgmt, search, node_id prefix resolution (extracted from _node_service.py)
+├── _node_service.py       # NodeService (NodeSearchMixin + CRUDService)
 ├── _predicate_service.py  # PredicateService (CRUDService + LIKE search)
 ├── _predicate_group_service.py  # PredicateGroupService (CRUDService + member mgmt)
 ├── _triple_search.py      # Triple search by partial labels (Issue #8 R2)
@@ -221,11 +222,13 @@ def get_stats() -> dict
 ## CLI Commands
 
 ```
-A semantika aldoni <subject> <predicate> <object>
+A semantika aldoni <subject> <predicate> [<object>]
   [-U / --uri]        object is a URI node reference
-  [--int]             integer literal
+  [-i / --int]        integer literal
   [-f / --float]      float literal
   [-b / --bool]       boolean literal
+  [-s / --str]        string literal
+  [-d / --str-dosiero]  read .md file as string literal (instead of <object>)
   [-l / --lingvo]     language tag for string literals
   [-u / --unuo]       unit UUID for numeric values
   [-y / --jes]        skip confirmation (was --yes, kept as alias)
