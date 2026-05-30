@@ -81,6 +81,8 @@ def aldoni(
                     "Format d'étiquette invalide (' : ' ou ' :: ' manquant) : {i}",
                 ).format(i=e))
                 continue
+            lang = lang.strip()
+            text = text.strip()
             if lang and text:
                 labels_dict[lang] = text
             else:
@@ -102,6 +104,8 @@ def aldoni(
                     "Format de définition invalide (' : ' ou ' :: ' manquant) : {i}",
                 ).format(i=d))
                 continue
+            lang = lang.strip()
+            text = text.strip()
             if lang and text:
                 defs_dict[lang] = text
             else:
