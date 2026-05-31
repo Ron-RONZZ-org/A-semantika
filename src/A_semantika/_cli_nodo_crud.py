@@ -20,9 +20,13 @@ from A_semantika.service import get_node_service, get_predicate_service, get_tri
 
 
 def _parse_lang_tag_pairs(items: list[str]) -> dict[str, str]:
-    """Parse ``LANG::TEKSTO`` or ``LANG:TEKSTO`` list into a dict.
+    """Parse ``LANG::TEKSTO``, ``LANG:TEKSTO``, or plain text list into a dict.
 
-    Warns about malformed entries (no separator).
+    When a colon separator (``::`` or ``:``) is present, splits into
+    language code and text.  When no separator is found, the full text
+    is treated as a **language-independent** label (stored with an empty
+    string key).
+
     Strips leading/trailing whitespace from lang and text.
     """
     result: dict[str, str] = {}
@@ -32,11 +36,16 @@ def _parse_lang_tag_pairs(items: list[str]) -> dict[str, str]:
         elif ":" in item:
             lang, _, text = item.partition(":")
         else:
-            warning(tr_multi(
-                "Nevalida etikedo-formato (mankas ':' aŭ '::'): {i}",
-                "Invalid label format (missing ':' or '::'): {i}",
-                "Format d'étiquette invalide (' : ' ou ' :: ' manquant) : {i}",
-            ).format(i=item))
+            # No separator → language-independent label
+            text = item.strip()
+            if text:
+                result[""] = text
+            else:
+                warning(tr_multi(
+                    "Malplena etikedo: {i}",
+                    "Empty label: {i}",
+                    "Étiquette vide : {i}",
+                ).format(i=item))
             continue
         # Strip whitespace from both language code and text
         lang = lang.strip()
@@ -54,8 +63,8 @@ def _parse_lang_tag_pairs(items: list[str]) -> dict[str, str]:
 
 def aldoni(
     node_id: Optional[str] = typer.Argument(None, help=tr_multi("Indekso (malplena = aŭtomata)", "ID (empty = auto-generate)", "ID (vide = auto-généré)")),
-    etikedoj: Optional[list[str]] = typer.Option(None, "-e", "--etikedo", help=tr_multi("Etikedo en formo LANG::TEKSTO", "Label as LANG::TEXT", "Étiquette au format LANG::TEXTE")),
-    difinoj: Optional[list[str]] = typer.Option(None, "-d", "--difino", help=tr_multi("Difino en formo LANG::TEKSTO", "Definition as LANG::TEXT", "Définition au format LANG::TEXTE")),
+    etikedoj: Optional[list[str]] = typer.Option(None, "-e", "--etikedo", help=tr_multi("Etikedo: LANG::TEKSTO aŭ simple TEKSTO (senlingva)", "Label as LANG::TEXT or plain TEXT (language-independent)", "Étiquette : LANG::TEXTE ou TEXTE simple (indépendant de la langue)")),
+    difinoj: Optional[list[str]] = typer.Option(None, "-d", "--difino", help=tr_multi("Difino: LANG::TEKSTO aŭ simple TEKSTO (senlingva)", "Definition as LANG::TEXT or plain TEXT (language-independent)", "Définition : LANG::TEXTE ou TEXTE simple (indépendant de la langue)")),
     tipo: Optional[list[str]] = typer.Option(None, "-t", "--tipo", help=tr_multi("Tipo (rdf:type) nod-indekso", "Type (rdf:type) node ID", "Type (rdf:type) ID du nœud")),
     superklaso: Optional[list[str]] = typer.Option(None, "-so", "--superklaso", help=tr_multi("Superklaso (rdfs:subClassOf) nod-indekso", "Superclass (rdfs:subClassOf) node ID", "Superclasse (rdfs:subClassOf) ID du nœud")),
     ne: Optional[list[str]] = typer.Option(None, "--ne", help=tr_multi("Malakorda (owl:disjointWith) nod-indekso", "Disjoint (owl:disjointWith) node ID", "Disjoint (owl:disjointWith) ID du nœud")),
@@ -75,11 +84,16 @@ def aldoni(
             elif ":" in e:
                 lang, _, text = e.partition(":")
             else:
-                warning(tr_multi(
-                    "Nevalida etikedo-formato (mankas ':' aŭ '::'): {i}",
-                    "Invalid label format (missing ':' or '::'): {i}",
-                    "Format d'étiquette invalide (' : ' ou ' :: ' manquant) : {i}",
-                ).format(i=e))
+                # No separator → language-independent label
+                text = e.strip()
+                if text:
+                    labels_dict[""] = text
+                else:
+                    warning(tr_multi(
+                        "Malplena etikedo: {i}",
+                        "Empty label: {i}",
+                        "Étiquette vide : {i}",
+                    ).format(i=e))
                 continue
             lang = lang.strip()
             text = text.strip()
@@ -98,11 +112,16 @@ def aldoni(
             elif ":" in d:
                 lang, _, text = d.partition(":")
             else:
-                warning(tr_multi(
-                    "Nevalida difino-formato (mankas ':' aŭ '::'): {i}",
-                    "Invalid definition format (missing ':' or '::'): {i}",
-                    "Format de définition invalide (' : ' ou ' :: ' manquant) : {i}",
-                ).format(i=d))
+                # No separator → language-independent label
+                text = d.strip()
+                if text:
+                    defs_dict[""] = text
+                else:
+                    warning(tr_multi(
+                        "Malplena difino: {i}",
+                        "Empty definition: {i}",
+                        "Définition vide : {i}",
+                    ).format(i=d))
                 continue
             lang = lang.strip()
             text = text.strip()
@@ -154,16 +173,45 @@ def aldoni(
             existing = node_svc.get(node_id)
             if existing:
                 existing_label = resolve_node_label(node_svc, node_id)
-                info(tr_multi(
-                    "Nodo {label} ({node_id}) jam ekzistas.",
-                    "Node {label} ({node_id}) already exists.",
-                    "Le nœud {label} ({node_id}) existe déjà.",
-                ).format(label=existing_label, node_id=node_id[:16]))
+                # Parse existing labels/defs for preview
+                try:
+                    old_labels = json.loads(existing.get("etikedoj", "{}"))
+                except (json.JSONDecodeError, TypeError):
+                    old_labels = {}
+                try:
+                    old_defns = json.loads(existing.get("difinoj", "{}"))
+                except (json.JSONDecodeError, TypeError):
+                    old_defns = {}
+
+                new_labels_for_update = labels_dict or None
+                new_defns_for_update = defs_dict or None
+
+                # Build modification preview (returns None if no-op)
+                preview_table = build_node_modify_preview(
+                    node_id, old_labels, new_labels_for_update,
+                    old_defns, new_defns_for_update,
+                )
+
+                if preview_table is None:
+                    info(tr_multi(
+                        "Neniu ŝanĝo: nodo {label} ({node_id}) restas neŝanĝita.",
+                        "No change: node {label} ({node_id}) remains unchanged.",
+                        "Aucun changement : le nœud {label} ({node_id}) reste inchangé.",
+                    ).format(label=existing_label, node_id=node_id[:16]))
+                    raise typer.Exit(0)
+
                 if not yes:
+                    info(tr_multi(
+                        "Nodo {label} ({node_id}) jam ekzistas.",
+                        "Node {label} ({node_id}) already exists.",
+                        "Le nœud {label} ({node_id}) existe déjà.",
+                    ).format(label=existing_label, node_id=node_id[:16]))
+                    info("")
+                    info(preview_table)
                     msg = tr_multi(
-                        "Ĉu vi volas ĝisdatigi ĝin kun la novaj etikedoj/difinoj?",
-                        "Do you want to update it with the new labels/definitions?",
-                        "Voulez-vous le mettre à jour avec les nouvelles étiquettes/définitions ?",
+                        "Ĉu vi volas ĝisdatigi ĝin kun la supraj ŝanĝoj?",
+                        "Do you want to update it with the changes above?",
+                        "Voulez-vous le mettre à jour avec les modifications ci-dessus ?",
                     )
                     if confirm_action(msg, default=False):
                         update_data: dict[str, Any] = {}
@@ -183,7 +231,14 @@ def aldoni(
                         ))
                         raise typer.Exit(0)
                 else:
-                    # -y mode: silently exit
+                    # -y mode: silently update without interactive preview
+                    update_data: dict[str, Any] = {}
+                    if labels_dict:
+                        update_data["etikedoj"] = labels_dict
+                    if defs_dict:
+                        update_data["difinoj"] = defs_dict
+                    if update_data:
+                        node_svc.update(node_id, update_data)
                     raise typer.Exit(0)
         error(err_str)
         raise typer.Exit(1) from e
@@ -267,8 +322,8 @@ def aldoni(
 
 def modifi(
     node_id: str = typer.Argument(..., help=tr_multi("Nod-indekso", "Node ID", "ID du nœud")),
-    etikedoj: Optional[list[str]] = typer.Option(None, "-e", "--etikedo", help=tr_multi("Etikedo en formo LANG::TEKSTO", "Label as LANG::TEXT", "Étiquette au format LANG::TEXTE")),
-    difinoj: Optional[list[str]] = typer.Option(None, "-d", "--difino", help=tr_multi("Difino en formo LANG::TEKSTO", "Definition as LANG::TEXT", "Définition au format LANG::TEXTE")),
+    etikedoj: Optional[list[str]] = typer.Option(None, "-e", "--etikedo", help=tr_multi("Etikedo: LANG::TEKSTO aŭ simple TEKSTO (senlingva)", "Label as LANG::TEXT or plain TEXT (language-independent)", "Étiquette : LANG::TEXTE ou TEXTE simple (indépendant de la langue)")),
+    difinoj: Optional[list[str]] = typer.Option(None, "-d", "--difino", help=tr_multi("Difino: LANG::TEKSTO aŭ simple TEKSTO (senlingva)", "Definition as LANG::TEXT or plain TEXT (language-independent)", "Définition : LANG::TEXTE ou TEXTE simple (indépendant de la langue)")),
     nova_id: Optional[str] = typer.Option(None, "--nova-id", "-ni", help=tr_multi("Nova nod-indekso (renomi)", "New node ID (rename)", "Nouvel ID du nœud (renommer)")),
     yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
 ) -> None:

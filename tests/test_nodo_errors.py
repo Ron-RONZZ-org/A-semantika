@@ -4,6 +4,8 @@ Extracted from test_edge_cases.py — TestNodoAldoniErrorHandling + TestNodoFori
 """
 from __future__ import annotations
 
+import json
+
 from typer.testing import CliRunner
 
 from A_semantika.cli import app
@@ -20,17 +22,44 @@ class TestNodoAldoniErrorHandling:
         assert result.exit_code == 0
         assert "kreita" in result.stdout or "Created" in result.stdout
 
-    def test_nodo_aldoni_duplicate_id_friendly(self, runner: CliRunner, node_svc):
-        """Using an existing node_id should inform and silently exit with -y."""
+    def test_nodo_aldoni_duplicate_id_noop(self, runner: CliRunner, node_svc):
+        """Using an existing node_id with same data should show 'no change'."""
         existing_id = "DUPLICATO"
         node_svc.create({"node_id": existing_id, "etikedoj": {"eo": "Ekzistanta"}})
         result = runner.invoke(app, [
             "nodo", "aldoni", existing_id, "-y",
         ])
-        # With -y: silently exit (no update without confirmation)
         assert result.exit_code == 0
-        # Must show a meaningful message, not a traceback
-        assert "already exists" in result.stdout or "jam ekzistas" in result.stdout
+        # No changes → should show "no change" message, not a traceback
+        assert "neniu ŝanĝo" in result.stdout.lower() or "no change" in result.stdout.lower()
+        assert "Traceback" not in result.stdout
+
+    def test_nodo_aldoni_duplicate_id_with_changes_shows_preview(self, runner: CliRunner, node_svc):
+        """Using an existing node_id with different labels shows preview before error."""
+        existing_id = "DUPLICATO2"
+        node_svc.create({"node_id": existing_id, "etikedoj": {"eo": "OldLabel"}})
+        result = runner.invoke(app, [
+            "nodo", "aldoni", existing_id, "-e", "eo::NewLabel",
+        ])
+        # Interactive: no stdin → confirm_action returns False → falls through to raw error
+        assert result.exit_code == 1
+        # Should show preview with old and new values (shown before confirm prompt)
+        assert "OldLabel" in result.stdout
+        assert "NewLabel" in result.stdout
+        # Should show the "already exists" / "jam ekzistas" info message
+        assert "jam ekzistas" in result.stdout.lower() or "already exists" in result.stdout.lower()
+        # The raw DB error (UNIQUE constraint) should NOT appear
+        assert "UNIQUE constraint" not in result.stdout
+
+    def test_nodo_aldoni_duplicate_id_with_changes_silent_yes(self, runner: CliRunner, node_svc):
+        """Using -y with different labels silently updates."""
+        existing_id = "DUPLICATO3"
+        node_svc.create({"node_id": existing_id, "etikedoj": {"eo": "OldLabel"}})
+        result = runner.invoke(app, [
+            "nodo", "aldoni", existing_id, "-e", "eo::NewLabel", "-y",
+        ])
+        assert result.exit_code == 0
+        # -y mode updates silently (no extra output), just exit 0
         assert "Traceback" not in result.stdout
 
     def test_nodo_aldoni_auto_id_no_collision(self, runner: CliRunner, node_svc):
@@ -93,3 +122,97 @@ class TestNodoForigiAmbiguousPrefix:
         assert "2" in result.stdout
         assert "matches" in result.stdout
         assert "Forigis 1 el" in result.stdout or "Deleted 1 of" in result.stdout
+
+
+class TestNodoAldoniLangIndependentLabel:
+    """Language-independent labels (no LANG:: prefix) in nodo aldoni."""
+
+    def test_aldoni_lang_independent_label(self, runner: CliRunner, node_svc):
+        """Plain text without :: separator stores as language-independent label."""
+        result = runner.invoke(app, [
+            "nodo", "aldoni", "CITY", "-e", "Paris", "-y",
+        ])
+        assert result.exit_code == 0
+        assert "kreita" in result.stdout.lower() or "created" in result.stdout.lower()
+        node = node_svc.get("CITY")
+        assert node is not None
+        labels = json.loads(node.get("etikedoj", "{}"))
+        # Should be stored with empty-string key (language-independent)
+        assert "" in labels
+        assert labels[""] == "Paris"
+
+    def test_aldoni_mixed_labels(self, runner: CliRunner, node_svc):
+        """Mix of lang-specific and language-independent labels."""
+        result = runner.invoke(app, [
+            "nodo", "aldoni", "MIXED", "-e", "Paris", "-e", "en::Paris", "-y",
+        ])
+        assert result.exit_code == 0
+        node = node_svc.get("MIXED")
+        assert node is not None
+        labels = json.loads(node.get("etikedoj", "{}"))
+        assert labels.get("") == "Paris"
+        assert labels.get("en") == "Paris"
+
+    def test_aldoni_lang_independent_difino(self, runner: CliRunner, node_svc):
+        """Plain text for -d stores as language-independent definition."""
+        result = runner.invoke(app, [
+            "nodo", "aldoni", "RIVER", "-d", "A large natural stream of water", "-y",
+        ])
+        assert result.exit_code == 0
+        node = node_svc.get("RIVER")
+        assert node is not None
+        defns = json.loads(node.get("difinoj", "{}"))
+        assert "" in defns
+        assert "stream" in defns[""]
+
+    def test_modifi_add_lang_independent_label(self, runner: CliRunner, node_svc):
+        """modifi -e with plain text adds language-independent label."""
+        node_svc.create({"node_id": "TEST", "etikedoj": {"eo": "Testo"}})
+        result = runner.invoke(app, [
+            "nodo", "modifi", "TEST", "-e", "GlobalName", "-y",
+        ])
+        assert result.exit_code == 0
+        node = node_svc.get("TEST")
+        assert node is not None
+        labels = json.loads(node.get("etikedoj", "{}"))
+        assert "" in labels
+        assert labels[""] == "GlobalName"
+        # Should also keep the existing eo label
+        assert labels.get("eo") == "Testo"
+
+
+class TestNodoAldoniPreviewOnDuplicate:
+    """Modification preview shown when duplicate node_id is provided."""
+
+    def test_preview_shown_on_duplicate(self, runner: CliRunner, node_svc):
+        """Different labels trigger preview on duplicate node_id."""
+        node_svc.create({"node_id": "PREVIEW", "etikedoj": {"eo": "Old", "en": "OldEn"}})
+        result = runner.invoke(app, [
+            "nodo", "aldoni", "PREVIEW", "-e", "eo::New",
+        ])
+        # Not confirmed (no stdin) → exit 1
+        assert result.exit_code == 1
+        # Preview table should show old vs new labels
+        assert "Old" in result.stdout
+        assert "New" in result.stdout
+        # Old label that wasn't touched should also appear
+        assert "OldEn" in result.stdout
+
+    def test_noop_duplicate_no_preview(self, runner: CliRunner, node_svc):
+        """Same labels on duplicate node_id shows 'no change', no preview."""
+        node_svc.create({"node_id": "NOOP", "etikedoj": {"eo": "Same"}})
+        result = runner.invoke(app, [
+            "nodo", "aldoni", "NOOP", "-e", "eo::Same", "-y",
+        ])
+        assert result.exit_code == 0
+        assert "neniu ŝanĝo" in result.stdout.lower() or "no change" in result.stdout.lower()
+
+    def test_lang_independent_label_on_duplicate(self, runner: CliRunner, node_svc):
+        """Language-independent label in preview on duplicate."""
+        node_svc.create({"node_id": "GLOBAL", "etikedoj": {"": "Paris"}})
+        result = runner.invoke(app, [
+            "nodo", "aldoni", "GLOBAL", "-e", "London",
+        ])
+        assert result.exit_code == 1
+        assert "Paris" in result.stdout
+        assert "London" in result.stdout
