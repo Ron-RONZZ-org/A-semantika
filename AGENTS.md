@@ -249,8 +249,8 @@ A semantika serci [--subjekto LABEL] [--predikato LABEL] [--objekto LABEL]
   Backward compat: serci <single-label> searches across all three fields
 
 A semantika nodo aldoni [UUID]
-  [-e / --etikedo "LANG::STR"]*
-  [-d / --difino "LANG::STR"]*
+  [-e / --etikedo "LANG::STR" | "STR"]*  # LANG::STR for lang-specific, plain STR for language-independent
+  [-d / --difino "LANG::STR" | "STR"]*  # Same format as -e
   [-t / --tipo UUID]*               [shortcut: rdf:type]
   [-so / --superklaso UUID]*        [shortcut: rdfs:subClassOf]
   [--ne UUID]*                      [shortcut: owl:disjointWith]
@@ -1106,6 +1106,43 @@ This is not valid RDF — consumers can't parse labels programmatically.
 - ✓ Long literal values displayed in full (not truncated)
 - ✓ Whitespace stripped from labels on creation
 - ✓ Duplicate detection triggers and shows confirmation prompt
+
+### Issue #59: Modification Preview on Duplicate node_id + Language-Independent Labels (May 2026)
+
+**Scope:** 2 features for `nodo aldoni` to improve UX when nodes already exist.
+
+**Feature 1: Modification Preview on Duplicate node_id**
+- When `nodo aldoni` is called with an existing `node_id`, and the new labels/defs
+  differ from the existing ones, a `build_node_modify_preview()` table is shown
+  (same as `nodo modifi`), allowing the user to see what will change before
+  confirming.
+- No-op (identical labels/defs) exits with "No change" message — no preview needed.
+- `-y` flag skips preview and silently applies the update.
+- **File:** `_cli_nodo_crud.py:aldoni()` lines ~170-240
+
+**Feature 2: Language-Independent Labels**
+- `-e "Paris"` (no `:` separator) now stores the label with an empty-string key `""`,
+  interpreted as a language-independent label (proper names, cities, etc.).
+- Display logic in `label_from_json()`/`get_label_from_node()` already falls back
+  to the first non-empty value, so these labels display correctly.
+- Affected functions: `_parse_lang_tag_pairs()` and the inline parsing in `aldoni()`
+  for both `--etikedo` and `--difino`.
+- **Files:** `_cli_nodo_crud.py`, `_cli_predikato.py`
+
+**Tests:** 9 new tests in `test_nodo_errors.py`: language-independent label creation, mixed
+labels, language-independent difinoj, modifi with language-independent labels,
+preview on duplicate with changes, noop on duplicate, language-independent
+labels in preview. 469 total (460 existing + 9 new).
+
+**Commit:** `6f7bebe` — "feat: modification preview on duplicate node_id + language-independent labels (#59)"
+
+**User Simulation Verified:**
+- ✓ Language-independent label stored with `""` key
+- ✓ Mixed lang-specific + language-independent labels work
+- ✓ Duplicate node_id with different labels shows preview table
+- ✓ No-op duplicate shows "No change" message
+- ✓ `-y` flag silently updates on duplicate
+- ✓ Empty plain text skipped with warning
 
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
