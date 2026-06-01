@@ -230,6 +230,13 @@ def aldoni(
                             node_id=node_id[:16],
                         ))
                         raise typer.Exit(0)
+                    else:
+                        info(tr_multi(
+                            "Nuligita.",
+                            "Cancelled.",
+                            "Annulé.",
+                        ))
+                        raise typer.Exit(0)
                 else:
                     # -y mode: silently update without interactive preview
                     update_data: dict[str, Any] = {}
@@ -271,22 +278,82 @@ def aldoni(
                     "Similar node already exists: {label} ({node_id})",
                     "Un nœud similaire existe déjà : {label} ({node_id})",
                 ).format(label=existing_label, node_id=existing_id[:16]))
-                # Only auto-prompt if not in skip-confirmation mode (-y)
+
+                # Parse existing labels/defs for preview
+                try:
+                    old_labels = json.loads(similar.get("etikedoj", "{}"))
+                except (json.JSONDecodeError, TypeError):
+                    old_labels = {}
+                try:
+                    old_defns = json.loads(similar.get("difinoj", "{}"))
+                except (json.JSONDecodeError, TypeError):
+                    old_defns = {}
+
+                new_labels_for_update = labels_dict or None
+                new_defns_for_update = defs_dict or None
+
+                # Build modification preview (returns None if no-op)
+                preview_table = build_node_modify_preview(
+                    existing_id, old_labels, new_labels_for_update,
+                    old_defns, new_defns_for_update,
+                )
+
+                if preview_table is None:
+                    # No change — delete the new node and exit
+                    node_svc.delete(node_id_val)
+                    info(tr_multi(
+                        "Neniu ŝanĝo: nodo {label} ({node_id}) restas neŝanĝita.",
+                        "No change: node {label} ({node_id}) remains unchanged.",
+                        "Aucun changement : le nœud {label} ({node_id}) reste inchangé.",
+                    ).format(label=existing_label, node_id=existing_id[:16]))
+                    raise typer.Exit(0)
+
                 if not yes:
+                    info("")
+                    info(preview_table)
                     msg = tr_multi(
-                        "Ĉu ĝi estas la sama nodo?",
-                        "Is it the same node?",
-                        "Est-ce le même nœud ?",
+                        "Ĉu ĝi estas la sama nodo? Ĉu vi volas ĝisdatigi ĝin kun la supraj ŝanĝoj?",
+                        "Is it the same node? Do you want to update it with the changes above?",
+                        "Est-ce le même nœud ? Voulez-vous le mettre à jour avec les modifications ci-dessus ?",
                     )
                     if confirm_action(msg, default=False):
                         # User wants to update existing node instead
+                        update_data: dict[str, Any] = {}
+                        if labels_dict:
+                            update_data["etikedoj"] = labels_dict
+                        if defs_dict:
+                            update_data["difinoj"] = defs_dict
+                        if update_data:
+                            node_svc.update(existing_id, update_data)
                         node_svc.delete(node_id_val)
                         info(tr_multi(
-                            "Novnodo ne kreita. Uzu 'A semantika nodo modifi' por ĝisdatigi.",
-                            "New node not created. Use 'A semantika nodo modifi' to update it.",
-                            "Nouveau nœud non créé. Utilisez 'A semantika nodo modifi' pour le mettre à jour.",
+                            "Nodo ĝisdatigita: {label} ({node_id})",
+                            "Node updated: {label} ({node_id})",
+                            "Nœud mis à jour : {label} ({node_id})",
+                        ).format(
+                            label=resolve_node_label(node_svc, existing_id),
+                            node_id=existing_id[:16],
                         ))
                         raise typer.Exit(0)
+                    else:
+                        node_svc.delete(node_id_val)
+                        info(tr_multi(
+                            "Nuligita.",
+                            "Cancelled.",
+                            "Annulé.",
+                        ))
+                        raise typer.Exit(0)
+                else:
+                    # -y mode: silently update existing, delete new
+                    update_data: dict[str, Any] = {}
+                    if labels_dict:
+                        update_data["etikedoj"] = labels_dict
+                    if defs_dict:
+                        update_data["difinoj"] = defs_dict
+                    if update_data:
+                        node_svc.update(existing_id, update_data)
+                    node_svc.delete(node_id_val)
+                    raise typer.Exit(0)
 
     # Build full arc dicts with the now-known subject node_id
     arcs: list[dict] = [
@@ -334,6 +401,13 @@ def modifi(
     except AmbiguousUUIDError as e:
         error(tr_multi("Ambigua prefikso: {e}", "Ambiguous prefix: {e}", "Préfixe ambigu : {e}").format(e=str(e)))
         raise typer.Exit(1) from e
+    if not node:
+        # Fallback: substring match
+        try:
+            node = node_svc.resolve_node_id_substring(node_id)
+        except AmbiguousUUIDError as e:
+            error(tr_multi("Ambigua nodo: {e}", "Ambiguous node: {e}", "Nœud ambigu : {e}").format(e=str(e)))
+            raise typer.Exit(1) from e
     if not node:
         error(tr_multi("Nodo ne trovita: {u}", "Node not found: {u}", "Nœud non trouvé : {u}").format(u=node_id))
         raise typer.Exit(1)

@@ -216,3 +216,48 @@ class TestNodoAldoniPreviewOnDuplicate:
         assert result.exit_code == 1
         assert "Paris" in result.stdout
         assert "London" in result.stdout
+
+    def test_duplicate_decline_shows_nuligita(self, runner: CliRunner, node_svc):
+        """Declining duplicate update should show 'nuligita', not raw error."""
+        node_svc.create({"node_id": "DUPLO", "etikedoj": {"eo": "OldLabel"}})
+        # Provide "n" (no) as input → confirm_action returns False → should show "nuligita"
+        result = runner.invoke(app, [
+            "nodo", "aldoni", "DUPLO", "-e", "eo::NewLabel",
+        ], input="n\n")
+        # Should show "Canceled" (exit 0), not the raw "already exists" error
+        assert result.exit_code == 0, f"Got exit {result.exit_code}: {result.stdout}"
+        assert "nuligita" in result.stdout.lower() or "canceled" in result.stdout.lower() or "annulé" in result.stdout.lower()
+
+
+class TestNodoAldoniSimilarNodeUpdate:
+    """Similar node detection should offer inline update."""
+
+    def test_similar_node_decline_shows_nuligita(self, runner: CliRunner, node_svc):
+        """Declining similar node update should show 'nuligita'."""
+        # Existing node with full name. New node uses a SUBSET of words
+        # (word-subset check in similar detection).
+        node_svc.create({"node_id": "EXISTO", "etikedoj": {"eo": "Ekzistanta Nodo Granda"}})
+        result = runner.invoke(app, [
+            "nodo", "aldoni", "NOVA", "-e", "eo::Ekzistanta Nodo",
+        ], input="n\n")
+        assert result.exit_code == 0, f"Got exit {result.exit_code}: {result.stdout}"
+        assert "nuligita" in result.stdout.lower() or "canceled" in result.stdout.lower() or "annulé" in result.stdout.lower()
+        # The existing node should still exist
+        assert node_svc.get("EXISTO") is not None
+
+    def test_similar_node_update_with_yes(self, runner: CliRunner, node_svc):
+        """Similar node with -y flag should silently update existing."""
+        # Existing has "Ekzistanta Nodo Granda" → new "Ekzistanta Nodo" is subset words
+        node_svc.create({"node_id": "EXISTO2", "etikedoj": {"eo": "Ekzistanta Nodo Granda"}})
+        result = runner.invoke(app, [
+            "nodo", "aldoni", "NOVA2", "-e", "eo::Ekzistanta Nodo", "-y",
+        ])
+        assert result.exit_code == 0, f"Got exit {result.exit_code}: {result.stdout}"
+        # Existing node should have been updated with the new label
+        existing = node_svc.get("EXISTO2")
+        assert existing is not None
+        import json
+        labels = json.loads(existing["etikedoj"])
+        assert labels.get("eo") == "Ekzistanta Nodo"
+        # New node should NOT exist (deleted after similar detection)
+        assert node_svc.get("NOVA2") is None
