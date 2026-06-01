@@ -205,10 +205,11 @@ class TestFormatDeleteError:
         assert "arkojn" in msg or "arcs" in msg or "arcs" in msg
 
     def test_other_integrity_error_passes_through(self):
-        """Other IntegrityError messages should pass through verbatim."""
+        """Other IntegrityError messages should be wrapped in localized template."""
         err = sqlite3.IntegrityError("some other error")
         msg = _format_delete_error("test-node", err)
-        assert msg == "some other error"
+        assert "test-node" in msg
+        assert "some other error" in msg
 
     def test_malformed_database_message(self):
         """DatabaseError with 'malformed' should include the actual error."""

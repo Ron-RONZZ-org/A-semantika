@@ -172,12 +172,15 @@ def build_triple_preview_table(
         # String literal
         quoted_val = f'"{object_value}"'
         table.add_row(subj_label, pred_label, quoted_val)
-        table.add_row(subj_id, predicate_id, "")
-
-        parts = [tr_multi("→ literal", "→ literal", "→ litteral")]
-        if object_lang:
-            parts.append(f"lang: {object_lang}")
-        footnote = ", ".join(parts)
+        lang_info = (
+            tr_multi(
+                "literal, lingvo: {l}", "literal, lang: {l}", "littéral, langue : {l}",
+            ).format(l=object_lang)
+            if object_lang
+            else tr_multi("literal", "literal", "littéral")
+        )
+        table.add_row(subj_id, predicate_id, lang_info)
+        footnote = ""
 
     return table, footnote
 
@@ -518,6 +521,7 @@ def build_predicate_modify_preview(
     new_etikedoj: dict[str, str] | None,
     old_priskriboj: dict[str, str],
     new_priskriboj: dict[str, str] | None,
+    new_predicate_id: str | None = None,
 ) -> Table | None:
     """Build a preview table showing old → new values for a predicate modifi.
 
@@ -540,6 +544,15 @@ def build_predicate_modify_preview(
     table.add_column(tr_multi("Nova", "New", "Nouveau"), no_wrap=True)
 
     has_changes = False
+
+    # Predicate ID rename
+    if new_predicate_id is not None and new_predicate_id != pred_id:
+        has_changes = True
+        table.add_row(
+            tr_multi("ID", "ID", "ID"),
+            pred_id,
+            new_predicate_id,
+        )
 
     # Labels (etikedoj)
     if new_etikedoj is not None and new_etikedoj != old_etikedoj:

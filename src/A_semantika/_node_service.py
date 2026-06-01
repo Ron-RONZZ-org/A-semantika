@@ -13,6 +13,7 @@ from A_semantika._node_helpers import (
     extract_difin_text,
     extract_label_text,
     get_display_label,
+    sanitize_node_id,
 )
 from A_semantika._node_search import NodeSearchMixin, _fts_config
 from A_semantika.data.storage import now
@@ -32,7 +33,7 @@ class NodeService(NodeSearchMixin, CRUDService):
     # ── Override create to support optional node_id ──────────────────────
     def create(self, data: dict[str, Any]) -> dict[str, Any]:
         """Create a node with optional pre-assigned node_id."""
-        node_id_val = data.get("node_id") or str(_uuid.uuid4())
+        node_id_val = sanitize_node_id(data.get("node_id")) if data.get("node_id") else str(_uuid.uuid4())
         timestamp = now()
 
         raw = {
@@ -205,6 +206,8 @@ class NodeService(NodeSearchMixin, CRUDService):
         )
         check_triple_subject_collision(self.db, old_id, new_id)
         check_triple_object_collision(self.db, old_id, new_id)
+
+        new_id = sanitize_node_id(new_id)
 
         # Build updates like update() does
         updates = dict(data)

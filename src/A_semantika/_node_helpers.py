@@ -7,6 +7,7 @@ and display label resolution.
 from __future__ import annotations
 
 import json
+import unicodedata
 from typing import Any
 
 from A_semantika._constants import FTS5_KEYWORDS
@@ -166,5 +167,26 @@ def truncate_uuid(uuid: str, all_uuids: list[str] | None = None) -> str:
             min_other = min((len(o) for o in others), default=len(uuid))
             return uuid[:max(min_other + 1, 8)]
         # Single UUID in set — no context to compare.
-        return uuid[:16]
+    return uuid[:16]
+
+
+def sanitize_node_id(raw_id: str) -> str:
+    """Strip invisible Unicode characters from a node_id.
+
+    Removes Unicode category ``Cf`` (format chars like zero-width space
+    U+200B, U+200C, U+200D, U+FEFF) and ``Cc`` (control chars) while
+    preserving alphanumerics, underscores, hyphens, colons, and standard
+    ASCII whitespace.
+
+    Args:
+        raw_id: Raw node ID from user input.
+
+    Returns:
+        Cleaned node ID safe for storage and lookup.
+    """
+    return "".join(
+        ch for ch in raw_id.strip()
+        if unicodedata.category(ch) not in ("Cf", "Cc")
+        or ch in (" ", "\t")
+    )
     return uuid[:16]

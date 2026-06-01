@@ -285,7 +285,7 @@ def aldoni(
                     # -y mode: silently update without interactive preview
                     _apply_update(node_id)
                     raise typer.Exit(0)
-        error(err_str)
+        error(tr_multi("Eraro: {e}", "Error: {e}", "Erreur : {e}").format(e=err_str))
         raise typer.Exit(1) from e
     node_id_val = node["node_id"]
 
@@ -405,7 +405,7 @@ def aldoni(
         try:
             create_node_arcs(triple_svc, node_svc, node_id_val, arcs)
         except ValueError as e:
-            error(str(e))
+            error(tr_multi("Eraro: {e}", "Error: {e}", "Erreur : {e}").format(e=str(e)))
             raise typer.Exit(1) from e
     elif not confirm_node_creation(node_id_val, labels_dict, defs_dict, yes=yes):
         node_svc.delete(node_id_val)
@@ -530,5 +530,5 @@ def modifi(
             current_id = updated["node_id"]
             info(tr_multi("Nodo modifita: {u}", "Node modified: {u}", "Nœud modifié : {u}").format(u=truncate_uuid(current_id)))
     except ValueError as e:
-        error(str(e))
+        error(tr_multi("Eraro: {e}", "Error: {e}", "Erreur : {e}").format(e=str(e)))
         raise typer.Exit(1) from e

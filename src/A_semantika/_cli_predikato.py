@@ -352,6 +352,7 @@ def modifi(
             predicate_id,
             old_etikedoj, new_etikedoj,
             old_priskriboj, new_priskriboj,
+            new_predicate_id=nova_id,
         )
         if table:
             info("")

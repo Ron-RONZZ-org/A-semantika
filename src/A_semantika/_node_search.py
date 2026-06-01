@@ -11,7 +11,7 @@ import warnings
 from typing import Any
 
 from A import warning as _warning
-from A_semantika._node_helpers import AmbiguousUUIDError, FTS5_KEYWORDS
+from A_semantika._node_helpers import AmbiguousUUIDError, FTS5_KEYWORDS, sanitize_node_id
 
 
 def _fts_config() -> Any:
@@ -44,6 +44,11 @@ class NodeSearchMixin:
         """
         if not prefix:
             return None
+
+        # Strip invisible Unicode characters from input so that
+        # contaminated node_ids (e.g. with U+200B zero-width spaces
+        # from copy-paste) are still discoverable.
+        prefix = sanitize_node_id(prefix)
 
         # Full node_id match via exact match (case-insensitive)
         node = self.db.execute_one(
@@ -78,6 +83,7 @@ class NodeSearchMixin:
         """
         if not text:
             return None
+        text = sanitize_node_id(text)
         escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         matches = self.db.execute(
             "SELECT * FROM nodes WHERE node_id LIKE ? COLLATE NOCASE ESCAPE '\\'",

@@ -41,14 +41,15 @@ class TestBuildTriplePreviewTable:
             "literal", object_lang="eo",
         )
         assert table is not None
-        assert "→ literal" in footnote or "lang" in footnote
-
-        # Verify row order: quoted value must appear before raw subject ID
+        # Verify Row 2: lang info should be inline, not separate footnote
         buf = StringIO()
         console = Console(file=buf, width=120)
         console.print(table)
         output = buf.getvalue()
 
+        assert "literal, lingvo: eo" in output or "literal, lang: eo" in output or "littéral, langue : eo" in output
+
+        # Verify row order: quoted value must appear before raw subject ID
         value_pos = output.index('"Hundo"')
         raw_id_pos = output.index(subj["node_id"][:16])
         assert value_pos < raw_id_pos, (

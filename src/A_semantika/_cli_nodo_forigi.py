@@ -39,7 +39,11 @@ def _format_delete_error(nid: str, error: Exception) -> str:
                 "Node {u} has arcs. Delete them first or use the --jes flag.",
                 "Le nœud {u} a des arcs. Supprimez-les d'abord ou utilisez le drapeau --jes.",
             )
-        return err_msg
+        return tr_multi(
+            "Eraro forigante {u}: {e}",
+            "Error deleting {u}: {e}",
+            "Erreur lors de la suppression de {u} : {e}",
+        ).format(u=nid, e=err_msg)
     # Log the actual exception detail before returning user-facing message
     warning(f"Delete error for {nid}: {type(error).__name__}: {err_msg}")
     return tr_multi(
