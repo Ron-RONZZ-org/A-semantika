@@ -362,6 +362,8 @@ def build_node_modify_preview(
     new_labels: dict[str, str] | None,
     old_defns: dict[str, str],
     new_defns: dict[str, str] | None,
+    old_arcs: list[dict] | None = None,
+    new_arcs: list[dict] | None = None,
 ) -> Table | None:
     """Build a preview table showing old → new values for a node modifi.
 
@@ -374,6 +376,9 @@ def build_node_modify_preview(
         new_labels: New labels dict, or ``None`` if not changing.
         old_defns: Existing definitions dict.
         new_defns: New definitions dict, or ``None`` if not changing.
+        old_arcs: Existing arcs (triples where node is subject), or ``None``.
+        new_arcs: New arcs to add, or ``None``.  If not ``None``, arcs not
+            present in *old_arcs* are shown as additions.
 
     Returns:
         A Rich Table with old→new columns, or ``None`` if nothing changed.
@@ -404,6 +409,31 @@ def build_node_modify_preview(
             old_lines,
             new_lines,
         )
+
+    if new_arcs is not None:
+        old_arc_set = {
+            (a["predicate"], a["object"]) for a in (old_arcs or [])
+        }
+        new_arc_set = {
+            (a["predicate"], a["object"]) for a in new_arcs
+        }
+        added = new_arc_set - old_arc_set
+        removed = old_arc_set - new_arc_set
+        if added or removed:
+            has_changes = True
+            old_lines_lines: list[str] = []
+            new_lines_lines: list[str] = []
+            if removed:
+                for pred, obj in sorted(removed):
+                    old_lines_lines.append(f"{pred}: {obj[:16] if obj else ''}")
+            if added:
+                for pred, obj in sorted(added):
+                    new_lines_lines.append(f"{pred}: {obj[:16] if obj else ''}")
+            table.add_row(
+                tr_multi("Arkoj", "Arcs", "Arcs"),
+                "\n".join(old_lines_lines) if old_lines_lines else "—",
+                "\n".join(new_lines_lines) if new_lines_lines else "—",
+            )
 
     return table if has_changes else None
 

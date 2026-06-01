@@ -163,6 +163,55 @@ def aldoni(
             error(msg)
         raise typer.Exit(1)
 
+    # Pre-build arc template list for reuse in all code paths.
+    # These describe arcs to create: (target_id, predicate).
+    # The subject depends on whether we're updating an existing node
+    # or creating a new one, and is filled in at point of use.
+    new_arc_dicts: list[dict] = [
+        {"predicate": pred, "object": target_id, "object_type": "uri"}
+        for target_id, pred in arc_templates
+    ]
+
+    # Helper: get existing arcs for a node (where node is subject).
+    def _get_existing_arcs(nid: str) -> list[dict]:
+        """Return existing arcs for *nid* (triples where *nid* is subject)."""
+        all_triples = triple_svc.get_by_node(nid)
+        return [
+            {"predicate": t["predicate_id"], "object": t["object_value"], "object_type": t["object_type"]}
+            for t in all_triples
+            if t["subject_uuid"] == nid
+        ]
+
+    def _apply_update(node_to_update: str, delete_new: str | None = None) -> None:
+        """Update labels/defs + arcs on *node_to_update*, optionally deleting *delete_new*."""
+        update_data: dict[str, Any] = {}
+        if labels_dict:
+            update_data["etikedoj"] = labels_dict
+        if defs_dict:
+            update_data["difinoj"] = defs_dict
+        if update_data:
+            node_svc.update(node_to_update, update_data)
+        # Create arcs on the existing node
+        if new_arc_dicts:
+            arcs_with_subject = [
+                {"subject": node_to_update, **a}
+                for a in new_arc_dicts
+            ]
+            create_node_arcs(triple_svc, node_svc, node_to_update, arcs_with_subject)
+        if delete_new:
+            node_svc.delete(delete_new)
+
+    def _build_preview(nid: str, old_lbls: dict, new_lbls: dict | None,
+                       old_dfn: dict, new_dfn: dict | None) -> tuple[Table | None, list[dict]]:
+        """Build preview, also returning existing arcs for *nid*."""
+        existing_arcs = _get_existing_arcs(nid)
+        preview = build_node_modify_preview(
+            nid, old_lbls, new_lbls,
+            old_dfn, new_dfn,
+            old_arcs=existing_arcs, new_arcs=new_arc_dicts or None,
+        )
+        return preview, existing_arcs
+
     # Now create the subject node (safe — all targets resolved successfully)
     try:
         node = node_svc.create(data)
@@ -186,8 +235,8 @@ def aldoni(
                 new_labels_for_update = labels_dict or None
                 new_defns_for_update = defs_dict or None
 
-                # Build modification preview (returns None if no-op)
-                preview_table = build_node_modify_preview(
+                # Build modification preview (includes arcs if any)
+                preview_table, _ = _build_preview(
                     node_id, old_labels, new_labels_for_update,
                     old_defns, new_defns_for_update,
                 )
@@ -214,13 +263,7 @@ def aldoni(
                         "Voulez-vous le mettre à jour avec les modifications ci-dessus ?",
                     )
                     if confirm_action(msg, default=False):
-                        update_data: dict[str, Any] = {}
-                        if labels_dict:
-                            update_data["etikedoj"] = labels_dict
-                        if defs_dict:
-                            update_data["difinoj"] = defs_dict
-                        if update_data:
-                            node_svc.update(node_id, update_data)
+                        _apply_update(node_id)
                         info(tr_multi(
                             "Nodo ĝisdatigita: {label} ({node_id})",
                             "Node updated: {label} ({node_id})",
@@ -239,13 +282,7 @@ def aldoni(
                         raise typer.Exit(0)
                 else:
                     # -y mode: silently update without interactive preview
-                    update_data: dict[str, Any] = {}
-                    if labels_dict:
-                        update_data["etikedoj"] = labels_dict
-                    if defs_dict:
-                        update_data["difinoj"] = defs_dict
-                    if update_data:
-                        node_svc.update(node_id, update_data)
+                    _apply_update(node_id)
                     raise typer.Exit(0)
         error(err_str)
         raise typer.Exit(1) from e
@@ -292,8 +329,8 @@ def aldoni(
                 new_labels_for_update = labels_dict or None
                 new_defns_for_update = defs_dict or None
 
-                # Build modification preview (returns None if no-op)
-                preview_table = build_node_modify_preview(
+                # Build modification preview (includes arcs if any)
+                preview_table, _ = _build_preview(
                     existing_id, old_labels, new_labels_for_update,
                     old_defns, new_defns_for_update,
                 )
@@ -318,14 +355,7 @@ def aldoni(
                     )
                     if confirm_action(msg, default=False):
                         # User wants to update existing node instead
-                        update_data: dict[str, Any] = {}
-                        if labels_dict:
-                            update_data["etikedoj"] = labels_dict
-                        if defs_dict:
-                            update_data["difinoj"] = defs_dict
-                        if update_data:
-                            node_svc.update(existing_id, update_data)
-                        node_svc.delete(node_id_val)
+                        _apply_update(existing_id, delete_new=node_id_val)
                         info(tr_multi(
                             "Nodo ĝisdatigita: {label} ({node_id})",
                             "Node updated: {label} ({node_id})",
@@ -345,14 +375,7 @@ def aldoni(
                         raise typer.Exit(0)
                 else:
                     # -y mode: silently update existing, delete new
-                    update_data: dict[str, Any] = {}
-                    if labels_dict:
-                        update_data["etikedoj"] = labels_dict
-                    if defs_dict:
-                        update_data["difinoj"] = defs_dict
-                    if update_data:
-                        node_svc.update(existing_id, update_data)
-                    node_svc.delete(node_id_val)
+                    _apply_update(existing_id, delete_new=node_id_val)
                     raise typer.Exit(0)
 
     # Build full arc dicts with the now-known subject node_id
