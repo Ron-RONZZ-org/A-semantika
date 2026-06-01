@@ -86,3 +86,59 @@ class TestPredikatGrupoForigiMulti:
         ])
         assert result.exit_code == 1
         assert "Nenio forigebla" in result.stdout or "Nothing to delete" in result.stdout
+
+
+class TestPredikatoForigiPrefix:
+    """Bug 3: --prefix flag for predikato forigi."""
+
+    def test_prefix_deletes_matching(self, runner: CliRunner):
+        """--prefix test: should delete all test: prefixed predicates."""
+        runner.invoke(app, ["predikato", "aldoni", "test:foo", "-e", "eo::testfoo", "-y"])
+        runner.invoke(app, ["predikato", "aldoni", "test:bar", "-e", "eo::testbar", "-y"])
+        runner.invoke(app, ["predikato", "aldoni", "wdt:P31", "-e", "eo::tipo", "-y"])
+        # Only delete test: prefixed
+        result = runner.invoke(app, ["predikato", "forigi", "--prefix", "test:", "-y"])
+        assert result.exit_code == 0, f"Got exit {result.exit_code}: {result.stdout}"
+        assert "Forigis 2 el 2" in result.stdout
+        # Verify with vidi commands (predicates should be gone)
+        r1 = runner.invoke(app, ["predikato", "vidi", "test:foo"])
+        assert r1.exit_code != 0
+        r2 = runner.invoke(app, ["predikato", "vidi", "test:bar"])
+        assert r2.exit_code != 0
+        # wdt:P31 should still exist
+        r3 = runner.invoke(app, ["predikato", "vidi", "wdt:P31"])
+        assert r3.exit_code == 0
+
+    def test_prefix_no_match(self, runner: CliRunner):
+        """--prefix with no matching predicates should report nothing to delete."""
+        runner.invoke(app, ["predikato", "aldoni", "wdt:P31", "-e", "eo::tipo", "-y"])
+        result = runner.invoke(app, ["predikato", "forigi", "--prefix", "no_such_", "-y"])
+        assert result.exit_code == 1
+        assert "Nenio forigebla" in result.stdout or "Nothing to delete" in result.stdout
+
+
+class TestNodoForigiPrefix:
+    """Bug 3: --prefix flag for nodo forigi."""
+
+    def test_prefix_deletes_matching(self, runner: CliRunner):
+        """--prefix test: should delete all test: prefixed nodes."""
+        runner.invoke(app, ["nodo", "aldoni", "test:node1", "-e", "eo::test1", "-y"])
+        runner.invoke(app, ["nodo", "aldoni", "test:node2", "-e", "eo::test2", "-y"])
+        runner.invoke(app, ["nodo", "aldoni", "REAL_NODE", "-e", "eo::real", "-y"])
+        result = runner.invoke(app, ["nodo", "forigi", "--prefix", "test:", "-y"])
+        assert result.exit_code == 0, f"Got exit {result.exit_code}: {result.stdout}"
+        # Verify with vidi commands (nodes should be gone)
+        r1 = runner.invoke(app, ["nodo", "vidi", "test:node1"])
+        assert r1.exit_code != 0
+        r2 = runner.invoke(app, ["nodo", "vidi", "test:node2"])
+        assert r2.exit_code != 0
+        # REAL_NODE should still exist
+        r3 = runner.invoke(app, ["nodo", "vidi", "REAL_NODE"])
+        assert r3.exit_code == 0
+
+    def test_prefix_no_match(self, runner: CliRunner):
+        """--prefix with no matching nodes should report nothing to delete."""
+        runner.invoke(app, ["nodo", "aldoni", "REAL_NODE", "-e", "eo::real", "-y"])
+        result = runner.invoke(app, ["nodo", "forigi", "--prefix", "no_such_", "-y"])
+        assert result.exit_code == 1
+        assert "Nenio forigebla" in result.stdout or "Nothing to delete" in result.stdout

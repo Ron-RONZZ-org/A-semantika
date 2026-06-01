@@ -261,3 +261,59 @@ class TestNodoAldoniSimilarNodeUpdate:
         assert labels.get("eo") == "Ekzistanta Nodo"
         # New node should NOT exist (deleted after similar detection)
         assert node_svc.get("NOVA2") is None
+
+
+class TestNodoAldoniArcAware:
+    """Bug 1: arc-aware aldoni — -t type should not be dropped on existing node."""
+
+    def test_arc_on_dup_node_id_with_type(self, runner: CliRunner, node_svc, triple_svc):
+        """Creating node, then aldoni same ID with -t should add arc, not say 'no change'."""
+        node_svc.create({"node_id": "ARC_TEST", "etikedoj": {"eo": "ArcTest"}})
+        node_svc.create({"node_id": "ARC_TYPE", "etikedoj": {"eo": "ArcType"}})
+        # rdf:type is already seeded as a default predicate — no need to create it
+
+        result = runner.invoke(app, [
+            "nodo", "aldoni", "ARC_TEST", "-e", "eo::ArcTest", "-t", "ARC_TYPE", "-y",
+        ])
+        # Should NOT say "Neniu ŝanĝo" — should silently add the type arc
+        assert result.exit_code == 0, f"Got exit {result.exit_code}: {result.stdout}"
+        assert "neniu ŝanĝo" not in result.stdout.lower()
+        # Verify the type arc was created
+        triples = triple_svc.get_by_subject("ARC_TEST")
+        type_triples = [t for t in triples if t.get("predicate_id") == "rdf:type"]
+        assert len(type_triples) >= 1
+        assert type_triples[0]["object_value"] == "ARC_TYPE"
+
+    def test_arc_on_similar_node_with_type(self, runner: CliRunner, node_svc, triple_svc):
+        """Similar node + -t should add arc to existing, not silently drop it."""
+        node_svc.create({"node_id": "SIM_ARC_EX", "etikedoj": {"eo": "Ekzistanta Nodo Granda"}})
+        node_svc.create({"node_id": "SIM_ARC_TYPE", "etikedoj": {"eo": "SimArcType"}})
+
+        result = runner.invoke(app, [
+            "nodo", "aldoni", "SIM_ARC_NEW", "-e", "eo::Ekzistanta Nodo",
+            "-t", "SIM_ARC_TYPE", "-y",
+        ])
+        assert result.exit_code == 0, f"Got exit {result.exit_code}: {result.stdout}"
+        # The similar node should have the type arc
+        triples = triple_svc.get_by_subject("SIM_ARC_EX")
+        type_triples = [t for t in triples if t.get("predicate_id") == "rdf:type"]
+        assert len(type_triples) >= 1
+        assert type_triples[0]["object_value"] == "SIM_ARC_TYPE"
+        # New node should be deleted
+        assert node_svc.get("SIM_ARC_NEW") is None
+
+    def test_arc_on_dup_node_id_shows_preview(self, runner: CliRunner, node_svc):
+        """Adding -t to existing node should show arc in preview, not 'no change'."""
+        node_svc.create({"node_id": "PREV_ARC", "etikedoj": {"eo": "PrevArc"}})
+        node_svc.create({"node_id": "PREV_TYPE", "etikedoj": {"eo": "PrevType"}})
+
+        result = runner.invoke(app, [
+            "nodo", "aldoni", "PREV_ARC", "-e", "eo::PrevArc",
+            "-t", "PREV_TYPE",
+        ], input="n\n")
+        # Should show the preview table (with arc info), not just "no change" exit
+        assert result.exit_code == 0, f"Got exit {result.exit_code}: {result.stdout}"
+        # Output should contain something about the arc/predicate
+        assert "rdf:type" in result.stdout or "PREV_TYPE" in result.stdout
+        # Should NOT say "Neniu ŝanĝo"
+        assert "neniu ŝanĝo" not in result.stdout.lower()

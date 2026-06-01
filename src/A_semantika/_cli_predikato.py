@@ -16,6 +16,7 @@ from A_semantika.data.storage import label_from_json
 from A_semantika._preview import (
     build_predicate_modify_preview,
     confirm_predicate_creation,
+    resolve_node_label,
 )
 from A_semantika._wikidata_helper import (
     is_wikidata_id,
@@ -24,7 +25,8 @@ from A_semantika._wikidata_helper import (
     fetch_wikidata_details,
 )
 
-from A_semantika.service import get_predicate_service
+from A_semantika._preview import resolve_predicate_label
+from A_semantika.service import get_node_service, get_predicate_service, get_triple_service
 
 predikato_app = typer.Typer(
     name="predikato",
@@ -385,12 +387,20 @@ def modifi(
 
 @predikato_app.command("forigi")
 def forigi(
-    predicate_ids: list[str] = typer.Argument(
-        ...,
+    predicate_ids: list[str] | None = typer.Argument(
+        default=None,  # type:ignore[arg-type]
         help=tr_multi(
             "Predikato ID-oj (pluraj)",
             "Predicate IDs (multiple)",
             "IDs des prédicats (plusieurs)",
+        ),
+    ),
+    prefix: str | None = typer.Option(
+        None, "--prefix", "--antaux",
+        help=tr_multi(
+            "Antaŭfiksa filtrilo: forigi ĉiujn predikatojn kun ĉi tiu prefikso",
+            "Prefix filter: delete all predicates with this prefix",
+            "Filtre de préfixe : supprimer tous les prédicats avec ce préfixe",
         ),
     ),
     yes: bool = typer.Option(
@@ -409,12 +419,25 @@ def forigi(
     resolved: list[dict] = []
     errors: list[tuple[str, str]] = []
 
-    for pid in predicate_ids:
-        pred = pred_svc.get_by_predicate_id(pid)
-        if pred:
-            resolved.append(pred)
-        else:
-            errors.append((pid, tr_multi("ne trovita", "not found", "non trouvé")))
+    # Resolve explicit identifiers
+    if predicate_ids:
+        for pid in predicate_ids:
+            pred = pred_svc.get_by_predicate_id(pid)
+            if pred:
+                resolved.append(pred)
+            else:
+                errors.append((pid, tr_multi("ne trovita", "not found", "non trouvé")))
+
+    # Resolve by prefix (if specified)
+    if prefix:
+        prefix_preds = pred_svc.db.execute(
+            "SELECT * FROM predicates WHERE predicate_id LIKE ? ORDER BY predicate_id",
+            (f"{prefix}%",),
+        )
+        seen_ids = {p["predicate_id"] for p in resolved}
+        for p in prefix_preds:
+            if p["predicate_id"] not in seen_ids:
+                resolved.append(p)
 
     # Report resolution errors
     for input_val, reason in errors:
@@ -426,9 +449,22 @@ def forigi(
         error(tr_multi("Nenio forigebla.", "Nothing to delete.", "Rien à supprimer."))
         raise typer.Exit(1)
 
-    # Phase 2: Batch preview and confirmation
-    # Single-item deletion skips confirmation (user already specified exact item)
-    if not yes and len(resolved) >= 2:
+    # Phase 2: Find referencing triples for all predicates
+    triple_svc = get_triple_service()
+    node_svc = get_node_service()
+    all_triples: list[dict] = []
+    triples_by_pred: dict[str, list[dict]] = {}
+    for pred in resolved:
+        pid = pred["predicate_id"]
+        pred_triples = triple_svc.get_by_predicate(pid, limit=10000)
+        if pred_triples:
+            all_triples.extend(pred_triples)
+            triples_by_pred[pid] = pred_triples
+
+    # Phase 2b: Preview and confirmation
+    requires_confirm = len(resolved) >= 2 or all_triples
+    if not yes and requires_confirm:
+        # Predicates preview table
         table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
         table.add_column(tr_multi("Predikato ID", "Predicate ID", "ID prédicat"), no_wrap=True)
         table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
@@ -437,22 +473,56 @@ def forigi(
             table.add_row(pred["predicate_id"], label)
         info(table)
 
-        from A.utils.interactive import confirm_action
+        # Triples to be deleted
+        if all_triples:
+            ttable = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
+            ttable.add_column(tr_multi("Subjekto", "Subject", "Sujet"))
+            ttable.add_column(tr_multi("Predikato", "Predicate", "Prédicat"))
+            ttable.add_column(tr_multi("Objekto", "Object", "Objet"))
+            for t in all_triples:
+                subj_label = resolve_node_label(node_svc, t["subject_uuid"])
+                p_label = resolve_predicate_label(pred_svc, t["predicate_id"])
+                if t.get("object_type") == "uri":
+                    obj_label = resolve_node_label(node_svc, t["object_value"])
+                else:
+                    obj_label = t["object_value"]
+                    if t.get("object_lang"):
+                        obj_label += f"@{t['object_lang']}"
+                ttable.add_row(subj_label, p_label, obj_label)
+            info(tr_multi(
+                "Arkoj forigotaj:",
+                "Triples to be deleted:",
+                "Triplets à supprimer :",
+            ))
+            info(ttable)
 
-        if not confirm_action(
-            tr_multi(
-                "Ĉu forigi {n} predikatojn?", "Delete {n} predicates?", "Supprimer {n} prédicats?",
-            ).format(n=len(resolved)),
-            default=False,
-        ):
+        # Build confirmation message
+        confirm_msg = tr_multi(
+            "Ĉu forigi {n} predikatojn?", "Delete {n} predicates?", "Supprimer {n} prédicats?",
+        ).format(n=len(resolved))
+        if all_triples:
+            confirm_msg = (
+                tr_multi(
+                    "Atenton: {t} arkoj estos forigitaj kune kun la predikatoj. ",
+                    "Warning: {t} triples will be deleted together with the predicates. ",
+                    "Attention : {t} triplets seront supprimés avec les prédicats. ",
+                ).format(t=len(all_triples))
+                + confirm_msg
+            )
+
+        if not confirm_action(confirm_msg, default=False):
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
             raise typer.Exit(0)
 
-    # Phase 3: Delete each
+    # Phase 3: Delete triples then predicates
     deleted = 0
     for pred in resolved:
+        pid = pred["predicate_id"]
         try:
-            pred_svc.delete(pred["predicate_id"])
+            # Cascade: delete referencing triples first (FK constraint)
+            if pid in triples_by_pred:
+                triple_svc.remove_by_predicate(pid)
+            pred_svc.delete(pid)
             deleted += 1
         except (sqlite3.Error, ValueError) as e:
             error(tr_multi(

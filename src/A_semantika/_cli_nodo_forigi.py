@@ -49,12 +49,19 @@ def _format_delete_error(nid: str, error: Exception) -> str:
 
 
 def forigi(
-    node_ids: list[str] = typer.Argument(
-        ...,
+    node_ids: list[str] | None = typer.Argument(default=None,  # type:ignore[arg-type]
         help=tr_multi(
             "Nod-indeksoj (pluraj)",
             "Node IDs (multiple)",
             "ID des nœuds (plusieurs)",
+        ),
+    ),
+    prefix: str | None = typer.Option(
+        None, "--prefix", "--antaux",
+        help=tr_multi(
+            "Antaŭfiksa filtrilo: forigi ĉiujn nodojn kun ĉi tiu prefikso",
+            "Prefix filter: delete all nodes with this prefix",
+            "Filtre de préfixe : supprimer tous les nœuds avec ce préfixe",
         ),
     ),
     yes: bool = typer.Option(
@@ -74,31 +81,44 @@ def forigi(
     resolved: list[dict] = []
     errors: list[tuple[str, str]] = []
 
-    for nid in node_ids:
-        try:
-            node = node_svc.resolve_node_id_prefix(nid)
-        except AmbiguousUUIDError as e:
-            errors.append((nid, tr_multi(
-                "ambigua prefikso: {e}",
-                "ambiguous prefix: {e}",
-                "préfixe ambigu : {e}",
-            ).format(e=str(e))))
-            continue
-        if not node:
-            # Fallback: substring match
+    # Resolve explicit identifiers
+    if node_ids:
+        for nid in node_ids:
             try:
-                node = node_svc.resolve_node_id_substring(nid)
+                node = node_svc.resolve_node_id_prefix(nid)
             except AmbiguousUUIDError as e:
                 errors.append((nid, tr_multi(
-                    "ambigua nodo: {e}",
-                    "ambiguous node: {e}",
-                    "nœud ambigu : {e}",
+                    "ambigua prefikso: {e}",
+                    "ambiguous prefix: {e}",
+                    "préfixe ambigu : {e}",
                 ).format(e=str(e))))
                 continue
-        if node:
-            resolved.append(node)
-        else:
-            errors.append((nid, tr_multi("ne trovita", "not found", "non trouvé")))
+            if not node:
+                # Fallback: substring match
+                try:
+                    node = node_svc.resolve_node_id_substring(nid)
+                except AmbiguousUUIDError as e:
+                    errors.append((nid, tr_multi(
+                        "ambigua nodo: {e}",
+                        "ambiguous node: {e}",
+                        "nœud ambigu : {e}",
+                    ).format(e=str(e))))
+                    continue
+            if node:
+                resolved.append(node)
+            else:
+                errors.append((nid, tr_multi("ne trovita", "not found", "non trouvé")))
+
+    # Resolve by prefix (if specified)
+    if prefix:
+        prefix_nodes = node_svc.db.execute(
+            "SELECT * FROM nodes WHERE node_id LIKE ? ORDER BY node_id",
+            (f"{prefix}%",),
+        )
+        seen_ids = {n["node_id"] for n in resolved}
+        for n in prefix_nodes:
+            if n["node_id"] not in seen_ids:
+                resolved.append(n)
 
     # Report resolution errors
     for input_val, reason in errors:

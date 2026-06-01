@@ -225,6 +225,17 @@ class TripleService:
             )
             return cursor.rowcount
 
+    def remove_by_predicate(self, predicate_id: str) -> int:
+        """Delete all triples with the given predicate.
+
+        Args:
+            predicate_id: The predicate to remove triples for.
+
+        Returns:
+            Number of deleted rows.
+        """
+        return self.remove(predicate_id=predicate_id)
+
     def remove_by_node(self, node_id: str) -> int:
         """Delete all triples referencing a node (as subject or URI object).
 

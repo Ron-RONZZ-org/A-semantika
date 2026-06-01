@@ -52,3 +52,41 @@ def test_predikato_forigi_single_no_confirm(runner: CliRunner) -> None:
     result = runner.invoke(app, ["predikato", "forigi", "wdt:X14"])
     assert result.exit_code == 0
     assert "Forigis" in result.stdout or "forigita" in result.stdout
+
+
+def test_predikato_forigi_with_triples_cascades(runner: CliRunner) -> None:
+    """Bug 2: predicate forigi with referencing triples should cascade-delete them."""
+    # Create predicate
+    runner.invoke(app, ["predikato", "aldoni", "test:pubjaro", "-e", "eo::pubjaro", "-y"])
+    # Create a node + triple using the predicate
+    runner.invoke(app, ["nodo", "aldoni", "TEST_BOOK", "-e", "eo::libro", "-y"])
+    runner.invoke(app, [
+        "aldoni", "TEST_BOOK", "test:pubjaro", "2024",
+        "--str", "-l", "eo", "-y",
+    ])
+    # Verify triple exists via search
+    r1 = runner.invoke(app, ["serci", "--subjekto", "TEST_BOOK", "--predikato", "test:pubjaro"])
+    assert r1.exit_code == 0
+    assert "2024" in r1.stdout
+    # Delete predicate — should cascade
+    result = runner.invoke(app, ["predikato", "forigi", "test:pubjaro", "-y"])
+    assert result.exit_code == 0, f"Got exit {result.exit_code}: {result.stdout}"
+    assert "Forigis" in result.stdout
+    # Predicate should be gone
+    r2 = runner.invoke(app, ["predikato", "vidi", "test:pubjaro"])
+    assert r2.exit_code != 0
+    # Triple should also be deleted (search returns nothing)
+    r3 = runner.invoke(app, ["serci", "--subjekto", "TEST_BOOK", "--predikato", "test:pubjaro"])
+    assert r3.exit_code == 0
+    assert "2024" not in r3.stdout
+
+
+def test_predikato_forigi_with_triples_shows_warning(runner: CliRunner) -> None:
+    """Bug 2: predicate forigi with triples should show warning in preview."""
+    runner.invoke(app, ["predikato", "aldoni", "test:pubyear", "-e", "eo::pubjaro", "-y"])
+    runner.invoke(app, ["nodo", "aldoni", "TB2", "-e", "eo::libro", "-y"])
+    runner.invoke(app, ["aldoni", "TB2", "test:pubyear", "2024", "--str", "-y"])
+    result = runner.invoke(app, ["predikato", "forigi", "test:pubyear"], input="n\n")
+    assert result.exit_code == 0
+    # Should mention triples will be deleted
+    assert "triples" in result.stdout.lower() or "arkoj" in result.stdout.lower()
