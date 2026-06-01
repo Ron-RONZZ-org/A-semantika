@@ -156,10 +156,12 @@ def build_trash_table(
         nid = n.get(id_column, "?")
         if show_full_id:
             disp = nid
-        elif nid[:16] in ambiguous and len(nid) > 16:
-            disp = nid
         else:
-            disp = truncate_uuid(nid)
+            pref = truncate_uuid(nid)
+            if pref in ambiguous:
+                disp = nid
+            else:
+                disp = pref
         table.add_row(disp, label, deleted_at)
 
     return table
