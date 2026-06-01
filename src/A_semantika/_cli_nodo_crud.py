@@ -288,9 +288,6 @@ def aldoni(
         error(err_str)
         raise typer.Exit(1) from e
     node_id_val = node["node_id"]
-    # When user explicitly chooses "create anyway" in the duplicate dialog,
-    # skip the final creation confirmation (it would be redundant).
-    _skip_final_confirm = False
 
     # Check for duplicate: if node has labels, search for similar existing nodes
     if labels_dict:
@@ -384,24 +381,7 @@ def aldoni(
                                 "Annulé.",
                             ))
                             raise typer.Exit(0)
-                    else:
-                        # Step 2b: Ask whether to create the new node anyway
-                        msg_create = tr_multi(
-                            "Ĉu vi volas krei ĝin ĉiuokaze?",
-                            "Do you want to create it anyway?",
-                            "Voulez-vous le créer quand même ?",
-                        )
-                        if confirm_action(msg_create, default=True):
-                            # Keep the new node, continue with arc creation
-                            _skip_final_confirm = True
-                        else:
-                            node_svc.delete(node_id_val)
-                            info(tr_multi(
-                                "Nuligita.",
-                                "Cancelled.",
-                                "Annulé.",
-                            ))
-                            raise typer.Exit(0)
+                    # User said "not the same" → fall through to creation summary
                 else:
                     # -y mode: silently update existing, delete new
                     _apply_update(existing_id, delete_new=node_id_val)
@@ -413,10 +393,10 @@ def aldoni(
         for target_id, pred in arc_templates
     ]
 
-    # Show preview and confirm (skip if user already confirmed via "create anyway")
+    # Show preview and confirm creation
     if arcs:
         label = resolve_node_label(node_svc, node_id_val)
-        if not _skip_final_confirm and not confirm_node_with_arcs(node_svc, pred_svc, label, node_id_val, arcs, yes=yes):
+        if not confirm_node_with_arcs(node_svc, pred_svc, label, node_id_val, arcs, yes=yes):
             # Rollback: delete the node
             node_svc.delete(node_id_val)
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
@@ -427,7 +407,7 @@ def aldoni(
         except ValueError as e:
             error(str(e))
             raise typer.Exit(1) from e
-    elif not _skip_final_confirm and not confirm_node_creation(node_id_val, labels_dict, defs_dict, yes=yes):
+    elif not confirm_node_creation(node_id_val, labels_dict, defs_dict, yes=yes):
         node_svc.delete(node_id_val)
         info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
         raise typer.Exit(0)

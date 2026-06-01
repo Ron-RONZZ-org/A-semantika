@@ -526,11 +526,23 @@ def forigi(
             pred_svc.delete(pid)
             deleted += 1
         except (sqlite3.Error, ValueError) as e:
-            error(tr_multi(
-                "Eraro forigante {p}: {e}",
-                "Error deleting {p}: {e}",
-                "Erreur lors de la suppression de {p} : {e}",
-                ).format(p=truncate_uuid(pred.get("predicate_id", "")), e=str(e)))
+            err_str = str(e)
+            if "FOREIGN KEY constraint failed" in err_str:
+                n_arcs = len(triples_by_pred.get(pid, []))
+                error(tr_multi(
+                    "Ne eblas forigi {p}: {n} arko(j) ankoraŭ uzas ĝin. "
+                    "Uzu 'A semantika forigi ...' por forigi la arkojn unue.",
+                    "Cannot delete {p}: {n} arc(s) still use it. "
+                    "Use 'A semantika forigi ...' to remove the arcs first.",
+                    "Impossible de supprimer {p} : {n} arc(s) l'utilisent encore. "
+                    "Utilisez 'A semantika forigi ...' pour supprimer d'abord les arcs.",
+                ).format(p=truncate_uuid(pred.get("predicate_id", "")), n=n_arcs))
+            else:
+                error(tr_multi(
+                    "Eraro forigante {p}: {e}",
+                    "Error deleting {p}: {e}",
+                    "Erreur lors de la suppression de {p} : {e}",
+                ).format(p=truncate_uuid(pred.get("predicate_id", "")), e=err_str))
 
     info(tr_multi(
         "Forigis {d} el {t} predikatojn.",

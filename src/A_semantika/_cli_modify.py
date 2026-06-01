@@ -5,6 +5,7 @@ Supports both URI and literal triples.
 """
 from __future__ import annotations
 
+import sqlite3
 from typing import Optional
 
 import typer
@@ -378,20 +379,28 @@ def modifi(
     from A_semantika.data.storage import now
 
     timestamp = now()
-    with triple_svc.db.transaction() as conn:
-        conn.execute(
-            "DELETE FROM triples WHERE subject_uuid=? AND predicate_id=? "
-            "AND object_value=? AND object_type=?",
-            (subject_uuid, predicate, old_object_value, old_object_type),
-        )
-        conn.execute(
-            """INSERT INTO triples (subject_uuid, predicate_id, object_type,
-                                    object_value, object_lang, object_datatype,
-                                    kreita_je)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (new_subj_uuid, new_pred, new_object_type, new_obj_value,
-             new_obj_lang, new_datatype, timestamp),
-        )
+    try:
+        with triple_svc.db.transaction() as conn:
+            conn.execute(
+                "DELETE FROM triples WHERE subject_uuid=? AND predicate_id=? "
+                "AND object_value=? AND object_type=?",
+                (subject_uuid, predicate, old_object_value, old_object_type),
+            )
+            conn.execute(
+                """INSERT INTO triples (subject_uuid, predicate_id, object_type,
+                                        object_value, object_lang, object_datatype,
+                                        kreita_je)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (new_subj_uuid, new_pred, new_object_type, new_obj_value,
+                 new_obj_lang, new_datatype, timestamp),
+            )
+    except sqlite3.IntegrityError:
+        error(tr_multi(
+            "Ne eblas modifi: la nova arko jam ekzistas (sama subjekto, predikato, objekto, kaj tipo).",
+            "Cannot modify: the new arc already exists (same subject, predicate, object, and type).",
+            "Impossible de modifier : le nouvel arc existe déjà (même sujet, prédicat, objet et type).",
+        ))
+        raise typer.Exit(1)
 
     # ── Report success ────────────────────────────────────────────
     new_obj_display = truncate_uuid(new_obj_value) if new_object_type == "uri" else f'"{new_obj_value}"'
