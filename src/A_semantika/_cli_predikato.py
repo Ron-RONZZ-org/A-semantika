@@ -12,6 +12,7 @@ from rich.table import Table
 
 from A import error, info, tr_multi, warning as awarning
 from A.utils.interactive import confirm_action
+from A_semantika._node_helpers import truncate_uuid
 from A_semantika.data.storage import label_from_json
 from A_semantika._preview import (
     build_predicate_modify_preview,
@@ -529,7 +530,7 @@ def forigi(
                 "Eraro forigante {p}: {e}",
                 "Error deleting {p}: {e}",
                 "Erreur lors de la suppression de {p} : {e}",
-                ).format(p=pred.get("predicate_id", "")[:16], e=str(e)))
+                ).format(p=truncate_uuid(pred.get("predicate_id", "")), e=str(e)))
 
     info(tr_multi(
         "Forigis {d} el {t} predikatojn.",

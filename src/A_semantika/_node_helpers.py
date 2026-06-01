@@ -69,10 +69,10 @@ def get_label_from_node(node: dict, preferred_lang: str | None = None) -> str:
     try:
         labels = json.loads(etikedoj_raw) if isinstance(etikedoj_raw, str) else etikedoj_raw
     except (json.JSONDecodeError, TypeError):
-        return node.get("node_id", "")[:16]
+        return truncate_uuid(node.get("node_id", ""))
 
     if not isinstance(labels, dict):
-        return node.get("node_id", "")[:16]
+        return truncate_uuid(node.get("node_id", ""))
 
     # Try preferred language first, then default fallback
     lang_order = (preferred_lang, "eo", "en") if preferred_lang else ("eo", "en")
@@ -86,7 +86,7 @@ def get_label_from_node(node: dict, preferred_lang: str | None = None) -> str:
     for val in labels.values():
         if val and isinstance(val, str):
             return val
-    return node.get("node_id", "")[:16]
+    return truncate_uuid(node.get("node_id", ""))
 
 
 def get_display_label(
@@ -126,3 +126,45 @@ def get_display_label(
     except (json.JSONDecodeError, TypeError):
         pass
     return (label, "")
+
+
+def truncate_uuid(uuid: str, all_uuids: list[str] | None = None) -> str:
+    """Truncate a UUID for display, keeping it distinguishable.
+
+    - If ``len(uuid) < 32``: return full UUID (short IDs like ``H_GL``,
+      ``DOI_10_1007_BF02`` are human-readable and should not be truncated).
+    - If ``len(uuid) >= 32`` and *all_uuids* is provided: find the first
+      character position where this UUID diverges from all other UUIDs
+      in the set, and truncate there (minimum 8 chars).
+    - If ``len(uuid) >= 32`` and no context given: truncate to 16 chars.
+
+    Args:
+        uuid: The node_id or UUID to truncate.
+        all_uuids: All UUIDs appearing in the same column context
+            (for computing the minimum unique prefix).
+
+    Returns:
+        Truncated display string.
+    """
+    if len(uuid) < 32:
+        return uuid
+
+    if all_uuids:
+        others = [u for u in all_uuids if u != uuid]
+        if others:
+            # Find the first position where this UUID differs from at least
+            # one other UUID.  We need at least 1 character past the common
+            # prefix to show divergence.
+            min_len = min(len(uuid), max((len(o) for o in others), default=0))
+            for i in range(min_len):
+                if any(o[i] != uuid[i] for o in others):
+                    # Return up to and including the divergent character,
+                    # but at least 8 characters.
+                    return uuid[:max(i + 1, 8)]
+            # All others are a prefix of this UUID (e.g. "ABC" vs "ABCDEF").
+            # Show from the shortest "other" length onward.
+            min_other = min((len(o) for o in others), default=len(uuid))
+            return uuid[:max(min_other + 1, 8)]
+        # Single UUID in set — no context to compare.
+        return uuid[:16]
+    return uuid[:16]

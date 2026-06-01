@@ -9,6 +9,7 @@ import typer
 from A import error, info, tr_multi, warning
 from A.utils.interactive import confirm_action
 from A_semantika._cli_helpers import create_node_arcs, ensure_predicate, resolve_arc_targets
+from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import (
     build_node_modify_preview,
@@ -246,7 +247,7 @@ def aldoni(
                         "Neniu ŝanĝo: nodo {label} ({node_id}) restas neŝanĝita.",
                         "No change: node {label} ({node_id}) remains unchanged.",
                         "Aucun changement : le nœud {label} ({node_id}) reste inchangé.",
-                    ).format(label=existing_label, node_id=node_id[:16]))
+                    ).format(label=existing_label, node_id=truncate_uuid(node_id)))
                     raise typer.Exit(0)
 
                 if not yes:
@@ -254,7 +255,7 @@ def aldoni(
                         "Nodo {label} ({node_id}) jam ekzistas.",
                         "Node {label} ({node_id}) already exists.",
                         "Le nœud {label} ({node_id}) existe déjà.",
-                    ).format(label=existing_label, node_id=node_id[:16]))
+                    ).format(label=existing_label, node_id=truncate_uuid(node_id)))
                     info("")
                     info(preview_table)
                     msg = tr_multi(
@@ -270,7 +271,7 @@ def aldoni(
                             "Nœud mis à jour : {label} ({node_id})",
                         ).format(
                             label=resolve_node_label(node_svc, node_id),
-                            node_id=node_id[:16],
+                            node_id=truncate_uuid(node_id),
                         ))
                         raise typer.Exit(0)
                     else:
@@ -287,6 +288,9 @@ def aldoni(
         error(err_str)
         raise typer.Exit(1) from e
     node_id_val = node["node_id"]
+    # When user explicitly chooses "create anyway" in the duplicate dialog,
+    # skip the final creation confirmation (it would be redundant).
+    _skip_final_confirm = False
 
     # Check for duplicate: if node has labels, search for similar existing nodes
     if labels_dict:
@@ -314,7 +318,7 @@ def aldoni(
                     "Simila nodo jam ekzistas: {label} ({node_id})",
                     "Similar node already exists: {label} ({node_id})",
                     "Un nœud similaire existe déjà : {label} ({node_id})",
-                ).format(label=existing_label, node_id=existing_id[:16]))
+                ).format(label=existing_label, node_id=truncate_uuid(existing_id)))
 
                 # Parse existing labels/defs for preview
                 try:
@@ -342,37 +346,62 @@ def aldoni(
                         "Neniu ŝanĝo: nodo {label} ({node_id}) restas neŝanĝita.",
                         "No change: node {label} ({node_id}) remains unchanged.",
                         "Aucun changement : le nœud {label} ({node_id}) reste inchangé.",
-                    ).format(label=existing_label, node_id=existing_id[:16]))
+                    ).format(label=existing_label, node_id=truncate_uuid(existing_id)))
                     raise typer.Exit(0)
 
                 if not yes:
                     info("")
                     info(preview_table)
-                    msg = tr_multi(
-                        "Ĉu ĝi estas la sama nodo? Ĉu vi volas ĝisdatigi ĝin kun la supraj ŝanĝoj?",
-                        "Is it the same node? Do you want to update it with the changes above?",
-                        "Est-ce le même nœud ? Voulez-vous le mettre à jour avec les modifications ci-dessus ?",
+                    # Step 1: Ask if it's the same node
+                    msg_same = tr_multi(
+                        "Ĉu ĝi estas la sama nodo?",
+                        "Is this the same node?",
+                        "Est-ce le même nœud ?",
                     )
-                    if confirm_action(msg, default=False):
-                        # User wants to update existing node instead
-                        _apply_update(existing_id, delete_new=node_id_val)
-                        info(tr_multi(
-                            "Nodo ĝisdatigita: {label} ({node_id})",
-                            "Node updated: {label} ({node_id})",
-                            "Nœud mis à jour : {label} ({node_id})",
-                        ).format(
-                            label=resolve_node_label(node_svc, existing_id),
-                            node_id=existing_id[:16],
-                        ))
-                        raise typer.Exit(0)
+                    if confirm_action(msg_same, default=False):
+                        # Step 2a: Ask whether to update
+                        msg_update = tr_multi(
+                            "Ĉu vi volas ĝisdatigi ĝin kun la supraj ŝanĝoj?",
+                            "Do you want to update it with the changes above?",
+                            "Voulez-vous le mettre à jour avec les modifications ci-dessus ?",
+                        )
+                        if confirm_action(msg_update, default=False):
+                            _apply_update(existing_id, delete_new=node_id_val)
+                            info(tr_multi(
+                                "Nodo ĝisdatigita: {label} ({node_id})",
+                                "Node updated: {label} ({node_id})",
+                                "Nœud mis à jour : {label} ({node_id})",
+                            ).format(
+                                label=resolve_node_label(node_svc, existing_id),
+                                node_id=truncate_uuid(existing_id),
+                            ))
+                            raise typer.Exit(0)
+                        else:
+                            node_svc.delete(node_id_val)
+                            info(tr_multi(
+                                "Nuligita.",
+                                "Cancelled.",
+                                "Annulé.",
+                            ))
+                            raise typer.Exit(0)
                     else:
-                        node_svc.delete(node_id_val)
-                        info(tr_multi(
-                            "Nuligita.",
-                            "Cancelled.",
-                            "Annulé.",
-                        ))
-                        raise typer.Exit(0)
+                        # Step 2b: Ask whether to create the new node anyway
+                        msg_create = tr_multi(
+                            "Ĉu vi volas krei ĝin ĉiuokaze?",
+                            "Do you want to create it anyway?",
+                            "Voulez-vous le créer quand même ?",
+                        )
+                        if confirm_action(msg_create, default=True):
+                            # Keep the new node, continue with arc creation
+                            _skip_final_confirm = True
+                        else:
+                            node_svc.delete(node_id_val)
+                            info(tr_multi(
+                                "Nuligita.",
+                                "Cancelled.",
+                                "Annulé.",
+                            ))
+                            raise typer.Exit(0)
                 else:
                     # -y mode: silently update existing, delete new
                     _apply_update(existing_id, delete_new=node_id_val)
@@ -384,10 +413,10 @@ def aldoni(
         for target_id, pred in arc_templates
     ]
 
-    # Show preview and confirm
+    # Show preview and confirm (skip if user already confirmed via "create anyway")
     if arcs:
         label = resolve_node_label(node_svc, node_id_val)
-        if not confirm_node_with_arcs(node_svc, pred_svc, label, node_id_val, arcs, yes=yes):
+        if not _skip_final_confirm and not confirm_node_with_arcs(node_svc, pred_svc, label, node_id_val, arcs, yes=yes):
             # Rollback: delete the node
             node_svc.delete(node_id_val)
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
@@ -398,7 +427,7 @@ def aldoni(
         except ValueError as e:
             error(str(e))
             raise typer.Exit(1) from e
-    elif not confirm_node_creation(node_id_val, labels_dict, defs_dict, yes=yes):
+    elif not _skip_final_confirm and not confirm_node_creation(node_id_val, labels_dict, defs_dict, yes=yes):
         node_svc.delete(node_id_val)
         info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
         raise typer.Exit(0)
@@ -407,7 +436,7 @@ def aldoni(
         "Nodo kreita: {label} ({node_id})",
         "Node created: {label} ({node_id})",
         "Nœud créé : {label} ({node_id})",
-    ).format(label=resolve_node_label(node_svc, node_id_val), node_id=node_id_val[:16]))
+    ).format(label=resolve_node_label(node_svc, node_id_val), node_id=truncate_uuid(node_id_val)))
 
 
 def modifi(
@@ -501,7 +530,7 @@ def modifi(
                 "Ĉu modifi nodon {u}?",
                 "Modify node {u}?",
                 "Modifier le nœud {u}?",
-            ).format(u=node["node_id"][:16]),
+            ).format(u=truncate_uuid(node["node_id"])),
             default=True,
         ):
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
@@ -515,11 +544,11 @@ def modifi(
                 "Nodo renomita: {old} → {new}",
                 "Node renamed: {old} → {new}",
                 "Nœud renommé : {old} → {new}",
-            ).format(old=node["node_id"][:16], new=current_id[:16]))
+            ).format(old=truncate_uuid(node["node_id"]), new=truncate_uuid(current_id)))
         else:
             updated = node_svc.update(node["node_id"], updates)
             current_id = updated["node_id"]
-            info(tr_multi("Nodo modifita: {u}", "Node modified: {u}", "Nœud modifié : {u}").format(u=current_id[:16]))
+            info(tr_multi("Nodo modifita: {u}", "Node modified: {u}", "Nœud modifié : {u}").format(u=truncate_uuid(current_id)))
     except ValueError as e:
         error(str(e))
         raise typer.Exit(1) from e

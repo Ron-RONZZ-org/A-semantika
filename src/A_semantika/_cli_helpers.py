@@ -18,6 +18,7 @@ from rich.table import Table
 
 from A import error, tr_multi, warning
 from A.utils.interactive import select_candidate
+from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError, NodeService
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
 from A_semantika._triple_search import search_triples_by_labels
@@ -300,7 +301,7 @@ def build_modify_preview(
 
     def _obj_display(val: str, typ: str, lang: str | None) -> str:
         if typ == "uri":
-            return f"{resolve_node_label(node_svc, val)} ({val[:16]})"
+            return f"{resolve_node_label(node_svc, val)} ({truncate_uuid(val)})"
         if lang:
             return f'"{val}"@{lang}'
         return f'"{val}"'
@@ -309,7 +310,7 @@ def build_modify_preview(
     old_obj_display = _obj_display(object_value, object_type, object_lang)
     table.add_row(
         tr_multi("Malnova", "Old", "Ancien"),
-        f"{old_subj_label} ({subject_uuid[:16]})",
+        f"{old_subj_label} ({truncate_uuid(subject_uuid)})",
         old_pred_label,
         old_obj_display,
     )
@@ -319,7 +320,7 @@ def build_modify_preview(
     new_obj_display = _obj_display(new_obj_value, new_obj_type, new_obj_lang)
     table.add_row(
         tr_multi("Nova", "New", "Nouveau"),
-        f"{new_subj_label} ({new_subj_uuid[:16]})",
+        f"{new_subj_label} ({truncate_uuid(new_subj_uuid)})",
         new_pred_label,
         new_obj_display,
     )

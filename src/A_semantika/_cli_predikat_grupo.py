@@ -10,6 +10,7 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi
+from A_semantika._node_helpers import truncate_uuid
 from A_semantika.data.storage import label_from_json
 from A_semantika.service import get_predicate_group_service, get_predicate_service
 
@@ -130,7 +131,7 @@ def vidi(
     ).format(g=group["group_name"]))
     info(tr_multi(
         "UUID: {u}", "UUID: {u}", "UUID : {u}",
-    ).format(u=group["uuid"][:16]))
+    ).format(u=truncate_uuid(group["uuid"])))
 
     members = group_svc.list_members(group_name)
     if members:
@@ -290,7 +291,7 @@ def forigi(
         table.add_column(tr_multi("Grupo", "Group", "Groupe"), no_wrap=True)
         table.add_column("UUID", no_wrap=True)
         for group in resolved:
-            table.add_row(group["group_name"], group["uuid"][:16])
+            table.add_row(group["group_name"], truncate_uuid(group["uuid"]))
         info(table)
 
         from A.utils.interactive import confirm_action
@@ -348,7 +349,7 @@ def serci(
     table.add_column(tr_multi("UUID", "UUID", "UUID"), no_wrap=True)
 
     for g in results:
-        table.add_row(g["group_name"], g["uuid"][:16])
+        table.add_row(g["group_name"], truncate_uuid(g["uuid"]))
 
     info(table)
 

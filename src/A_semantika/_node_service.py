@@ -136,8 +136,14 @@ class NodeService(NodeSearchMixin, CRUDService):
         # data/FTS inconsistency if either operation fails.
         if self._fts_config:
             with self.db.transaction() as conn:
-                conn.execute(sql, params)
+                # IMPORTANT: FTS5 'delete' must happen BEFORE content
+                # table UPDATE.  The 'delete' command reads the current
+                # content-table row to compare against the index.  If
+                # the content has already been changed, old terms can
+                # NOT be matched and remain in the index indefinitely,
+                # causing false-positive MATCH results.
                 self._remove_from_fts(node_id)
+                conn.execute(sql, params)
                 self._index_fts(node_id)
         else:
             self.db.execute(sql, params)
@@ -219,11 +225,33 @@ class NodeService(NodeSearchMixin, CRUDService):
         updates["node_id"] = new_id
         updates["modifita_je"] = now_ts
 
+        # Save rowid BEFORE the transaction — we need it to delete the old
+        # FTS5 entry before the content-table PK changes.
+        old_rowid: int | None = None
+        if self._fts_config:
+            row = self.db.execute_one(
+                f"SELECT rowid FROM {self.table} WHERE node_id = ?", (old_id,)
+            )
+            old_rowid = row["rowid"] if row else None
+
         # Manual cascade in a single transaction.
         # Defer FK checks until COMMIT: the PK change (step 1) temporarily
         # orphans referencing triples, which are re-parented in steps 2-3.
         with self.db.transaction() as conn:
             conn.execute("PRAGMA defer_foreign_keys=ON")
+
+            # 0. Delete old FTS entry BEFORE any content changes.
+            #    The FTS5 'delete' command reads current content-table
+            #    content to match against the index — if we update first,
+            #    old terms can't be removed and remain stale.
+            if old_rowid is not None:
+                conn.execute(
+                    f"INSERT INTO {self._fts_config.fts_table}"
+                    f"({self._fts_config.fts_table}, rowid)"
+                    " VALUES('delete', ?)",
+                    (old_rowid,),
+                )
+
             # 1. Update the node's PK + fields
             set_parts = []
             params = []
@@ -250,9 +278,8 @@ class NodeService(NodeSearchMixin, CRUDService):
             )
             # object_node_uuid auto-recomputes from object_value (generated column)
 
-            # 4. Re-index FTS
+            # 4. Re-index FTS with new content
             if self._fts_config:
-                self._remove_from_fts(old_id)
                 self._index_fts(new_id)
 
         # No undo tracking for ID renames (v1 limitation)

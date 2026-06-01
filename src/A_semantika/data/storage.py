@@ -16,6 +16,7 @@ from A_semantika.data.migrations import (
     migrate_predicate_group_members_unique,
     migrate_predicates_fts,
     migrate_predicates_uuid_to_predicate_id,
+    rebuild_nodes_fts,
 )
 
 if TYPE_CHECKING:
@@ -239,6 +240,10 @@ def init_db(db: "SQLiteDB | None" = None) -> None:
     # work on every init_db() call (e.g. read-only CLI callbacks).
     if seeded:
         db.execute("INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')")
+
+    # Rebuild nodes FTS index to fix stale entries from the pre-fix
+    # update()/update_node_id() order-of-operations bug.
+    rebuild_nodes_fts(db)
 
 
 def close_db() -> None:

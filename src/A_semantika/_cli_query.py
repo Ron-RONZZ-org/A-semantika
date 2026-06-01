@@ -18,6 +18,7 @@ from A_semantika._cli_helpers import (
     _prompt_select_ambiguous_node,
     resolve_deprecated,
 )
+from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
 from A_semantika._triple_search import search_triples_any_field, search_triples_by_labels
@@ -146,6 +147,8 @@ def serci(
     table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=False)
     table.add_column(tr_multi("Tipo", "Type", "Type"), no_wrap=True)
 
+    # Collect all subject UUIDs for context-aware truncation
+    all_subject_uuids = [r["subject_uuid"] for r in results]
     for r in results:
         s_label = resolve_node_label(node_svc, r["subject_uuid"])
         p_label = resolve_predicate_label(pred_svc, r["predicate_id"])
@@ -154,7 +157,7 @@ def serci(
         else:
             o_label = r["object_value"]
         table.add_row(
-            f"{s_label} ({r['subject_uuid'][:16]})",
+            f"{s_label} ({truncate_uuid(r['subject_uuid'], all_subject_uuids)})",
             p_label,
             o_label,
             r["object_type"],
@@ -229,7 +232,7 @@ def vidi(
         "Nodo: {label} ({uuid})",
         "Node: {label} ({uuid})",
         "Nœud : {label} ({uuid})",
-    ).format(label=subj_label, uuid=subj_node["node_id"][:16]))
+    ).format(label=subj_label, uuid=truncate_uuid(subj_node["node_id"])))
 
     results = triple_svc.get_subject_objects(subj_node["node_id"])
     if not results:

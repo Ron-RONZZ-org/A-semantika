@@ -12,6 +12,7 @@ from rich.table import Table
 from A import error, info, tr_multi
 from A_semantika._cli_nodo_crud import aldoni, modifi
 from A_semantika._cli_nodo_forigi import forigi
+from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika.data.storage import label_from_json
 from A_semantika.service import get_node_service
@@ -56,19 +57,10 @@ def ls(
     table.add_column("ID", no_wrap=True)
     table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
 
-    # Detect ambiguous 16-char prefixes and show full UUIDs if needed
-    prefixes: set[str] = set()
-    ambiguous: set[str] = set()
-    for n in nodes:
-        pref = n["node_id"][:16]
-        if pref in prefixes:
-            ambiguous.add(pref)
-        prefixes.add(pref)
-
+    all_ids = [n["node_id"] for n in nodes]
     for n in nodes:
         label = label_from_json(n["etikedoj"], lang_fallback)
-        disp = n["node_id"] if n["node_id"][:16] in ambiguous else n["node_id"][:16]
-        table.add_row(disp, label)
+        table.add_row(truncate_uuid(n["node_id"], all_ids), label)
 
     info(table)
 
@@ -166,8 +158,9 @@ def serci(
     table.add_column("ID", no_wrap=True)
     table.add_column(tr_multi("Etikedo", "Label", "Étiquette"), no_wrap=True)
 
+    all_ids = [n["node_id"] for n in results]
     for n in results:
         label = label_from_json(n["etikedoj"], lang_fallback)
-        table.add_row(n["node_id"][:16], label)
+        table.add_row(truncate_uuid(n["node_id"], all_ids), label)
 
     info(table)

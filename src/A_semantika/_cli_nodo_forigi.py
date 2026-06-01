@@ -9,6 +9,7 @@ from rich.table import Table
 
 from A import error, info, tr_multi, warning
 from A.utils.interactive import confirm_action
+from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
 from A_semantika.service import get_node_service, get_predicate_service, get_triple_service
@@ -154,7 +155,7 @@ def forigi(
 
         for node in resolved:
             label = resolve_node_label(node_svc, node["node_id"])
-            table.add_row(node["node_id"][:16], label)
+            table.add_row(truncate_uuid(node["node_id"]), label)
         info(table)
 
         # Triples to be deleted

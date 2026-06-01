@@ -18,6 +18,7 @@ from A_semantika._cli_helpers import (
     pick_triple,
     validate_type_flags,
 )
+from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError, NodeService
 from A_semantika._predicate_service import AmbiguousPredicateError
 from A_semantika._preview import confirm_triple, resolve_node_label, resolve_predicate_label
@@ -282,9 +283,9 @@ def aldoni(
             object_datatype=datatype,
             object_unit=unuo,
         )
-        # Display: URIs get truncated to 16 chars for readability; literal values stay full
-        o_display = object_uuid[:16] if object_type == "uri" else object_uuid
-        s_display = subject_uuid[:16] if isinstance(subject_uuid, str) and len(subject_uuid) > 16 else subject_uuid
+        # Display: URI object values get context-aware truncation; literal values stay full
+        o_display = truncate_uuid(object_uuid) if object_type == "uri" else object_uuid
+        s_display = truncate_uuid(subject_uuid) if isinstance(subject_uuid, str) else subject_uuid
         info(tr_multi(
             "Arko kreita: {s} --{p}--> {o}",
             "Arc created: {s} --{p}--> {o}",

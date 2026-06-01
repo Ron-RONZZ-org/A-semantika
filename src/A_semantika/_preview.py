@@ -14,7 +14,7 @@ from rich.table import Table
 
 from A import error, info, tr_multi, warning
 from A.utils.interactive import confirm_action
-from A_semantika._node_helpers import AmbiguousUUIDError, get_display_label, get_label_from_node
+from A_semantika._node_helpers import AmbiguousUUIDError, get_display_label, get_label_from_node, truncate_uuid
 from A_semantika._node_service import NodeService
 from A_semantika._predicate_service import PredicateService
 from A_semantika.data.storage import label_from_json
@@ -43,7 +43,7 @@ def resolve_node_label(node_svc: NodeService, uuid_or_prefix: str, preferred_lan
     except AmbiguousUUIDError:
         raise
     except ValueError:
-        return uuid_or_prefix[:16]
+        return truncate_uuid(uuid_or_prefix)
 
 
 def resolve_node_label_from_node(node: dict, preferred_lang: str | None = None) -> str:
@@ -118,8 +118,8 @@ def build_triple_preview_table(
     except AmbiguousUUIDError as e:
         warning(tr_multi("Ambigua subjekto-prefikso: {e}", "Ambiguous subject prefix: {e}", "Préfixe sujet ambigu : {e}").format(e=str(e)))
         return None, ""
-    subj_id = subj_node["node_id"][:16] if subj_node else subject_uuid[:16]
-    subj_label = resolve_node_label_from_node(subj_node) if subj_node else subject_uuid[:16]
+    subj_id = truncate_uuid(subj_node["node_id"]) if subj_node else truncate_uuid(subject_uuid)
+    subj_label = resolve_node_label_from_node(subj_node) if subj_node else truncate_uuid(subject_uuid)
 
     pred_label = resolve_predicate_label(pred_svc, predicate_id)
 
@@ -130,8 +130,8 @@ def build_triple_preview_table(
         except AmbiguousUUIDError as e:
             warning(tr_multi("Ambigua objekto-prefikso: {e}", "Ambiguous object prefix: {e}", "Préfixe objet ambigu : {e}").format(e=str(e)))
             return None, ""
-        obj_id = obj_node["node_id"][:16] if obj_node else object_value[:16]
-        obj_label = resolve_node_label_from_node(obj_node) if obj_node else object_value[:16]
+        obj_id = truncate_uuid(obj_node["node_id"]) if obj_node else truncate_uuid(object_value)
+        obj_label = resolve_node_label_from_node(obj_node) if obj_node else truncate_uuid(object_value)
         # Labels row
         table.add_row(subj_label, pred_label, obj_label)
         # Raw IDs row
@@ -164,8 +164,8 @@ def build_triple_preview_table(
             except AmbiguousUUIDError as e:
                 warning(tr_multi("Ambigua unuo-prefikso: {e}", "Ambiguous unit prefix: {e}", "Préfixe unité ambigu : {e}").format(e=str(e)))
                 return None, ""
-            unit_label = resolve_node_label_from_node(unit_node) if unit_node else object_unit[:16]
-            unit_id = unit_node["node_id"][:16] if unit_node else object_unit[:16]
+            unit_label = resolve_node_label_from_node(unit_node) if unit_node else truncate_uuid(object_unit)
+            unit_id = truncate_uuid(unit_node["node_id"]) if unit_node else truncate_uuid(object_unit)
             parts.append(f"unit: {unit_label} ({unit_id})")
         footnote = ", ".join(parts)
     else:
@@ -262,7 +262,7 @@ def confirm_node_with_arcs(
     # Node summary row
     table.add_row(
         tr_multi("Nodo", "Node", "Noeud"),
-        f"{node_label} ({node_uuid[:16]})",
+        f"{node_label} ({truncate_uuid(node_uuid)})",
         "",
     )
 
@@ -276,7 +276,7 @@ def confirm_node_with_arcs(
                 obj_label,
             )
             raw_pred = arc["predicate"]
-            raw_obj = arc["object"][:16]
+            raw_obj = truncate_uuid(arc["object"])
             table.add_row(
                 "",
                 raw_pred,
@@ -425,10 +425,10 @@ def build_node_modify_preview(
             new_lines_lines: list[str] = []
             if removed:
                 for pred, obj in sorted(removed):
-                    old_lines_lines.append(f"{pred}: {obj[:16] if obj else ''}")
+                    old_lines_lines.append(f"{pred}: {truncate_uuid(obj) if obj else ''}")
             if added:
                 for pred, obj in sorted(added):
-                    new_lines_lines.append(f"{pred}: {obj[:16] if obj else ''}")
+                    new_lines_lines.append(f"{pred}: {truncate_uuid(obj) if obj else ''}")
             table.add_row(
                 tr_multi("Arkoj", "Arcs", "Arcs"),
                 "\n".join(old_lines_lines) if old_lines_lines else "—",

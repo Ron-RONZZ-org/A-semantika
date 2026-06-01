@@ -384,3 +384,24 @@ def migrate_predicates_fts(db: "SQLiteDB") -> None:
     count = db.execute_one("SELECT COUNT(*) AS cnt FROM predicates_fts")
     if count and count["cnt"] == 0:
         db.execute("INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')")
+
+
+def rebuild_nodes_fts(db: "SQLiteDB") -> None:
+    """Rebuild the ``nodes_fts`` FTS5 index from current content.
+
+    Fixes stale index entries caused by the pre-fix ``update()`` and
+    ``update_node_id()`` order-of-operations bug (FTS5 ``'delete'`` ran
+    *after* content-table UPDATE, so old terms could not be matched and
+    remained in the index permanently).
+
+    Silently skips if ``nodes_fts`` does not exist (e.g. first run before
+    ``NodeService`` is ever instantiated).  Safe to call repeatedly.
+    """
+    try:
+        db.execute_one("SELECT COUNT(*) AS cnt FROM nodes_fts")
+    except (sqlite3.OperationalError, sqlite3.DatabaseError):
+        return
+
+    # Silent rebuild — no warning/print to avoid polluting CLI output
+    # (e.g. ``Turtle export`` which captures stdout).
+    db.execute("INSERT INTO nodes_fts(nodes_fts) VALUES('rebuild')")

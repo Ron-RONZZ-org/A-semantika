@@ -239,7 +239,7 @@ class TestNodoAldoniSimilarNodeUpdate:
         node_svc.create({"node_id": "EXISTO", "etikedoj": {"eo": "Ekzistanta Nodo Granda"}})
         result = runner.invoke(app, [
             "nodo", "aldoni", "NOVA", "-e", "eo::Ekzistanta Nodo",
-        ], input="n\n")
+        ], input="n\nn\n")
         assert result.exit_code == 0, f"Got exit {result.exit_code}: {result.stdout}"
         assert "nuligita" in result.stdout.lower() or "canceled" in result.stdout.lower() or "annulé" in result.stdout.lower()
         # The existing node should still exist

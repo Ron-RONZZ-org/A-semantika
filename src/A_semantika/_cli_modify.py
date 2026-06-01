@@ -17,6 +17,7 @@ from A_semantika._cli_helpers import (
     resolve_deprecated,
     validate_type_flags,
 )
+from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
 from A_semantika.service import (
@@ -393,12 +394,12 @@ def modifi(
         )
 
     # ── Report success ────────────────────────────────────────────
-    new_obj_display = new_obj_value[:16] if new_object_type == "uri" else f'"{new_obj_value}"'
+    new_obj_display = truncate_uuid(new_obj_value) if new_object_type == "uri" else f'"{new_obj_value}"'
     if new_object_type == "literal" and new_obj_lang:
         new_obj_display = f'"{new_obj_value}"@{new_obj_lang}'
     info(tr_multi(
         "Arko modifita: {s} --{p}--> {o} ({t})",
         "Arc modified: {s} --{p}--> {o} ({t})",
         "Arc modifié : {s} --{p}--> {o} ({t})",
-    ).format(s=new_subj_uuid[:16], p=new_pred, o=new_obj_display,
+    ).format(s=truncate_uuid(new_subj_uuid), p=new_pred, o=new_obj_display,
              t=new_object_type))

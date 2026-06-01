@@ -15,6 +15,7 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi, warning
+from A_semantika._node_helpers import truncate_uuid
 from A_semantika.data.storage import label_from_json
 
 
@@ -144,7 +145,7 @@ def build_trash_table(
     if not show_full_id:
         for n in items:
             nid = n.get(id_column, "?")
-            pref = nid[:16] if len(nid) > 16 else nid
+            pref = truncate_uuid(nid)
             if pref in prefixes:
                 ambiguous.add(pref)
             prefixes.add(pref)
@@ -158,7 +159,7 @@ def build_trash_table(
         elif nid[:16] in ambiguous and len(nid) > 16:
             disp = nid
         else:
-            disp = nid[:16] if len(nid) > 16 else nid
+            disp = truncate_uuid(nid)
         table.add_row(disp, label, deleted_at)
 
     return table
@@ -257,13 +258,13 @@ def batch_restore(
                     "Restarigita: {u}",
                     "Restored: {u}",
                     "Restauré : {u}",
-                ).format(u=item_id[:16]))
+                ).format(u=truncate_uuid(item_id)))
         except (sqlite3.Error, ValueError) as e:
             error(tr_multi(
                 "Eraro restarigante {u}: {e}",
                 "Error restoring {u}: {e}",
                 "Erreur lors de la restauration de {u} : {e}",
-            ).format(u=item_id[:16], e=str(e)))
+            ).format(u=truncate_uuid(item_id), e=str(e)))
 
     info(tr_multi(
         "Restarigis {r} el {t}.",
@@ -361,13 +362,13 @@ def batch_permanent_delete(
                 "Permanente forigita: {u}",
                 "Permanently deleted: {u}",
                 "Définitivement supprimé : {u}",
-            ).format(u=item_id[:16]))
+            ).format(u=truncate_uuid(item_id)))
         except (sqlite3.Error, ValueError) as e:
             error(tr_multi(
                 "Eraro forigante {u}: {e}",
                 "Error deleting {u}: {e}",
                 "Erreur lors de la suppression de {u} : {e}",
-            ).format(u=item_id[:16], e=str(e)))
+            ).format(u=truncate_uuid(item_id), e=str(e)))
 
     info(tr_multi(
         "Permanente forigis {d} el {t}.",
