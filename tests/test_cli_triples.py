@@ -296,3 +296,35 @@ def test_serci_backward_compat_uuid_prefix(runner: CliRunner) -> None:
     if uuid_prefix:
         result = runner.invoke(app, ["serci", "--subjekto", uuid_prefix])
         assert result.exit_code == 0
+
+
+def test_aldoni_object_substring_match(runner: CliRunner) -> None:
+    """Triple aldoni should resolve object via substring match."""
+    runner.invoke(app, [
+        "nodo", "aldoni", "GAULA_MILITO", "-e", "eo::Gaŭla Milito", "--jes",
+    ])
+    runner.invoke(app, [
+        "nodo", "aldoni", "SVISOJ", "-e", "eo::Svisoj", "--jes",
+    ])
+    # Use substring "MILITO" as object — should resolve via substring match
+    result = runner.invoke(app, [
+        "aldoni", "SVISOJ", "rdf:type", "MILITO", "--jes",
+    ])
+    assert result.exit_code == 0
+    assert "Arko kreita" in result.stdout or "Arc created" in result.stdout
+
+
+def test_aldoni_subject_substring_match(runner: CliRunner) -> None:
+    """Triple aldoni should resolve subject via substring match."""
+    runner.invoke(app, [
+        "nodo", "aldoni", "HISTORY_GAULA_MILITO", "-e", "eo::Historio", "--jes",
+    ])
+    runner.invoke(app, [
+        "nodo", "aldoni", "KATO", "-e", "eo::Kato", "--jes",
+    ])
+    # Use substring "GAULA" as subject — should resolve via substring match
+    result = runner.invoke(app, [
+        "aldoni", "GAULA", "rdf:type", "KATO", "--jes",
+    ])
+    assert result.exit_code == 0
+    assert "Arko kreita" in result.stdout or "Arc created" in result.stdout

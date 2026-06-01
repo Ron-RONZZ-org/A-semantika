@@ -85,6 +85,13 @@ def vidi(
         error(tr_multi("Ambigua prefikso: {e}", "Ambiguous prefix: {e}", "Préfixe ambigu : {e}").format(e=str(e)))
         raise typer.Exit(1) from e
     if not node:
+        # Fallback: substring match
+        try:
+            node = node_svc.resolve_node_id_substring(node_id)
+        except AmbiguousUUIDError as e:
+            error(tr_multi("Ambigua nodo: {e}", "Ambiguous node: {e}", "Nœud ambigu : {e}").format(e=str(e)))
+            raise typer.Exit(1) from e
+    if not node:
         error(tr_multi("Nodo ne trovita: {u}", "Node not found: {u}", "Nœud non trouvé : {u}").format(u=node_id))
         raise typer.Exit(1)
 
@@ -127,8 +134,8 @@ def serci(
     # Search by label/definition (FTS5) AND by node_id (LIKE)
     label_results = node_svc.search(query, limit=limit)
 
-    # Also search by node_id (LIKE with wildcard escaping, same pattern
-    # as resolve_node_id_prefix() in _node_search.py)
+    # Also search by node_id (LIKE with wildcard escaping, substring match;
+    # resolve_node_id_prefix in _node_search.py does exact → prefix → substring)
     escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     id_results = node_svc.db.execute(
         "SELECT * FROM nodes WHERE node_id LIKE ? COLLATE NOCASE ESCAPE '\\' LIMIT ?",

@@ -65,6 +65,31 @@ class NodeSearchMixin:
             raise AmbiguousUUIDError(msg, matches=matches)
         return matches[0]
 
+    def resolve_node_id_substring(self, text: str) -> dict | None:
+        """Resolve a node by searching for ``text`` as a substring of node_id.
+
+        This is a broader (slower) match than :meth:`resolve_node_id_prefix`
+        — it uses ``LIKE '%text%'`` instead of ``LIKE 'text%'``.  Use it
+        when the user may have entered only part of a node_id that does
+        *not* start at the beginning (e.g. ``MILITO`` for ``GAULA_MILITO``).
+
+        Returns the node dict if exactly one match, ``None`` if no match.
+        Raises ``AmbiguousUUIDError`` if multiple nodes match.
+        """
+        if not text:
+            return None
+        escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        matches = self.db.execute(
+            "SELECT * FROM nodes WHERE node_id LIKE ? COLLATE NOCASE ESCAPE '\\'",
+            (f"%{escaped}%",),
+        )
+        if not matches:
+            return None
+        if len(matches) > 1:
+            msg = f"Node ID '{text}' is ambiguous ({len(matches)} matches)"
+            raise AmbiguousUUIDError(msg, matches=matches)
+        return matches[0]
+
     # ── Backward-compat alias: resolve_uuid_prefix -> resolve_node_id_prefix ──
 
     def resolve_uuid_prefix(self, prefix: str) -> dict | None:

@@ -199,6 +199,22 @@ def vidi(
             ).format(e=str(e)))
             raise typer.Exit(1) from e
     if not subj_node:
+        # Fallback: substring match
+        try:
+            subj_node = node_svc.resolve_node_id_substring(subject_uuid)
+        except AmbiguousUUIDError as e:
+            if e.matches:
+                subj_node = _prompt_select_ambiguous_node(node_svc, e.matches)
+                if subj_node is None:
+                    raise typer.Exit(1)
+            else:
+                error(tr_multi(
+                    "Ambigua subjekto: {e}",
+                    "Ambiguous subject: {e}",
+                    "Sujet ambigu : {e}",
+                ).format(e=str(e)))
+                raise typer.Exit(1) from e
+    if not subj_node:
         error(tr_multi(
             "Nodo ne trovita: {s}",
             "Node not found: {s}",

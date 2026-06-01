@@ -181,7 +181,7 @@ def aldoni(
     pred_svc = get_predicate_service()
     triple_svc = get_triple_service()
 
-    # Resolve subject UUID
+    # Resolve subject UUID (prefix → substring fallback)
     try:
         subj_node = node_svc.resolve_node_id_prefix(subject)
     except AmbiguousUUIDError as e:
@@ -192,6 +192,17 @@ def aldoni(
         ).format(e=str(e)))
         raise typer.Exit(1) from e
     if not subj_node:
+        # Fallback: substring match (user may have typed middle of ID)
+        try:
+            subj_node = node_svc.resolve_node_id_substring(subject)
+        except AmbiguousUUIDError as e:
+            error(tr_multi(
+                "Ambigua subjekto: {e}",
+                "Ambiguous subject: {e}",
+                "Sujet ambigu : {e}",
+            ).format(e=str(e)))
+            raise typer.Exit(1) from e
+    if not subj_node:
         error(tr_multi(
             "Subjekto ne trovita: {s}",
             "Subject not found: {s}",
@@ -200,7 +211,7 @@ def aldoni(
         raise typer.Exit(1)
     subject_uuid = subj_node["node_id"]
 
-    # Resolve object UUID if URI type
+    # Resolve object UUID if URI type (prefix → substring fallback)
     object_uuid = object_value
     if object_type == "uri":
         try:
@@ -212,6 +223,17 @@ def aldoni(
                 "Préfixe objet ambigu : {e}",
             ).format(e=str(e)))
             raise typer.Exit(1) from e
+        if not obj_node:
+            # Fallback: substring match
+            try:
+                obj_node = node_svc.resolve_node_id_substring(object_value)
+            except AmbiguousUUIDError as e:
+                error(tr_multi(
+                    "Ambigua objekto: {e}",
+                    "Ambiguous object: {e}",
+                    "Objet ambigu : {e}",
+                ).format(e=str(e)))
+                raise typer.Exit(1) from e
         if not obj_node:
             error(tr_multi(
                 "Objekto ne trovita: {o}",
@@ -379,6 +401,17 @@ def forigi(
             "Préfixe sujet ambigu : {e}",
         ).format(e=str(e)))
         raise typer.Exit(1) from e
+    if not subj_node:
+        # Fallback: substring match
+        try:
+            subj_node = node_svc.resolve_node_id_substring(subject)
+        except AmbiguousUUIDError as e:
+            error(tr_multi(
+                "Ambigua subjekto: {e}",
+                "Ambiguous subject: {e}",
+                "Sujet ambigu : {e}",
+            ).format(e=str(e)))
+            raise typer.Exit(1) from e
     if not subj_node:
         error(tr_multi(
             "Subjekto ne trovita: {s}",

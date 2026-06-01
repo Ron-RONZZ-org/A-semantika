@@ -77,16 +77,28 @@ def forigi(
     for nid in node_ids:
         try:
             node = node_svc.resolve_node_id_prefix(nid)
-            if node:
-                resolved.append(node)
-            else:
-                errors.append((nid, tr_multi("ne trovita", "not found", "non trouvé")))
         except AmbiguousUUIDError as e:
             errors.append((nid, tr_multi(
                 "ambigua prefikso: {e}",
                 "ambiguous prefix: {e}",
                 "préfixe ambigu : {e}",
             ).format(e=str(e))))
+            continue
+        if not node:
+            # Fallback: substring match
+            try:
+                node = node_svc.resolve_node_id_substring(nid)
+            except AmbiguousUUIDError as e:
+                errors.append((nid, tr_multi(
+                    "ambigua nodo: {e}",
+                    "ambiguous node: {e}",
+                    "nœud ambigu : {e}",
+                ).format(e=str(e))))
+                continue
+        if node:
+            resolved.append(node)
+        else:
+            errors.append((nid, tr_multi("ne trovita", "not found", "non trouvé")))
 
     # Report resolution errors
     for input_val, reason in errors:

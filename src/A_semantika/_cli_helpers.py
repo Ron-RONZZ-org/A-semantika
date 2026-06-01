@@ -421,6 +421,18 @@ def resolve_arc_targets(
         target = node_svc.resolve_node_id_prefix(user_input)
         if target:
             return target["node_id"]
+        # Fallback: substring match
+        try:
+            target = node_svc.resolve_node_id_substring(user_input)
+        except AmbiguousUUIDError:
+            warning(tr_multi(
+                "Ambigua arka celo: {t} (preterlasita)",
+                "Ambiguous arc target: {t} (skipped)",
+                "Cible d'arc ambiguë : {t} (ignorée)",
+            ).format(t=user_input))
+            return None
+        if target:
+            return target["node_id"]
         warning(tr_multi(
             "Arka celo ne trovita: {t} (preterlasita)",
             "Arc target not found: {t} (skipped)",

@@ -253,6 +253,48 @@ class TestNodeIdPrefix:
             assert issubclass(w[0].category, DeprecationWarning)
             assert "resolve_uuid_prefix" in str(w[0].message)
 
+    # ── Issue: substring match (resolve_node_id_substring) ──────────────
+
+    def test_resolve_substring_match(self, node_svc) -> None:
+        """Substring match should find a node containing the text."""
+        node_svc.create({"node_id": "GAULA_MILITO", "etikedoj": {"eo": "Gaŭla Milito"}})
+        resolved = node_svc.resolve_node_id_substring("MILITO")
+        assert resolved is not None
+        assert resolved["node_id"] == "GAULA_MILITO"
+
+    def test_resolve_substring_middle(self, node_svc) -> None:
+        """Substring match should find node when text matches middle of ID."""
+        node_svc.create({"node_id": "HISTORY_GAULA_MILITO", "etikedoj": {"eo": "Historio"}})
+        resolved = node_svc.resolve_node_id_substring("GAULA")
+        assert resolved is not None
+        assert resolved["node_id"] == "HISTORY_GAULA_MILITO"
+
+    def test_resolve_substring_ambiguous(self, node_svc) -> None:
+        """Ambiguous substring should raise ValueError."""
+        node_svc.create({"node_id": "TEST_MILITO_1", "etikedoj": {"eo": "A"}})
+        node_svc.create({"node_id": "TEST_MILITO_2", "etikedoj": {"eo": "B"}})
+        import pytest
+        with pytest.raises(ValueError, match="ambiguous"):
+            node_svc.resolve_node_id_substring("MILITO")
+
+    def test_resolve_substring_no_match(self, node_svc) -> None:
+        """No substring match should return None."""
+        node_svc.create({"node_id": "SOMETHING", "etikedoj": {"eo": "X"}})
+        resolved = node_svc.resolve_node_id_substring("ZZZZZ")
+        assert resolved is None
+
+    def test_resolve_substring_empty(self, node_svc) -> None:
+        """Empty input should return None."""
+        resolved = node_svc.resolve_node_id_substring("")
+        assert resolved is None
+
+    def test_resolve_substring_case_insensitive(self, node_svc) -> None:
+        """Substring match should be case-insensitive."""
+        node_svc.create({"node_id": "GAULA_MILITO", "etikedoj": {"eo": "Gaŭla Milito"}})
+        resolved = node_svc.resolve_node_id_substring("milito")
+        assert resolved is not None
+        assert resolved["node_id"] == "GAULA_MILITO"
+
 
 class TestNodeTrashOlderThan:
     """get_trash_older_than SQL-side date filtering tests."""
