@@ -37,15 +37,19 @@ src/A_semantika/
 ├── _wikidata_helper.py    # Wikidata API adapter (validation, search, metadata fetch)
 ├── _cli_helpers.py        # Shared CLI helpers (pick_triple, type flag validation)
 ├── _cli_modify.py         # Root `modifi` command (Issue #8 R3 + Issue #10 EO)
-├── _cli_nodo.py           # Nodo subcommand CLI
+├── _cli_nodo.py           # Nodo subcommand CLI (ls, vidi, serci)
+├── _cli_nodo_crud.py      # Nodo CRUD subcommands: aldoni, modifi
+├── _cli_nodo_forigi.py    # Nodo forigi subcommand (multi-identifier)
+├── _cli_nodo_kunfandi.py  # Nodo kunfandi (merge) subcommand (Issue #64)
 ├── _cli_predikato.py      # Predikato subcommand CLI (+ Wikidata flags)
 ├── _cli_predikat_grupo.py # Predikat-grupo subcommand CLI
 ├── _cli_query.py          # Root query commands: serci, vidi, eksporti (Issue #10 EO)
 ├── _cli_rubujo.py         # Rubujo (trash) subcommand group: ls, restaurigi, malplenigi, forigi
 ├── _cli_triples.py        # Root triple CLI: aldoni (-i, --str-dosiero), forigi
 ├── _node_helpers.py       # Shared helpers: label/difin extraction, FTS5 keywords
+├── _node_merge_mixin.py   # NodeMergeMixin: merge_nodes() (Issue #64)
 ├── _node_search.py        # NodeSearchMixin: FTS mgmt, search, node_id prefix resolution (extracted from _node_service.py)
-├── _node_service.py       # NodeService (NodeSearchMixin + CRUDService)
+├── _node_service.py       # NodeService (NodeMergeMixin + NodeSearchMixin + CRUDService)
 ├── _predicate_service.py  # PredicateService (CRUDService + LIKE search)
 ├── _predicate_group_service.py  # PredicateGroupService (CRUDService + member mgmt)
 ├── _triple_search.py      # Triple search by partial labels (Issue #8 R2)
@@ -61,7 +65,7 @@ tests/
 ├── test_cli_deprecated.py           # Deprecated alias tests
 ├── test_cli_export.py               # eksporti Turtle export tests
 ├── test_cli_help.py                 # Help & command discovery
-├── test_cli_nodo.py                 # Nodo CLI CRUD
+├── test_cli_nodo.py                 # Nodo CLI CRUD (including kunfandi)
 ├── test_cli_predikat_grupo.py       # Predikat-grupo CLI CRUD
 ├── test_cli_predikato.py            # Predikato CLI CRUD
 ├── test_cli_rubujo.py               # rubujo (trash) CLI tests
@@ -72,6 +76,7 @@ tests/
 ├── test_fts5_sanitization.py        # Edge: FTS5 special chars
 ├── test_multi_forigi.py             # Edge: multi-identifier forigi
 ├── test_node_arcs.py                # Edge: nodo aldoni with arcs
+├── test_node_merge.py               # NodeService.merge_nodes() unit tests (Issue #64)
 ├── test_nodes.py                    # NodeService unit tests
 ├── test_nodo_errors.py              # Edge: nodo error handling
 ├── test_nodo_vidi_ensure.py         # Edge: vidi + ensure_predicate
@@ -188,10 +193,15 @@ CREATE INDEX idx_nodes_label_text ON nodes(label_text);
 
 ## Service Layer
 
-### NodeService (extends CRUDService)
+### NodeService (NodeMergeMixin + NodeSearchMixin + CRUDService)
 - FTS5 on `label_text` + `difin_text` (via `FTSConfig`)
 - Override `_post_create` / `_post_update` to auto-populate `label_text` from `etikedoj` JSON
 - UUID override on `aldoni`: optional `[UUID]` positional arg for manual UUID assignment
+- `merge_nodes(source_id, target_id)` — merge two nodes into one (Issue #64)
+  - Target-first label/definition merge
+  - Triple reassignment with PK conflict skip
+  - Atomic transaction with `PRAGMA defer_foreign_keys=ON`
+  - Inline FTS re-index to avoid implicit commit
 
 ### PredicateService (extends CRUDService)
 - Stores multilingual labels/descriptions as JSON dicts: `etikedoj` / `priskriboj`
@@ -274,8 +284,15 @@ A semantika predikato ls                     # Single label column (eo/en fallba
 A semantika predikat-grupo aldoni <group-name>
 A semantika predikat-grupo importi <file>
 
+A semantika nodo kunfandi <fonto> <celo>
+  Merge source node INTO target node.
+  Labels/definitions merge with target-first precedence.
+  All triples reassigned; PK collisions silently skipped (target wins).
+  Source node deleted after merge.
+  [-y / --jes]
+
 # Standard CRUD commands (all subcommand groups):
-  ls vidi modifi forigi serci
+  ls vidi modifi forigi serci kunfandi
 
 # Trash commands (rubujo subcommand group):
   rubujo ls              # List trashed nodes
@@ -318,6 +335,7 @@ A semantika predikat-grupo importi <file>
 | **I9** | Predicate JSON migration + UX cleanup (Issue #9) | JSON `etikedoj`/`priskriboj`, merge/replace `modifi` | ✅ Complete |
 
 | **I18** | Seed default RDF/OWL predicates at DB creation (Issue #18) | `DEFAULT_PREDICATES` in `data/storage.py` | ✅ Complete |
+| **I64** | Node merge (`nodo kunfandi`) — two nodes into one (Issue #64) | `_node_merge_mixin.py`, `_cli_nodo_kunfandi.py` | ✅ Complete |
 
 ## Critical Bugs Fixed (May 2026)
 
