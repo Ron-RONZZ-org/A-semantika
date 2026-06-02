@@ -15,11 +15,12 @@ from A_semantika._node_helpers import (
     get_display_label,
     sanitize_node_id,
 )
+from A_semantika._node_merge_mixin import NodeMergeMixin
 from A_semantika._node_search import NodeSearchMixin, _fts_config
 from A_semantika.data.storage import now
 
 
-class NodeService(NodeSearchMixin, CRUDService):
+class NodeService(NodeMergeMixin, NodeSearchMixin, CRUDService):
     """Service for managing knowledge graph nodes (FTS5, label denorm, node_id PK)."""
 
     def __init__(self, db: Any) -> None:

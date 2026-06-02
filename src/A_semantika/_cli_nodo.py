@@ -12,6 +12,7 @@ from rich.table import Table
 from A import error, info, tr_multi
 from A_semantika._cli_nodo_crud import aldoni, modifi
 from A_semantika._cli_nodo_forigi import forigi
+from A_semantika._cli_nodo_kunfandi import kunfandi
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika.data.storage import label_from_json
@@ -33,6 +34,7 @@ nodo_app = typer.Typer(
 nodo_app.command(name="aldoni")(aldoni)
 nodo_app.command(name="modifi")(modifi)
 nodo_app.command(name="forigi")(forigi)
+nodo_app.command(name="kunfandi")(kunfandi)
 
 
 @nodo_app.command("ls")
