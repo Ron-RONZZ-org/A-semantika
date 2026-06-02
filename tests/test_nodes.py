@@ -379,3 +379,4 @@ class TestNodeDisplayLabel:
         label, lang = get_display_label(node_svc.resolve_node_id_prefix, "nonexistent")
         assert label == "nonexistent"
         assert lang == ""
+

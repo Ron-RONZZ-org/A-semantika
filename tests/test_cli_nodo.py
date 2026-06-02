@@ -164,3 +164,59 @@ def test_forigi_jes_flag(runner: CliRunner) -> None:
     result = runner.invoke(app, ["nodo", "forigi", uuid_prefix, "--jes"])
     assert result.exit_code == 0
     assert "forigita" in result.stdout
+
+
+def test_kunfandi_merge(runner: CliRunner) -> None:
+    """Merging two nodes via CLI should work."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::HOMO_SAPIENS", "--jes"])
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::HOMO_SAPIEN", "--jes"])
+
+    # Get the node IDs
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    ids = []
+    for line in ls_result.stdout.strip().split("\n"):
+        if "HOMO" in line.upper():
+            parts = line.strip().split()
+            if parts and parts[0].isalnum():
+                ids.append(parts[0])
+    assert len(ids) >= 2, f"Expected 2 nodes, got {ids}"
+
+    src_id = ids[0]
+    tgt_id = ids[1]
+
+    # Merge with --jes flag
+    result = runner.invoke(app, ["nodo", "kunfandi", src_id, tgt_id, "--jes"])
+    assert result.exit_code == 0
+    assert "kunfanditaj" in result.stdout or "Merged" in result.stdout or "fusionnés" in result.stdout
+
+
+def test_kunfandi_same_node_error(runner: CliRunner) -> None:
+    """Merging a node into itself should show error."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::SAME_NODE", "--jes"])
+    ls_result = runner.invoke(app, ["nodo", "ls"])
+    node_id = None
+    for line in ls_result.stdout.strip().split("\n"):
+        if "SAME_NODE" in line.upper() and not node_id:
+            parts = line.strip().split()
+            if parts and parts[0].isalnum():
+                node_id = parts[0]
+    if not node_id:
+        return
+
+    result = runner.invoke(app, ["nodo", "kunfandi", node_id, node_id, "--jes"])
+    assert result.exit_code == 1
+    assert "sama" in result.stdout.lower() or "same" in result.stdout.lower()
+
+
+def test_kunfandi_nonexistent_source(runner: CliRunner) -> None:
+    """Merging with nonexistent source should show error."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::TARGET_NODE", "--jes"])
+    result = runner.invoke(app, ["nodo", "kunfandi", "NOEXIST_SRC_ID", "TARGET_NODE", "--jes"])
+    assert result.exit_code == 1
+
+
+def test_kunfandi_nonexistent_target(runner: CliRunner) -> None:
+    """Merging with nonexistent target should show error."""
+    runner.invoke(app, ["nodo", "aldoni", "-e", "eo::SOURCE_NODE", "--jes"])
+    result = runner.invoke(app, ["nodo", "kunfandi", "SOURCE_NODE", "NOEXIST_TGT_ID", "--jes"])
+    assert result.exit_code == 1
