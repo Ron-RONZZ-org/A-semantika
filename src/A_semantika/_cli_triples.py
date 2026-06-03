@@ -16,6 +16,7 @@ from A import error, info, tr_multi
 from A_semantika._cli_helpers import (
     _find_triple_by_spo,
     pick_triple,
+    pick_triples,
     validate_type_flags,
 )
 from A_semantika._node_helpers import truncate_uuid
@@ -351,45 +352,60 @@ def forigi(
 
     # ── Interactive mode: partial args → show picker ───────────────
     if predicate is None or object is None:
-        triple = pick_triple(
+        triples = pick_triples(
             triple_svc, node_svc, pred_svc,
             subject=subject, predicate=predicate, object=object,
         )
-        if triple is None:
+        if triples is None:
             raise typer.Exit(1)
 
         if not yes:
-            subj_label = resolve_node_label(node_svc, triple["subject_uuid"])
-            obj_label = (
-                resolve_node_label(node_svc, triple["object_value"])
-                if triple["object_type"] == "uri"
-                else triple["object_value"]
-            )
-            pred_label = resolve_predicate_label(pred_svc, triple["predicate_id"])
-
             from A.utils.interactive import confirm_action
+
+            # Show a compact summary of selected arcs
+            info(tr_multi(
+                "Elektitaj arkoj ({n}):",
+                "Selected arcs ({n}):",
+                "Arcs sélectionnés ({n}) :",
+            ).format(n=len(triples)))
+            for t in triples:
+                subj_label = resolve_node_label(node_svc, t["subject_uuid"])
+                obj_label = (
+                    resolve_node_label(node_svc, t["object_value"])
+                    if t["object_type"] == "uri"
+                    else t["object_value"]
+                )
+                pred_label = resolve_predicate_label(pred_svc, t["predicate_id"])
+                info(f"  {subj_label} --{pred_label}--> {obj_label}")
 
             if not confirm_action(
                 tr_multi(
-                    f"Ĉu forigi arkon: {subj_label} --{pred_label}--> {obj_label}?",
-                    f"Delete arc: {subj_label} --{pred_label}--> {obj_label}?",
-                    f"Supprimer l'arc : {subj_label} --{pred_label}--> {obj_label}?",
+                    f"Ĉu forigi {len(triples)} arkojn?",
+                    f"Delete {len(triples)} arcs?",
+                    f"Supprimer {len(triples)} arcs ?",
                 ),
                 default=False,
             ):
                 info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
                 raise typer.Exit(0)
 
-        deleted = triple_svc.remove(
-            subject_uuid=triple["subject_uuid"],
-            predicate_id=triple["predicate_id"],
-            object_value=triple["object_value"],
-            object_type=triple.get("object_type", "uri"),
-        )
-        if deleted:
-            info(tr_multi("Arko forigita.", "Arc deleted.", "Arc supprimé."))
-        else:
-            info(tr_multi("Neniu arko trovita.", "No arc found.", "Aucun arc trouvé."))
+        # Batch delete
+        deleted_count = 0
+        for t in triples:
+            deleted = triple_svc.remove(
+                subject_uuid=t["subject_uuid"],
+                predicate_id=t["predicate_id"],
+                object_value=t["object_value"],
+                object_type=t.get("object_type", "uri"),
+            )
+            if deleted:
+                deleted_count += 1
+
+        info(tr_multi(
+            "Forigis {d} el {n} arkoj.",
+            "Deleted {d} of {n} arcs.",
+            "Supprimé {d} sur {n} arcs.",
+        ).format(d=deleted_count, n=len(triples)))
         return
 
     # ── Direct mode: full triplet provided (backward compat) ──────

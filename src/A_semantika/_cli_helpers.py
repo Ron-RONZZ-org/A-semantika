@@ -17,7 +17,7 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, tr_multi, warning
-from A.utils.interactive import select_candidate
+from A.utils.interactive import select_candidate, select_candidates
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError, NodeService
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
@@ -186,6 +186,68 @@ def pick_triple(
     if result is None:
         return None
     return result[1]  # The selected triple dict
+
+
+def pick_triples(
+    triple_svc: TripleService,
+    node_svc: NodeService,
+    pred_svc: PredicateService,
+    subject: str | None = None,
+    predicate: str | None = None,
+    object: str | None = None,  # noqa: A002
+) -> list[dict] | None:
+    """Show an interactive multi-select picker for triples.
+
+    Same search semantics as :func:`pick_triple`, but the user may enter
+    space-separated numbers to select multiple arcs at once.
+
+    Returns:
+        List of selected triple dicts, or ``None`` if cancelled / no matches.
+    """
+    results = search_triples_by_labels(
+        triple_svc=triple_svc,
+        node_svc=node_svc,
+        pred_svc=pred_svc,
+        subject=subject,
+        predicate=predicate,
+        object=object,
+        limit=100,
+    )
+    if not results:
+        error(tr_multi(
+            "Neniuj kongruaj arkoj.",
+            "No matching arcs found.",
+            "Aucun arc correspondant trouvé.",
+        ))
+        return None
+
+    selections = select_candidates(
+        results,
+        columns=[
+            {"header": tr_multi("Subjekto", "Subject", "Sujet")},
+            {"header": tr_multi("Predikato", "Predicate", "Predicat")},
+            {"header": tr_multi("Objekto", "Object", "Objet")},
+            {"header": tr_multi("Tipo", "Type", "Type")},
+        ],
+        row_formatter=lambda t, i: [
+            resolve_node_label(node_svc, t["subject_uuid"]),
+            resolve_predicate_label(pred_svc, t["predicate_id"]),
+            (
+                resolve_node_label(node_svc, t["object_value"])
+                if t["object_type"] == "uri"
+                else t["object_value"]
+            ),
+            t["object_type"],
+        ],
+        prompt_text=tr_multi(
+            "Elektu arko-numerojn por forigi (spacigitaj, aŭ Enter por nuligi)",
+            "Select arc numbers to delete (space-separated, or Enter to cancel)",
+            "Choisissez les numéros d'arcs à supprimer (séparés par des espaces, ou Entrée pour annuler)",
+        ),
+    )
+    if selections is None:
+        return None
+    return [item for _, item in selections]
 
 
 def count_type_flags(str_: bool, int_: bool, float_: bool, bool_: bool) -> int:

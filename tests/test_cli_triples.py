@@ -282,6 +282,51 @@ def test_triple_aldoni_str_dosiero_mutual_exclusion(runner: CliRunner) -> None:
     assert "Ne eblas" in result.stdout or "Cannot" in result.stdout or "Impossible" in result.stdout
 
 
+def test_triple_forigi_multi_select(runner: CliRunner) -> None:
+    """forigi interactive should accept space-separated numbers."""
+    subj_uuid = "c1111111-1111-1111-1111-111111111111"
+    runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::MultiSubj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdfs:label", "-e", "eo::etikedo", "--jes"])
+
+    # Create 3 string literal triples
+    for val in ("AAA", "BBB", "CCC"):
+        r = runner.invoke(app, [
+            "aldoni", subj_uuid[:8], "rdfs:label",
+            "--str", val, "-l", "eo", "--jes",
+        ])
+        assert r.exit_code == 0, f"aldoni {val} failed: {r.stdout}"
+
+    # Multi-select: delete arcs 1 and 3 (AAA and CCC)
+    result = runner.invoke(app, [
+        "forigi", subj_uuid[:8], "rdfs:label", "--jes",
+    ], input="1 3\n")
+    assert result.exit_code == 0
+    assert "Forigis 2 el 2" in result.stdout or "Deleted 2 of 2" in result.stdout
+
+    # Verify only BBB remains
+    r = runner.invoke(app, ["serci", "--subjekto", subj_uuid[:8]])
+    assert "BBB" in r.stdout
+    assert "AAA" not in r.stdout
+    assert "CCC" not in r.stdout
+
+
+def test_triple_forigi_multi_select_single(runner: CliRunner) -> None:
+    """forigi multi-select with a single number still works (backward compat)."""
+    subj_uuid = "d1111111-1111-1111-1111-111111111111"
+    runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::MultiSingle", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdfs:label", "-e", "eo::etikedo", "--jes"])
+    runner.invoke(app, [
+        "aldoni", subj_uuid[:8], "rdfs:label",
+        "--str", "OnlyOne", "-l", "eo", "--jes",
+    ])
+
+    result = runner.invoke(app, [
+        "forigi", subj_uuid[:8], "rdfs:label", "--jes",
+    ], input="1\n")
+    assert result.exit_code == 0
+    assert "Forigis 1 el 1" in result.stdout or "Deleted 1 of 1" in result.stdout
+
+
 def test_serci_backward_compat_uuid_prefix(runner: CliRunner) -> None:
     """serci --subject should still work with UUID prefixes."""
     runner.invoke(app, ["nodo", "aldoni", "-e", "eo::CompatTest", "--jes"])
