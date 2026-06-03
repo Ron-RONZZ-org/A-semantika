@@ -127,6 +127,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS predicates_fts USING fts5(
 """
 
 
+# Custom datatype URIs for typed literals in the triple store.
+# These are stored in the ``object_datatype`` column and enable
+# RDF-compatible type discrimination without schema changes.
+KATEX_DATATYPE = "https://w3id.org/autish/katex"
+
 # Default RDF/OWL predicates seeded into every new database.
 # These match the CLI shortcuts in _cli_nodo.py (--tipo, --superklaso, --ne, --invers).
 # Extended with INSERT OR IGNORE so existing databases are unaffected.

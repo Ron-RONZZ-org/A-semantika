@@ -41,3 +41,17 @@ def test_aldoni_unuo_without_int_or_float_exits_error(runner: CliRunner) -> None
     ])
     assert result.exit_code == 1
     assert "bezonas" in result.stdout or "requires" in result.stdout
+
+
+def test_aldoni_kodlingvo_without_kodbloko_exits_error(runner: CliRunner) -> None:
+    """--kodlingvo without --kodbloko should exit with error (B3)."""
+    runner.invoke(app, ["nodo", "aldoni", "B3KodSubj", "-e", "eo::B3KodSubj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    # Use --str to make it a valid string literal, then --kodlingvo without
+    # --kodbloko should trigger the validation error
+    result = runner.invoke(app, [
+        "aldoni", "B3KodSubj", "rdf:type", "--str", "Hundo", "--kodlingvo", "python", "--jes",
+    ])
+    assert result.exit_code == 1
+    assert "bezonas" in result.stdout or "requires" in result.stdout

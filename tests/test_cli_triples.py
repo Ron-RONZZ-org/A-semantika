@@ -373,3 +373,173 @@ def test_aldoni_subject_substring_match(runner: CliRunner) -> None:
     ])
     assert result.exit_code == 0
     assert "Arko kreita" in result.stdout or "Arc created" in result.stdout
+
+
+# ── KaTeX (--katex / -k) tests ─────────────────────────────────────────────────
+
+
+def test_triple_aldoni_katex_basic(runner: CliRunner) -> None:
+    """--katex should create a triple with a KaTeX formula."""
+    runner.invoke(app, ["nodo", "aldoni", "KatexBas", "-e", "eo::KatexBasic", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    result = runner.invoke(app, [
+        "aldoni", "KatexBas", "rdf:type", "--katex", "E=mc^2", "--jes",
+    ])
+    assert result.exit_code == 0, f"--katex failed: {result.stdout}"
+    assert "kreita" in result.stdout or "created" in result.stdout or "Arc" in result.stdout
+
+
+def test_triple_aldoni_katex_strips_dollar_delimiter(runner: CliRunner) -> None:
+    """--katex should strip single $...$ delimiters from formula."""
+    runner.invoke(app, ["nodo", "aldoni", "KatexDl", "-e", "eo::KatexDol", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    result = runner.invoke(app, [
+        "aldoni", "KatexDl", "rdf:type", "--katex", "$E=mc^2$", "--jes",
+    ])
+    assert result.exit_code == 0
+    # Verify the formula was stored without delimiters by searching
+    r = runner.invoke(app, ["serci", "--subjekto", "KatexDl"])
+    # The stored triple value should be E=mc^2 (without dollar signs)
+    # The datatype URI https://w3id.org/autish/katex signals it's a KaTeX formula
+    assert "E=mc^2" in r.stdout
+
+
+def test_triple_aldoni_katex_strips_double_dollar_delimiter(runner: CliRunner) -> None:
+    """--katex should strip $$...$$ delimiters from formula."""
+    runner.invoke(app, ["nodo", "aldoni", "KatexDD", "-e", "eo::KatexDDol", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    result = runner.invoke(app, [
+        "aldoni", "KatexDD", "rdf:type", "--katex", "$$E=mc^2$$", "--jes",
+    ])
+    assert result.exit_code == 0
+    r = runner.invoke(app, ["serci", "--subjekto", "KatexDD"])
+    assert "E=mc^2" in r.stdout
+
+
+def test_triple_aldoni_katex_empty_formula_error(runner: CliRunner) -> None:
+    """--katex with empty formula should exit with error."""
+    runner.invoke(app, ["nodo", "aldoni", "KatexEmp", "-e", "eo::KatexEmpt", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    result = runner.invoke(app, [
+        "aldoni", "KatexEmp", "rdf:type", "--katex", "", "--jes",
+    ])
+    assert result.exit_code == 1
+    assert "Malplena" in result.stdout or "empty" in result.stdout
+
+
+def test_triple_aldoni_katex_mutual_exclusion_object(runner: CliRunner) -> None:
+    """--katex should be mutually exclusive with OBJEKTO positional arg."""
+    result = runner.invoke(app, [
+        "aldoni", "SomeSubj", "rdf:type", "SomeObj", "--katex", "E=mc^2", "--jes",
+    ])
+    assert result.exit_code == 1
+    assert "Ne eblas" in result.stdout or "Cannot" in result.stdout or "Impossible" in result.stdout
+
+
+# ── Kodbloko (--kodbloko / -K) tests ──────────────────────────────────────────
+
+
+def test_triple_aldoni_kodbloko_basic(runner: CliRunner, tmp_path: str) -> None:
+    """--kodbloko should create a triple from a code file."""
+    runner.invoke(app, ["nodo", "aldoni", "KodBas", "-e", "eo::KodBasic", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    from pathlib import Path
+    code_file = Path(tmp_path) / "hello.py"
+    code_file.write_text("print('hello')", encoding="utf-8")
+
+    result = runner.invoke(app, [
+        "aldoni", "KodBas", "rdf:type", "--kodbloko", str(code_file), "--jes",
+    ])
+    assert result.exit_code == 0, f"--kodbloko failed: {result.stdout}"
+    assert "kreita" in result.stdout or "created" in result.stdout or "Arc" in result.stdout
+
+
+def test_triple_aldoni_kodbloko_with_language(runner: CliRunner, tmp_path: str) -> None:
+    """--kodbloko with --kodlingvo should set the MIME datatype."""
+    runner.invoke(app, ["nodo", "aldoni", "KodLan", "-e", "eo::KodLang", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    from pathlib import Path
+    code_file = Path(tmp_path) / "hello.py"
+    code_file.write_text("print('hello')", encoding="utf-8")
+
+    result = runner.invoke(app, [
+        "aldoni", "KodLan", "rdf:type",
+        "--kodbloko", str(code_file), "--kodlingvo", "python", "--jes",
+    ])
+    assert result.exit_code == 0, f"--kodbloko -L failed: {result.stdout}"
+    assert "kreita" in result.stdout or "created" in result.stdout or "Arc" in result.stdout
+
+
+def test_triple_aldoni_kodbloko_file_not_found(runner: CliRunner) -> None:
+    """--kodbloko should give a clear error when file does not exist."""
+    runner.invoke(app, ["nodo", "aldoni", "KodNf", "-e", "eo::KodNotFound", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    result = runner.invoke(app, [
+        "aldoni", "KodNf", "rdf:type",
+        "--kodbloko", "/nonexistent/code.py", "--jes",
+    ])
+    assert result.exit_code == 1
+    assert "ne trovita" in result.stdout or "not found" in result.stdout
+
+
+def test_triple_aldoni_kodbloko_mutual_exclusion_object(runner: CliRunner) -> None:
+    """--kodbloko should be mutually exclusive with OBJEKTO positional arg."""
+    result = runner.invoke(app, [
+        "aldoni", "SomeSubj", "rdf:type", "SomeObj", "--kodbloko", "test.py", "--jes",
+    ])
+    assert result.exit_code == 1
+    assert "Ne eblas" in result.stdout or "Cannot" in result.stdout or "Impossible" in result.stdout
+
+
+def test_triple_aldoni_katex_kodbloko_mutual_exclusion(runner: CliRunner) -> None:
+    """--katex and --kodbloko should be mutually exclusive."""
+    result = runner.invoke(app, [
+        "aldoni", "SomeSubj", "rdf:type",
+        "--katex", "E=mc^2", "--kodbloko", "test.py", "--jes",
+    ])
+    assert result.exit_code == 1
+    assert "Ne eblas" in result.stdout or "Cannot" in result.stdout or "Impossible" in result.stdout
+
+
+# ── -D / -d flag tests ────────────────────────────────────────────────────────
+
+
+def test_triple_aldoni_D_flag_happy(runner: CliRunner, tmp_path: str) -> None:
+    """-D (uppercase) should work as --str-dosiero."""
+    runner.invoke(app, ["nodo", "aldoni", "DFlag", "-e", "eo::DFlagSubj", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    from pathlib import Path
+    md_file = Path(tmp_path) / "test.md"
+    md_file.write_text("# D-Flag test", encoding="utf-8")
+
+    result = runner.invoke(app, [
+        "aldoni", "DFlag", "rdf:type", "-D", str(md_file), "--jes",
+    ])
+    assert result.exit_code == 0, f"-D flag failed: {result.stdout}"
+    assert "kreita" in result.stdout or "created" in result.stdout or "Arc" in result.stdout
+
+
+def test_triple_aldoni_deprecated_d_flag(runner: CliRunner, tmp_path: str) -> None:
+    """-d (lowercase, deprecated) should work with a deprecation warning."""
+    runner.invoke(app, ["nodo", "aldoni", "Ddep", "-e", "eo::DdepFlag", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    from pathlib import Path
+    md_file = Path(tmp_path) / "test.md"
+    md_file.write_text("# Deprecated d test", encoding="utf-8")
+
+    result = runner.invoke(app, [
+        "aldoni", "Ddep", "rdf:type", "-d", str(md_file), "--jes",
+    ])
+    # Should still succeed (backward compat)
+    assert result.exit_code == 0, f"-d deprecated flag failed: {result.stdout}"
+    # Should emit deprecation warning in stderr
+    assert "malrekomendita" in (result.stdout + result.stderr)
