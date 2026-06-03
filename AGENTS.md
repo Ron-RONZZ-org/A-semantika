@@ -55,7 +55,11 @@ src/A_semantika/
 ├── _triple_search.py      # Triple search by partial labels (Issue #8 R2)
 ├── _triple_service.py     # TripleService (custom, non-CRUDService)
 ├── _triple_turtle.py      # Turtle (.ttl) export (extracted from _triple_service.py for < 500 lines)
-├── _preview.py            # Rich table preview helpers
+├── _preview.py            # Facade — re-exports all preview symbols (Issue #19)
+├── _preview_helpers.py    # Label resolution helpers (extracted from _preview.py)
+├── _preview_triple.py     # Triple preview + confirm (extracted from _preview.py)
+├── _preview_node.py       # Node preview + confirm (extracted from _preview.py)
+├── _preview_predicate.py  # Predicate preview + confirm (extracted from _preview.py)
 └── data/
     ├── __init__.py        # Package marker
     ├── storage.py         # Schema DDL, get_db(), init_db(), get_service() singletons
@@ -246,6 +250,8 @@ A semantika aldoni <subject> <predicate> [<object>]
 A semantika forigi <subject> [<predicate> [<object>]]
   [-y / --jes]
   If predicate/object omitted → interactive picker via partial label search
+  Picker accepts space-separated numbers for multi-select (e.g. '1 3 6')
+  Batch delete with partial success reporting: "Forigis X el Y arkoj."
 
 A semantika modifi <subject> [<predicate> [<object>]]
   [--nova-subjekto / -ns]  [--nova-predikato / -np]  [--nova-objekto / -no]
@@ -389,9 +395,10 @@ A semantika nodo kunfandi <fonto> <celo>
 7. FTS5 for full-text search
 8. Import from `A` — never duplicate utilities
 9. `box=BOX_SIMPLE` on all Rich tables
-10. UUID primary keys on all tables (except triples — compound PK)
-11. **Error Handling**: Never use bare `except: pass` — always catch specific exceptions and re-raise if not expected
-12. **UUID Ambiguity**: Always catch `AmbiguousUUIDError` separately from generic "not found" errors; propagate to user with clear message
+10. **Rich table wrapping policy**: IDs never wrap (`no_wrap=True`), labels/content wrap (`no_wrap=False`) — set `no_wrap` explicitly on every `add_column()` call
+11. UUID primary keys on all tables (except triples — compound PK)
+12. **Error Handling**: Never use bare `except: pass` — always catch specific exceptions and re-raise if not expected
+13. **UUID Ambiguity**: Always catch `AmbiguousUUIDError` separately from generic "not found" errors; propagate to user with clear message
 
 ## Testing
 
@@ -1161,6 +1168,39 @@ labels in preview. 469 total (460 existing + 9 new).
 - ✓ No-op duplicate shows "No change" message
 - ✓ `-y` flag silently updates on duplicate
 - ✓ Empty plain text skipped with warning
+
+### Issue #66: Multi-Select for Triple `forigi` (June 2026)
+
+**Scope:** Interactive `forigi` (triple forigi) now accepts space-separated numbers
+(e.g. `1 3 6`) to select and delete multiple arcs at once.
+
+**Changes:**
+
+| Layer | File | What |
+|-------|------|------|
+| A-core | `A/utils/interactive.py` | Extracted `_build_candidate_table()` shared helper. Added `select_candidates()` — same params as `select_candidate()` but returns `list[tuple[int,T]] | None`. Accepts space-separated input with dedup via `seen` set. |
+| A-semantika | `_cli_helpers.py` | Added `pick_triples()` — wraps `select_candidates()` with same columns/formatter as `pick_triple()`. Returns `list[dict] | None`. |
+| A-semantika | `_cli_triples.py` | `forigi()` interactive mode now calls `pick_triples()`. Shows compact summary of selected arcs before single confirmation. Batch delete with `Forigis X el Y arkoj.` (partial failure tolerant). |
+
+**Key decisions:**
+- `pick_triple()` **unchanged** — `modifi` still uses single-select
+- Invalid tokens silently skipped in multi-select input
+- Duplicate indices (e.g. `1 1 6`) deduplicated
+- Batch confirmation: single `confirm_action()` instead of per-triple prompts
+- Matches Issue #13 partial-failure reporting pattern
+
+**Tests:** 8 new in A-core (`test_interactive.py`), 2 new in A-semantika (`test_cli_triples.py`). 859 total across both repos (857 existing + 2 new).
+
+**Commits:**
+- `2313e0a` (A-core) — "feat: add select_candidates() multi-select helper (#66)"
+- `a460acd` (A-semantika) — "feat: multi-select for triple forigi (#66)"
+
+**User Simulation Verified:**
+- ✓ Multi-select `3 4` deletes two arcs
+- ✓ Single-number input (`1`) still works (backward compat)
+- ✓ Deletion count correct: `Forigis 2 el 2 arkoj.`
+- ✓ Remaining arcs correctly reflected in search
+- ✓ Empty result shows "Neniuj arkoj trovitaj."
 
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
