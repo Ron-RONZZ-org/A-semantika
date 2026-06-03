@@ -15,7 +15,7 @@ from typing import Optional
 
 import typer
 
-from A import error, info, tr_multi
+from A import error, info, tr_multi, warning
 from A_semantika._cli_helpers import resolve_deprecated, validate_type_flags
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
@@ -129,18 +129,19 @@ def aldoni(
     ),
     kodbloko: Optional[str] = typer.Option(
         None, "--kodbloko", "-K",
+        hidden=True,
         help=tr_multi(
-            "Legu dosieron kiel kodbloko (anstataŭ OBJEKTO)",
-            "Read file as code block (instead of OBJEKTO)",
-            "Lire le fichier comme un bloc de code (au lieu de OBJEKTO)",
+            "Malrekomendita: uzu --str-dosiero --kodlingvo <lingvo>",
+            "Deprecated: use --str-dosiero --kodlingvo <language>",
+            "Déprécié : utilisez --str-dosiero --kodlingvo <langue>",
         ),
     ),
     kodlingvo: Optional[str] = typer.Option(
         None, "--kodlingvo", "-L",
         help=tr_multi(
-            "Programlingvo por --kodbloko (ekz. python, javascript)",
-            "Programming language for --kodbloko (e.g. python, javascript)",
-            "Langage de programmation pour --kodbloko (ex. python, javascript)",
+            "Programlingvo por kodbloko el --str-dosiero aŭ --str (ekz. python, qd)",
+            "Programming language for code from --str-dosiero or --str (e.g. python, qd)",
+            "Langage de programmation pour code depuis --str-dosiero ou --str (ex. python, qd)",
         ),
     ),
     yes: bool = typer.Option(
@@ -156,8 +157,8 @@ def aldoni(
 
     Defaŭlte objekto estas URI referenco (nod UUID). Uzu --str por teksta literal,
     --str-dosiero/-D por legi dosieron kiel tekstan literal.
-    Uzu --katex/-k por KaTeX formulo, --kodbloko/-K por kodbloko el dosiero
-    (kun --kodlingvo/-L por specifi programlingvon).
+    Uzu --katex/-k por KaTeX formulo, --str-dosiero/-D kun --kodlingvo/-L por kodbloko
+    el dosiero, aŭ --str -L por unulinia kodaĵeto.
 
     Se la objekta valoro komenciĝas per -, uzu -- antaŭ ĝi por eviti
     misinterpretadon kiel flago: aldoni NODO predikato -f -- -1.5
@@ -165,19 +166,24 @@ def aldoni(
     # Resolve deprecated -d -> -D alias
     str_dosiero = resolve_deprecated(str_dosiero, str_dosiero_old, "d", "D")
 
-    # --katex and --kodbloko are mutually exclusive with --str-dosiero, --str, and OBJEKTO
-    if katex is not None and (object is not None or kodbloko is not None):
-        error(tr_multi(
-            "Ne eblas uzi samtempe --katex kun OBJEKTO aŭ --kodbloko",
-            "Cannot use --katex with OBJEKTO or --kodbloko",
-            "Impossible d'utiliser --katex avec OBJEKTO ou --kodbloko",
+    # --kodbloko is deprecated: redirect to --str-dosiero with --kodlingvo
+    if kodbloko is not None:
+        warning(tr_multi(
+            "--kodbloko estas malrekomendita, uzu --str-dosiero --kodlingvo <lingvo>",
+            "--kodbloko is deprecated, use --str-dosiero --kodlingvo <language>",
+            "--kodbloko est déprécié, utilisez --str-dosiero --kodlingvo <langue>",
         ))
-        raise typer.Exit(1)
-    if kodbloko is not None and (object is not None or katex is not None):
+        if kodlingvo is None:
+            kodlingvo = "plain"
+        str_dosiero = kodbloko
+        kodbloko = None  # Fall through to str_dosiero logic
+
+    # --katex and --str-dosiero/OBJEKTO are mutually exclusive
+    if katex is not None and (object is not None or str_dosiero is not None):
         error(tr_multi(
-            "Ne eblas uzi samtempe --kodbloko kun OBJEKTO aŭ --katex",
-            "Cannot use --kodbloko with OBJEKTO or --katex",
-            "Impossible d'utiliser --kodbloko avec OBJEKTO ou --katex",
+            "Ne eblas uzi samtempe --katex kun OBJEKTO aŭ --str-dosiero",
+            "Cannot use --katex with OBJEKTO or --str-dosiero",
+            "Impossible d'utiliser --katex avec OBJEKTO ou --str-dosiero",
         ))
         raise typer.Exit(1)
 
@@ -207,38 +213,7 @@ def aldoni(
             raise typer.Exit(1)
         object_value = formula
         katex_flag = True
-        kodbloko_flag = False
-        kodlingvo_val = kodlingvo
-    elif kodbloko is not None:
-        # --kodbloko: read file as code block
-        file_path = Path(kodbloko)
-        try:
-            content = file_path.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            error(tr_multi(
-                "Dosiero ne trovita: {f}",
-                "File not found: {f}",
-                "Fichier non trouvé : {f}",
-            ).format(f=kodbloko))
-            raise typer.Exit(1) from None
-        except IsADirectoryError:
-            error(tr_multi(
-                "{f} estas dosierujo, ne dosiero",
-                "{f} is a directory, not a file",
-                "{f} est un dossier, pas un fichier",
-            ).format(f=kodbloko))
-            raise typer.Exit(1) from None
-        except UnicodeDecodeError:
-            error(tr_multi(
-                "{f} ne estas valida UTF-8 dosiero",
-                "{f} is not a valid UTF-8 file",
-                "{f} n'est pas un fichier UTF-8 valide",
-            ).format(f=kodbloko))
-            raise typer.Exit(1) from None
-        object_value = content
-        katex_flag = False
-        kodbloko_flag = True
-        kodlingvo_val = kodlingvo
+        kodlingvo_val = None  # kodlingvo is irrelevant for KaTeX
     elif str_dosiero is not None:
         # --str-dosiero/-D: read file as string literal (implies --str)
         str_ = True
@@ -268,24 +243,22 @@ def aldoni(
             raise typer.Exit(1) from None
         object_value = content
         katex_flag = False
-        kodbloko_flag = False
         kodlingvo_val = kodlingvo
     elif object is not None:
         object_value = object
         katex_flag = False
-        kodbloko_flag = False
         kodlingvo_val = kodlingvo
     else:
         error(tr_multi(
-            "Bezonas OBJEKTO, --katex, --kodbloko, aŭ --str-dosiero",
-            "Requires OBJEKTO, --katex, --kodbloko, or --str-dosiero",
-            "Nécessite OBJEKTO, --katex, --kodbloko, ou --str-dosiero",
+            "Bezonas OBJEKTO, --katex, aŭ --str-dosiero",
+            "Requires OBJEKTO, --katex, or --str-dosiero",
+            "Nécessite OBJEKTO, --katex, ou --str-dosiero",
         ))
         raise typer.Exit(1)
 
     datatype, object_type = validate_type_flags(
         str_, int_, float_, bool_, lingvo, unuo,
-        katex=katex_flag, kodbloko=kodbloko_flag, kodlingvo=kodlingvo_val,
+        katex=katex_flag, kodlingvo=kodlingvo_val,
     )
 
     node_svc = get_node_service()
