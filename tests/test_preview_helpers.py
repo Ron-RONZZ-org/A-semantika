@@ -73,6 +73,48 @@ class TestBuildTriplePreviewTable:
         assert table is not None
         assert "integer" in footnote
 
+    def test_build_code_block_preview(self, node_svc, pred_svc):
+        """Code block preview must show actual content on Row 1, not placeholder."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        from A_semantika._preview import build_triple_preview_table
+
+        subj = node_svc.create({"etikedoj": {"eo": "Hundo"}})
+        pred = pred_svc.create({"predicate_id": "ex:kodo", "etikedoj": {"eo": "kodo"}})
+
+        code_content = "def hello():\n    print('hello')"
+        table, footnote = build_triple_preview_table(
+            node_svc, pred_svc,
+            subj["node_id"], "ex:kodo", code_content,
+            "literal", object_datatype="text/x-python",
+        )
+        assert table is not None
+
+        buf = StringIO()
+        console = Console(file=buf, width=120)
+        console.print(table)
+        output = buf.getvalue()
+
+        # The actual code content must appear in the output (Row 1)
+        assert "def hello()" in output, (
+            "Code block content must appear on Row 1 (not placeholder text)"
+        )
+
+        # The MIME type + char count must appear on Row 2
+        assert "text/x-python, 31 chars" in output or "text/x-python, 31 znakoj" in output, (
+            "Row 2 must show MIME type and character count"
+        )
+
+        # Verify row order: content before raw subject ID
+        content_pos = output.index("def hello()")
+        raw_id_pos = output.index(subj["node_id"][:16])
+        assert content_pos < raw_id_pos, (
+            "Code block content must appear on Row 1 (before raw subject ID), "
+            f"but content at {content_pos} comes after raw ID at {raw_id_pos}"
+        )
+
 
 class TestConfirmNodeWithArcs:
     """confirm_node_with_arcs() should handle arc previews."""

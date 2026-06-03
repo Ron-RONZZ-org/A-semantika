@@ -366,8 +366,13 @@ def aldoni(
             object_datatype=datatype,
             object_unit=unuo,
         )
-        # Display: URI object values get context-aware truncation; literal values stay full
-        o_display = truncate_uuid(object_uuid) if object_type == "uri" else object_uuid
+        # Display: URI → truncated, code block → compact MIME+chars, other literals → full
+        if object_type == "uri":
+            o_display = truncate_uuid(object_uuid)
+        elif datatype and (datatype.startswith("text/") or datatype.startswith("application/")):
+            o_display = f"{datatype}, {len(object_uuid)} chars"
+        else:
+            o_display = object_uuid
         s_display = truncate_uuid(subject_uuid) if isinstance(subject_uuid, str) else subject_uuid
         info(tr_multi(
             "Arko kreita: {s} --{p}--> {o}",

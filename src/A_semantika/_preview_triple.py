@@ -152,8 +152,8 @@ def build_triple_preview_table(
             lang_display = lang_display.replace("x-", "", 1) if lang_display.startswith("x-") else lang_display
             char_count = len(object_value)
             val_preview = object_value[:60] + "..." if len(object_value) > 60 else object_value
-            table.add_row(subj_label, pred_label, f"code ({lang_display})")
-            table.add_row(subj_id, predicate_id, f"→ code block, {char_count} chars")
+            table.add_row(subj_label, pred_label, val_preview)
+            table.add_row(subj_id, predicate_id, f"→ {object_datatype}, {char_count} chars")
             footnote = tr_multi(
                 "→ {lang}, {n} znakoj", "→ {lang}, {n} chars", "→ {lang}, {n} car.",
             ).format(lang=lang_display, n=char_count)
