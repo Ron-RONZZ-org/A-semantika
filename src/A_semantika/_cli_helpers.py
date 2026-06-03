@@ -21,6 +21,7 @@ from A.utils.interactive import select_candidate, select_candidates
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError, NodeService
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
+from A_semantika._preview_triple import format_tipo
 from A_semantika._triple_search import search_triples_by_labels
 from A_semantika._triple_service import DuplicateTripleError, TripleService
 from A_semantika.data.storage import KATEX_DATATYPE
@@ -71,8 +72,6 @@ LANG_TO_MIME: dict[str, str] = {
     "plain": "text/plain",
     "text": "text/plain",
 }
-
-
 
 
 # ── Ambiguous prefix → interactive selection ──────────────────────────
@@ -223,7 +222,11 @@ def pick_triple(
                 if t["object_type"] == "uri"
                 else t["object_value"]
             ),
-            t["object_type"],
+            format_tipo(
+                t.get("object_type", "uri"),
+                t.get("object_datatype"),
+                t.get("object_lang"),
+            ),
         ],
         prompt_text=tr_multi(
             "Elektu numeron de arko por forigi/modifi (aŭ Enter por nuligi)",
@@ -285,7 +288,11 @@ def pick_triples(
                 if t["object_type"] == "uri"
                 else t["object_value"]
             ),
-            t["object_type"],
+            format_tipo(
+                t.get("object_type", "uri"),
+                t.get("object_datatype"),
+                t.get("object_lang"),
+            ),
         ],
         prompt_text=tr_multi(
             "Elektu arko-numerojn por forigi (spacigitaj, aŭ Enter por nuligi)",
@@ -463,7 +470,6 @@ def find_triple_direct(
 
 
 # ── Arc resolution helpers (Issue #35/R12) ─────────────────────────────
-
 
 def resolve_arc_targets(
     node_svc: NodeService,

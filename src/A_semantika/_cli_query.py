@@ -21,6 +21,7 @@ from A_semantika._cli_helpers import (
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
+from A_semantika._preview_triple import format_tipo
 from A_semantika._triple_search import search_triples_any_field, search_triples_by_labels
 from A_semantika.service import get_node_service, get_predicate_service, get_triple_service
 
@@ -160,7 +161,11 @@ def serci(
             f"{s_label} ({truncate_uuid(r['subject_uuid'], all_subject_uuids)})",
             p_label,
             o_label,
-            r["object_type"],
+            format_tipo(
+                r.get("object_type", "uri"),
+                r.get("object_datatype"),
+                r.get("object_lang"),
+            ),
         )
 
     info(table)
@@ -254,7 +259,15 @@ def vidi(
             o_label = resolve_node_label(node_svc, r["object_value"])
         else:
             o_label = r["object_value"]
-        table.add_row(p_label, o_label, r["object_type"])
+        table.add_row(
+            p_label,
+            o_label,
+            format_tipo(
+                r.get("object_type", "uri"),
+                r.get("object_datatype"),
+                r.get("object_lang"),
+            ),
+        )
 
     info(table)
 

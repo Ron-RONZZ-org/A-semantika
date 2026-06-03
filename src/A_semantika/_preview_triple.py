@@ -20,6 +20,60 @@ from A_semantika._predicate_service import PredicateService
 from A_semantika.data.storage import KATEX_DATATYPE
 
 
+
+
+def format_tipo(
+    object_type: str,
+    object_datatype: str | None = None,
+    object_lang: str | None = None,
+) -> str:
+    """Map (object_type, object_datatype) to a localized type display string.
+
+    Returns a short localized label for the Tipo (Type) column in search
+    results, preview tables, and interactive pickers.
+
+    Examples:
+        format_tipo("uri")                         → "nodreferenco"
+        format_tipo("literal")                     → "teksto"
+        format_tipo("literal", "xsd:integer")      → "entjero"
+        format_tipo("literal", KATEX_DATATYPE)     → "katex (formulo)"
+        format_tipo("literal", "text/x-python")    → "kodo (python)"
+        format_tipo("literal", object_lang="eo")   → "teksto (eo)"
+    """
+    if object_type == "uri":
+        return tr_multi("nodreferenco", "node ref", "réf. nœud")
+
+    if object_datatype == KATEX_DATATYPE:
+        return tr_multi("katex (formulo)", "katex (formula)", "katex (formule)")
+
+    if object_datatype:
+        if object_datatype.startswith("text/") or object_datatype.startswith("application/"):
+            lang_display = object_datatype.split("/")[-1]
+            lang_display = lang_display.replace("x-", "", 1) if lang_display.startswith("x-") else lang_display
+            return tr_multi(
+                "kodo ({l})", "code ({l})", "code ({l})",
+            ).format(l=lang_display)
+
+        # Standard XSD types
+        dtype = object_datatype.split(":")[-1] if ":" in object_datatype else object_datatype
+        xsd_labels: dict[str, tuple[str, str, str]] = {
+            "integer": ("entjero", "integer", "entier"),
+            "decimal": ("decimalo", "decimal", "décimal"),
+            "boolean": ("bulea", "boolean", "booléen"),
+        }
+        if dtype in xsd_labels:
+            eo, en, fr = xsd_labels[dtype]
+            return tr_multi(eo, en, fr)
+        # Fallback: show raw datatype suffix
+        return dtype
+
+    # Plain string literal (no datatype)
+    if object_lang:
+        return tr_multi(
+            "teksto ({l})", "string ({l})", "chaîne ({l})",
+        ).format(l=object_lang)
+    return tr_multi("teksto", "string", "chaîne")
+
 def build_triple_preview_table(
     node_svc: NodeService,
     pred_svc: PredicateService,

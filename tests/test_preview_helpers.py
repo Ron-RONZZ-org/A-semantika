@@ -241,3 +241,85 @@ class TestBuildModifyPreview:
         console.print(table)
         output = buf.getvalue()
         assert "Malnova Etikedo" in output or "Nova Etikedo" in output
+
+
+# ── format_tipo detailed type display ─────────────────────────────────
+
+
+class TestFormatTipo:
+    """format_tipo() should return localized type labels."""
+
+    def test_uri_returns_node_ref(self):
+        """URI type should return nodreferenco."""
+        from A_semantika._preview_triple import format_tipo
+
+        assert format_tipo("uri") in ("nodreferenco", "node ref", "réf. nœud")
+
+    def test_plain_string(self):
+        """Plain literal (no datatype, no lang) should return teksto."""
+        from A_semantika._preview_triple import format_tipo
+
+        assert format_tipo("literal") in ("teksto", "string", "chaîne")
+
+    def test_string_with_lang(self):
+        """Literal with lang should include language tag."""
+        from A_semantika._preview_triple import format_tipo
+
+        result = format_tipo("literal", object_lang="eo")
+        assert "eo" in result
+
+    def test_integer(self):
+        """xsd:integer should return entjero."""
+        from A_semantika._preview_triple import format_tipo
+
+        assert format_tipo("literal", "xsd:integer") in ("entjero", "integer", "entier")
+
+    def test_decimal(self):
+        """xsd:decimal should return decimalo."""
+        from A_semantika._preview_triple import format_tipo
+
+        assert format_tipo("literal", "xsd:decimal") in ("decimalo", "decimal", "décimal")
+
+    def test_boolean(self):
+        """xsd:boolean should return bulea."""
+        from A_semantika._preview_triple import format_tipo
+
+        assert format_tipo("literal", "xsd:boolean") in ("bulea", "boolean", "booléen")
+
+    def test_katex(self):
+        """KaTeX datatype should return katex label."""
+        from A_semantika.data.storage import KATEX_DATATYPE
+        from A_semantika._preview_triple import format_tipo
+
+        assert format_tipo("literal", KATEX_DATATYPE) in (
+            "katex (formulo)", "katex (formula)", "katex (formule)",
+        )
+
+    def test_code_block_python(self):
+        """text/x-python should show code (python)."""
+        from A_semantika._preview_triple import format_tipo
+
+        result = format_tipo("literal", "text/x-python")
+        assert "python" in result
+        assert "kodo" in result or "code" in result
+
+    def test_code_block_html(self):
+        """text/html should show code (html)."""
+        from A_semantika._preview_triple import format_tipo
+
+        result = format_tipo("literal", "text/html")
+        assert "html" in result
+        assert "kodo" in result or "code" in result
+
+    def test_code_block_json(self):
+        """application/json should show code (json)."""
+        from A_semantika._preview_triple import format_tipo
+
+        result = format_tipo("literal", "application/json")
+        assert "json" in result
+
+    def test_unknown_datatype_fallback(self):
+        """Unknown datatype should fall back to its suffix."""
+        from A_semantika._preview_triple import format_tipo
+
+        assert format_tipo("literal", "ex:custom") == "custom"
