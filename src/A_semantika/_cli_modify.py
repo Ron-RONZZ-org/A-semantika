@@ -12,12 +12,11 @@ import typer
 
 from A import error, info, tr_multi
 from A_semantika._cli_helpers import (
-    build_modify_preview,
-    find_triple_direct,
     pick_triple,
     resolve_deprecated,
     validate_type_flags,
 )
+from A_semantika._cli_modify_preview import build_modify_preview, find_triple_direct
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import resolve_node_label, resolve_predicate_label

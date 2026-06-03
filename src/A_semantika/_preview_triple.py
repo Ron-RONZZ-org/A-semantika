@@ -17,6 +17,7 @@ from A_semantika._node_helpers import AmbiguousUUIDError, truncate_uuid
 from A_semantika._node_service import NodeService
 from A_semantika._preview_helpers import resolve_node_label, resolve_node_label_from_node, resolve_predicate_label
 from A_semantika._predicate_service import PredicateService
+from A_semantika.data.storage import KATEX_DATATYPE
 
 
 def build_triple_preview_table(
@@ -85,25 +86,43 @@ def build_triple_preview_table(
         footnote = tr_multi("→ URI", "→ URI", "→ URI")
 
     elif object_type == "literal" and object_datatype:
-        # Typed literal
-        dtype = object_datatype.split(":")[-1] if ":" in object_datatype else object_datatype
-        obj_display = tr_multi(
-            "Tipita literal ({d})", "Typed literal ({d})", "Litteral type ({d})",
-        ).format(d=dtype)
-        table.add_row(subj_label, pred_label, object_value)
-        table.add_row(subj_id, predicate_id, obj_display)
+        if object_datatype == KATEX_DATATYPE:
+            # KaTeX formula
+            formula_preview = object_value[:80] + "..." if len(object_value) > 80 else object_value
+            table.add_row(subj_label, pred_label, formula_preview)
+            table.add_row(subj_id, predicate_id, "→ katex formula")
+            footnote = tr_multi("→ KaTeX", "→ KaTeX", "→ KaTeX")
+        elif object_datatype.startswith("text/") or object_datatype.startswith("application/"):
+            # Code block (MIME typed literal)
+            lang_display = object_datatype.split("/")[-1]  # "x-python" -> "x-python"
+            lang_display = lang_display.replace("x-", "", 1) if lang_display.startswith("x-") else lang_display
+            char_count = len(object_value)
+            val_preview = object_value[:60] + "..." if len(object_value) > 60 else object_value
+            table.add_row(subj_label, pred_label, f"code ({lang_display})")
+            table.add_row(subj_id, predicate_id, f"→ code block, {char_count} chars")
+            footnote = tr_multi(
+                "→ {lang}, {n} znakoj", "→ {lang}, {n} chars", "→ {lang}, {n} car.",
+            ).format(lang=lang_display, n=char_count)
+        else:
+            # Standard typed literal (xsd:integer, xsd:decimal, xsd:boolean)
+            dtype = object_datatype.split(":")[-1] if ":" in object_datatype else object_datatype
+            obj_display = tr_multi(
+                "Tipita literal ({d})", "Typed literal ({d})", "Litteral type ({d})",
+            ).format(d=dtype)
+            table.add_row(subj_label, pred_label, object_value)
+            table.add_row(subj_id, predicate_id, obj_display)
 
-        parts = [f"→ {dtype}"]
-        if object_unit:
-            try:
-                unit_node = node_svc.resolve_node_id_prefix(object_unit)
-            except AmbiguousUUIDError as e:
-                warning(tr_multi("Ambigua unuo-prefikso: {e}", "Ambiguous unit prefix: {e}", "Prefixe unite ambigu : {e}").format(e=str(e)))
-                return None, ""
-            unit_label = resolve_node_label_from_node(unit_node) if unit_node else truncate_uuid(object_unit)
-            unit_id = truncate_uuid(unit_node["node_id"]) if unit_node else truncate_uuid(object_unit)
-            parts.append(f"unit: {unit_label} ({unit_id})")
-        footnote = ", ".join(parts)
+            parts = [f"→ {dtype}"]
+            if object_unit:
+                try:
+                    unit_node = node_svc.resolve_node_id_prefix(object_unit)
+                except AmbiguousUUIDError as e:
+                    warning(tr_multi("Ambigua unuo-prefikso: {e}", "Ambiguous unit prefix: {e}", "Prefixe unite ambigu : {e}").format(e=str(e)))
+                    return None, ""
+                unit_label = resolve_node_label_from_node(unit_node) if unit_node else truncate_uuid(object_unit)
+                unit_id = truncate_uuid(unit_node["node_id"]) if unit_node else truncate_uuid(object_unit)
+                parts.append(f"unit: {unit_label} ({unit_id})")
+            footnote = ", ".join(parts)
     else:
         # String literal
         quoted_val = f'"{object_value}"'

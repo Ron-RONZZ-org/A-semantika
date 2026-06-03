@@ -17,7 +17,8 @@ from A_semantika._cli_rubujo import rubujo_app
 # Root triple commands (defined in _cli_*.py files)
 from A_semantika._cli_modify import modifi
 from A_semantika._cli_query import eksporti, serci, vidi
-from A_semantika._cli_triples import aldoni, forigi
+from A_semantika._cli_triple_forigi import forigi
+from A_semantika._cli_triples import aldoni
 
 app = typer.Typer(
     name="semantika",

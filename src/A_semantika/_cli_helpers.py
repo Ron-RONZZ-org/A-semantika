@@ -23,6 +23,54 @@ from A_semantika._node_service import AmbiguousUUIDError, NodeService
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
 from A_semantika._triple_search import search_triples_by_labels
 from A_semantika._triple_service import DuplicateTripleError, TripleService
+from A_semantika.data.storage import KATEX_DATATYPE
+
+
+# -- Language-to-MIME mapping for code block literals ------------------
+
+LANG_TO_MIME: dict[str, str] = {
+    "python": "text/x-python",
+    "javascript": "text/javascript",
+    "typescript": "text/typescript",
+    "java": "text/x-java",
+    "html": "text/html",
+    "css": "text/css",
+    "bash": "text/x-bash",
+    "sh": "text/x-sh",
+    "sql": "text/x-sql",
+    "yaml": "text/x-yaml",
+    "yml": "text/x-yaml",
+    "json": "application/json",
+    "xml": "application/xml",
+    "rust": "text/x-rust",
+    "go": "text/x-go",
+    "c": "text/x-csrc",
+    "cpp": "text/x-c++src",
+    "c++": "text/x-c++src",
+    "ruby": "text/x-ruby",
+    "php": "text/x-php",
+    "swift": "text/x-swift",
+    "kotlin": "text/x-kotlin",
+    "scala": "text/x-scala",
+    "r": "text/x-r",
+    "lua": "text/x-lua",
+    "perl": "text/x-perl",
+    "haskell": "text/x-haskell",
+    "clojure": "text/x-clojure",
+    "elixir": "text/x-elixir",
+    "erlang": "text/x-erlang",
+    "dart": "text/x-dart",
+    "groovy": "text/x-groovy",
+    "matlab": "text/x-matlab",
+    "diff": "text/x-diff",
+    "qd": "text/x-quarkdown",
+    "tex": "text/x-tex",
+    "latex": "text/x-tex",
+    "makefile": "text/x-makefile",
+    "dockerfile": "text/x-dockerfile",
+    "plain": "text/plain",
+    "text": "text/plain",
+}
 
 
 
@@ -250,41 +298,60 @@ def pick_triples(
     return [item for _, item in selections]
 
 
-def count_type_flags(str_: bool, int_: bool, float_: bool, bool_: bool) -> int:
+def count_type_flags(
+    str_: bool, int_: bool, float_: bool, bool_: bool,
+    katex: bool = False, kodbloko: bool = False,
+) -> int:
     """Count how many type flags are set."""
-    return sum([str_, int_, float_, bool_])
+    return sum([str_, int_, float_, bool_, katex, kodbloko])
 
 
 def validate_type_flags(
     str_: bool, int_: bool, float_: bool, bool_: bool,
     lingvo: str | None, unuo: str | None,
+    katex: bool = False, kodbloko: bool = False, kodlingvo: str | None = None,
 ) -> tuple[str | None, str]:
     """Validate type flag combinations.
+
+    Supports plain string (--str), numeric (--int/--float/--bool),
+    KaTeX formula (--katex), and code block (--kodbloko) literals.
 
     Returns:
         Tuple of (datatype, object_type):
         - datatype: ``None`` for URI/string, ``"xsd:integer"``, etc.
+          For KaTeX: returns ``KATEX_DATATYPE`` constant.
+          For code block: returns MIME type from ``LANG_TO_MIME`` dict.
         - object_type: ``"uri"`` or ``"literal"``
 
     Calls error() and raises typer.Exit(1) on invalid combinations.
     """
-    count = count_type_flags(str_, int_, float_, bool_)
+    count = count_type_flags(str_, int_, float_, bool_, katex=katex, kodbloko=kodbloko)
     if count > 1:
         error(
             tr_multi(
-                "Ne eblas kombini --str, --int, --float, --bool",
-                "Cannot combine --str, --int, --float, --bool",
-                "Impossible de combiner --str, --int, --float, --bool",
+                "Ne eblas kombini tipajn flagojn (--str, --int, --float, --bool, --katex, --kodbloko)",
+                "Cannot combine type flags (--str, --int, --float, --bool, --katex, --kodbloko)",
+                "Impossible de combiner les indicateurs de type (--str, --int, --float, --bool, --katex, --kodbloko)",
             )
         )
         raise typer.Exit(1)
+
+    # kodlingvo requires kodbloko
+    if kodlingvo and not kodbloko:
+        error(tr_multi(
+            "--kodlingvo bezonas --kodbloko",
+            "--kodlingvo requires --kodbloko",
+            "--kodlingvo nécessite --kodbloko",
+        ))
+        raise typer.Exit(1)
+
     if count == 0:
         if lingvo:
             error(
                 tr_multi(
-                    "--lingvo bezonas --str",
-                    "--lingvo requires --str",
-                    "--lingvo nécessite --str",
+                    "--lingvo bezonas --str aŭ --str-dosiero",
+                    "--lingvo requires --str or --str-dosiero",
+                    "--lingvo nécessite --str ou --str-dosiero",
                 )
             )
             raise typer.Exit(1)
@@ -299,6 +366,11 @@ def validate_type_flags(
             raise typer.Exit(1)
         return (None, "uri")  # URI reference
 
+    if katex:
+        return (KATEX_DATATYPE, "literal")
+    if kodbloko:
+        mime = LANG_TO_MIME.get(kodlingvo, "text/plain") if kodlingvo else "text/plain"
+        return (mime, "literal")
     if str_:
         return (None, "literal")  # String literal, no datatype
     if int_:
@@ -351,43 +423,17 @@ def build_modify_preview(
 ) -> Table:
     """Build a preview table for modifi showing old → new values.
 
+    .. deprecated::
+       Use :func:`A_semantika._cli_modify_preview.build_modify_preview` instead.
+
     Handles both URI and literal object types.
     """
-    table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
-    table.add_column("", no_wrap=True)
-    table.add_column(tr_multi("Subjekto", "Subject", "Sujet"), no_wrap=True)
-    table.add_column(tr_multi("Predikato", "Predicate", "Predicat"), no_wrap=True)
-    table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=True)
-
-    old_subj_label = resolve_node_label(node_svc, subject_uuid)
-
-    def _obj_display(val: str, typ: str, lang: str | None) -> str:
-        if typ == "uri":
-            return f"{resolve_node_label(node_svc, val)} ({truncate_uuid(val)})"
-        if lang:
-            return f'"{val}"@{lang}'
-        return f'"{val}"'
-
-    old_pred_label = resolve_predicate_label(pred_svc, predicate)
-    old_obj_display = _obj_display(object_value, object_type, object_lang)
-    table.add_row(
-        tr_multi("Malnova", "Old", "Ancien"),
-        f"{old_subj_label} ({truncate_uuid(subject_uuid)})",
-        old_pred_label,
-        old_obj_display,
+    from A_semantika._cli_modify_preview import build_modify_preview as _build
+    return _build(
+        node_svc, pred_svc,
+        subject_uuid, predicate, object_value, object_type, object_lang,
+        new_subj_uuid, new_pred, new_obj_value, new_obj_type, new_obj_lang,
     )
-
-    new_subj_label = resolve_node_label(node_svc, new_subj_uuid)
-    new_pred_label = resolve_predicate_label(pred_svc, new_pred)
-    new_obj_display = _obj_display(new_obj_value, new_obj_type, new_obj_lang)
-    table.add_row(
-        tr_multi("Nova", "New", "Nouveau"),
-        f"{new_subj_label} ({truncate_uuid(new_subj_uuid)})",
-        new_pred_label,
-        new_obj_display,
-    )
-
-    return table
 
 
 def _find_triple_by_spo(
@@ -395,52 +441,12 @@ def _find_triple_by_spo(
 ) -> dict | None:
     """Find an existing triple by subject/predicate/object, trying URI then literal.
 
-    Shared helper used by both ``find_triple_direct()`` (for ``modifi``) and
-    ``_find_triple_for_delete()`` (for ``forigi``), consolidating the >80%
-    shared lookup logic.
+    .. deprecated::
+       Use :func:`A_semantika._cli_modify_preview._find_triple_by_spo` instead.
 
-    Resolution order:
-        1. Resolve ``object_raw`` as a node UUID prefix → check ``get_one()`` with ``object_type='uri'``
-        2. Search triples by literal match (subject + predicate + raw string)
-        3. Last resort: search by resolved node ID regardless of type
-
-    Returns:
-        The matched triple dict, or ``None`` if no match found.
     """
-    # Try URI: resolve object as node
-    try:
-        obj_node = node_svc.resolve_node_id_prefix(object_raw)
-    except AmbiguousUUIDError:
-        obj_node = None
-
-    if obj_node:
-        existing = triple_svc.get_one(subject_uuid, predicate, obj_node["node_id"], "uri")
-        if existing:
-            return existing
-
-    # Try literal match by subject + predicate + object_value
-    results = triple_svc.search_triples(
-        subject_uuids=[subject_uuid],
-        predicate_ids=[predicate],
-        object_values=[object_raw],
-        limit=2,
-    )
-    if results:
-        return results[0]
-
-    # Last resort: try with raw object as URI (for object that matched UUID
-    # but was not a triple with object_type='uri')
-    if obj_node:
-        results = triple_svc.search_triples(
-            subject_uuids=[subject_uuid],
-            predicate_ids=[predicate],
-            object_values=[obj_node["node_id"]],
-            limit=2,
-        )
-        if results:
-            return results[0]
-
-    return None
+    from A_semantika._cli_modify_preview import _find_triple_by_spo as _find
+    return _find(triple_svc, node_svc, subject_uuid, predicate, object_raw)
 
 
 def find_triple_direct(
@@ -448,17 +454,12 @@ def find_triple_direct(
 ) -> tuple[dict | None, str, str | None]:
     """Find an existing triple in direct mode (full SPO specified).
 
-    Delegates to ``_find_triple_by_spo()`` for the core lookup logic
-    (URI → literal → last-resort), then extracts type/lang metadata
-    from the result.
+    .. deprecated::
+       Use :func:`A_semantika._cli_modify_preview.find_triple_direct` instead.
 
-    Returns:
-        Tuple of (triple_dict or None, resolved_object_type, resolved_object_lang).
     """
-    triple = _find_triple_by_spo(triple_svc, node_svc, subject_uuid, predicate, object)
-    if triple is None:
-        return None, "uri", None
-    return triple, triple.get("object_type", "literal"), triple.get("object_lang")
+    from A_semantika._cli_modify_preview import find_triple_direct as _find
+    return _find(triple_svc, node_svc, subject_uuid, predicate, object)
 
 
 # ── Arc resolution helpers (Issue #35/R12) ─────────────────────────────
@@ -473,66 +474,12 @@ def resolve_arc_targets(
 ) -> tuple[list[tuple[str, str]], list[str]]:
     """Resolve arc target node IDs from CLI shortcut flags.
 
-    Returns (arc_templates, errors) where each template is
-    (target_node_id, predicate_id). Invalid/ambiguous inputs
-    produce error messages instead of creating arcs.
+    .. deprecated::
+       Use :func:`A_semantika._cli_arc_helpers.resolve_arc_targets` instead.
+
     """
-    arc_templates: list[tuple[str, str]] = []
-    arc_errors: list[str] = []
-
-    def _resolve_one(predicate: str, user_input: str) -> str | None:
-        target = node_svc.resolve_node_id_prefix(user_input)
-        if target:
-            return target["node_id"]
-        # Fallback: substring match
-        try:
-            target = node_svc.resolve_node_id_substring(user_input)
-        except AmbiguousUUIDError:
-            warning(tr_multi(
-                "Ambigua arka celo: {t} (preterlasita)",
-                "Ambiguous arc target: {t} (skipped)",
-                "Cible d'arc ambiguë : {t} (ignorée)",
-            ).format(t=user_input))
-            return None
-        if target:
-            return target["node_id"]
-        warning(tr_multi(
-            "Arka celo ne trovita: {t} (preterlasita)",
-            "Arc target not found: {t} (skipped)",
-            "Cible d'arc non trouvée : {t} (ignorée)",
-        ).format(t=user_input))
-        return None
-
-    _ARC_DEFS: list[tuple[str, str, str, str, str, str]] = [
-        ("tipo", "rdf:type", "tipo", "type", "type",
-         "Ambigua tipo-prefikso: {e}|Ambiguous type prefix: {e}|Préfixe type ambigu : {e}"),
-        ("superklaso", "rdfs:subClassOf", "superklaso", "superclass", "superclasse",
-         "Ambigua superklaso-prefikso: {e}|Ambiguous superclass prefix: {e}|Préfixe superclasse ambigu : {e}"),
-        ("ne", "owl:disjointWith", "malakorda", "disjoint", "disjoint",
-         "Ambigua malakorda-prefikso: {e}|Ambiguous disjoint prefix: {e}|Préfixe disjoint ambigu : {e}"),
-        ("invers", "owl:inverseOf", "inversa", "inverse", "inverse",
-         "Ambigua inversa-prefikso: {e}|Ambiguous inverse prefix: {e}|Préfixe inverse ambigu : {e}"),
-    ]
-
-    inputs_map = {
-        "tipo": tipo,
-        "superklaso": superklaso,
-        "ne": ne,
-        "invers": invers,
-    }
-
-    for key, predicate, _eo_label, _en_label, _fr_label, err_tmpl in _ARC_DEFS:
-        inputs = inputs_map.get(key) or []
-        for val in inputs:
-            try:
-                target_id = _resolve_one(predicate, val)
-                if target_id:
-                    arc_templates.append((target_id, predicate))
-            except AmbiguousUUIDError as e:
-                parts = err_tmpl.split("|")
-                arc_errors.append(tr_multi(parts[0], parts[1], parts[2]).format(e=str(e)))
-
-    return arc_templates, arc_errors
+    from A_semantika._cli_arc_helpers import resolve_arc_targets as _resolve
+    return _resolve(node_svc, tipo, superklaso, ne, invers)
 
 
 def create_node_arcs(
@@ -543,40 +490,9 @@ def create_node_arcs(
 ) -> None:
     """Create arcs for a node, rolling back on failure.
 
-    This ensures atomicity: either all arcs are created, or any
-    already-created arcs and the node are removed so no orphan node
-    with partial arcs remains.
+    .. deprecated::
+       Use :func:`A_semantika._cli_arc_helpers.create_node_arcs` instead.
 
-    The rollback first deletes arcs referencing ``node_id_val`` (FK
-    constraint), then soft-deletes the node.
     """
-    try:
-        for arc in arcs:
-            try:
-                triple_svc.add(
-                    subject_uuid=arc["subject"],
-                    predicate_id=arc["predicate"],
-                    object_value=arc["object"],
-                    object_type=arc["object_type"],
-                )
-            except DuplicateTripleError:
-                pass  # Silently skip — triple already exists, no harm
-    except ValueError:
-        # Rollback: remove already-created arcs first (FK constraint),
-        # then hard-delete the node to prevent orphan with partial arcs
-        # (soft-delete would leave a trash entry, which is misleading
-        # since the node was never successfully created).
-        # Wrap rollback in try/except so a rollback failure doesn't mask
-        # the original ValueError that triggered it.
-        try:
-            triple_svc.remove_by_node(node_id_val)
-            node_svc.delete(node_id_val, soft=False)
-        except (sqlite3.Error, ValueError) as rollback_err:
-            warning(
-                tr_multi(
-                    "Enrulumbo malsukcesis por nodo {n}: {e}",
-                    "Rollback failed for node {n}: {e}",
-                    "Rétablissement échoué pour le nœud {n} : {e}",
-                ).format(n=node_id_val, e=str(rollback_err))
-            )
-        raise
+    from A_semantika._cli_arc_helpers import create_node_arcs as _create
+    return _create(triple_svc, node_svc, node_id_val, arcs)

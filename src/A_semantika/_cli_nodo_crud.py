@@ -8,7 +8,8 @@ import typer
 
 from A import error, info, tr_multi, warning
 from A.utils.interactive import confirm_action
-from A_semantika._cli_helpers import create_node_arcs, ensure_predicate, resolve_arc_targets
+from A_semantika._cli_arc_helpers import create_node_arcs, resolve_arc_targets
+from A_semantika._cli_helpers import ensure_predicate
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import (
