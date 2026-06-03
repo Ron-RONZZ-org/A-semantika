@@ -43,15 +43,26 @@ def test_aldoni_unuo_without_int_or_float_exits_error(runner: CliRunner) -> None
     assert "bezonas" in result.stdout or "requires" in result.stdout
 
 
-def test_aldoni_kodlingvo_without_kodbloko_exits_error(runner: CliRunner) -> None:
-    """--kodlingvo without --kodbloko should exit with error (B3)."""
+def test_aldoni_str_with_kodlingvo_creates_code_snippet(runner: CliRunner) -> None:
+    """--str with --kodlingvo should create a code snippet (not plain string)."""
     runner.invoke(app, ["nodo", "aldoni", "B3KodSubj", "-e", "eo::B3KodSubj", "--jes"])
     runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
 
-    # Use --str to make it a valid string literal, then --kodlingvo without
-    # --kodbloko should trigger the validation error
     result = runner.invoke(app, [
-        "aldoni", "B3KodSubj", "rdf:type", "--str", "Hundo", "--kodlingvo", "python", "--jes",
+        "aldoni", "B3KodSubj", "rdf:type", "--str", "print('hello')", "--kodlingvo", "python", "--jes",
+    ])
+    assert result.exit_code == 0, f"--str --kodlingvo failed: {result.stdout}"
+    assert "kreita" in result.stdout or "created" in result.stdout or "Arc" in result.stdout
+
+
+def test_aldoni_kodlingvo_without_kodbloko_and_without_str_exits_error(runner: CliRunner) -> None:
+    """--kodlingvo without --kodbloko and without --str should exit with error."""
+    runner.invoke(app, ["nodo", "aldoni", "B3KodSubj2", "-e", "eo::B3KodSubj2", "--jes"])
+    runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+    # No --str, no --kodbloko — just a positional URI object with --kodlingvo
+    result = runner.invoke(app, [
+        "aldoni", "B3KodSubj2", "rdf:type", "Hundo", "--kodlingvo", "python", "--jes",
     ])
     assert result.exit_code == 1
     assert "bezonas" in result.stdout or "requires" in result.stdout

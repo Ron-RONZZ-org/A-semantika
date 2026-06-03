@@ -343,12 +343,12 @@ def validate_type_flags(
         )
         raise typer.Exit(1)
 
-    # kodlingvo requires kodbloko
-    if kodlingvo and not kodbloko:
+    # kodlingvo requires kodbloko or str (code snippet)
+    if kodlingvo and not kodbloko and not str_:
         error(tr_multi(
-            "--kodlingvo bezonas --kodbloko",
-            "--kodlingvo requires --kodbloko",
-            "--kodlingvo nécessite --kodbloko",
+            "--kodlingvo bezonas --kodbloko aŭ --str",
+            "--kodlingvo requires --kodbloko or --str",
+            "--kodlingvo nécessite --kodbloko ou --str",
         ))
         raise typer.Exit(1)
 
@@ -379,7 +379,10 @@ def validate_type_flags(
         mime = LANG_TO_MIME.get(kodlingvo, "text/plain") if kodlingvo else "text/plain"
         return (mime, "literal")
     if str_:
-        return (None, "literal")  # String literal, no datatype
+        if kodlingvo:
+            mime = LANG_TO_MIME.get(kodlingvo, "text/plain")
+            return (mime, "literal")  # Code snippet
+        return (None, "literal")  # Plain string literal
     if int_:
         return ("xsd:integer", "literal")
     if float_:
