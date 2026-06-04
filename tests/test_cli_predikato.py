@@ -99,7 +99,7 @@ def test_predikato_aldoni_kopii_creates_and_copies(
     """--kopii should copy the predicate_id to clipboard on success."""
     import A_semantika._cli_predikato as pred_mod
     copied = []
-    monkeypatch.setattr(pred_mod, "copy_to_clipboard", lambda text: copied.append(text) or True)
+    monkeypatch.setattr(pred_mod, "copy_to_clipboard", lambda text: (copied.append(text) or True, ""))
 
     result = runner.invoke(app, [
         "predikato", "aldoni", "ex:kopii_pred",
@@ -116,7 +116,7 @@ def test_predikato_aldoni_kopii_warns_on_failure(
 ) -> None:
     """When clipboard fails, --kopii should warn but still succeed."""
     import A_semantika._cli_predikato as pred_mod
-    monkeypatch.setattr(pred_mod, "copy_to_clipboard", lambda text: False)
+    monkeypatch.setattr(pred_mod, "copy_to_clipboard", lambda text: (False, "test error"))
 
     result = runner.invoke(app, [
         "predikato", "aldoni", "ex:kopii_fail",

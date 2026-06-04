@@ -229,7 +229,7 @@ def test_nodo_aldoni_kopii_creates_and_copies(
     """--kopii should copy the node_id to clipboard on success."""
     import A_semantika._cli_nodo_crud as crud_mod
     copied = []
-    monkeypatch.setattr(crud_mod, "copy_to_clipboard", lambda text: copied.append(text) or True)
+    monkeypatch.setattr(crud_mod, "copy_to_clipboard", lambda text: (copied.append(text) or True, ""))
 
     result = runner.invoke(app, [
         "nodo", "aldoni", "KOPII_NODO",
@@ -246,7 +246,7 @@ def test_nodo_aldoni_kopii_warns_on_failure(
 ) -> None:
     """When clipboard fails, --kopii should warn but still succeed."""
     import A_semantika._cli_nodo_crud as crud_mod
-    monkeypatch.setattr(crud_mod, "copy_to_clipboard", lambda text: False)
+    monkeypatch.setattr(crud_mod, "copy_to_clipboard", lambda text: (False, "test error"))
 
     result = runner.invoke(app, [
         "nodo", "aldoni", "KOPII_FAIL",

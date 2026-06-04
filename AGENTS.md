@@ -271,11 +271,13 @@ A semantika nodo aldoni [UUID]
   [-so / --superklaso UUID]*        [shortcut: rdfs:subClassOf]
   [--ne UUID]*                      [shortcut: owl:disjointWith]
   [-iv / --invers UUID]*            [shortcut: owl:inverseOf]
+  [-k / --kopii]                    # Copy node_id to clipboard after creation
   [-y / --jes]
 
 A semantika predikato aldoni <predicate-id>
   [-e / --etikedo "LANGCODE::STR"]*   # Repeatable, e.g. -e "eo::tipo" -e "en::type"
   [-p / --priskribo "LANGCODE::STR"]* # Repeatable, e.g. -p "eo::Priskribo"
+  [-k / --kopii]                    # Copy predicate_id to clipboard after creation
   [-y / --jes]
 
 A semantika predikato modifi <predicate-id>

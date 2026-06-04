@@ -429,12 +429,13 @@ def aldoni(
     ).format(label=resolve_node_label(node_svc, node_id_val), node_id=truncate_uuid(node_id_val)))
 
     if kopii:
-        if not copy_to_clipboard(node_id_val):
+        ok, reason = copy_to_clipboard(node_id_val)
+        if not ok:
             warning(tr_multi(
-                "Ne povis kopii al poŝo: {id}",
-                "Could not copy to clipboard: {id}",
-                "Impossible de copier dans le presse-papier : {id}",
-            ).format(id=node_id_val))
+                "Ne povis kopii al poŝo: {id} — {kialo}",
+                "Could not copy to clipboard: {id} — {kialo}",
+                "Impossible de copier dans le presse-papier : {id} — {kialo}",
+            ).format(id=node_id_val, kialo=reason))
 
 
 def modifi(

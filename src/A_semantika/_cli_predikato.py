@@ -275,12 +275,13 @@ def aldoni(
         raise typer.Exit(1) from e
 
     if kopii:
-        if not copy_to_clipboard(predicate_id):
+        ok, reason = copy_to_clipboard(predicate_id)
+        if not ok:
             awarning(tr_multi(
-                "Ne povis kopii al poŝo: {id}",
-                "Could not copy to clipboard: {id}",
-                "Impossible de copier dans le presse-papier : {id}",
-            ).format(id=predicate_id))
+                "Ne povis kopii al poŝo: {id} — {kialo}",
+                "Could not copy to clipboard: {id} — {kialo}",
+                "Impossible de copier dans le presse-papier : {id} — {kialo}",
+            ).format(id=predicate_id, kialo=reason))
 
 
 @predikato_app.command("modifi")
