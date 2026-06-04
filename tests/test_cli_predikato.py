@@ -1,6 +1,7 @@
 """Predikato CLI tests: aldoni, ls, vidi, serci, forigi."""
 from __future__ import annotations
 
+import pytest
 from typer.testing import CliRunner
 
 from A_semantika.cli import app
@@ -90,3 +91,38 @@ def test_predikato_forigi_with_triples_shows_warning(runner: CliRunner) -> None:
     assert result.exit_code == 0
     # Should mention triples will be deleted
     assert "triples" in result.stdout.lower() or "arkoj" in result.stdout.lower()
+
+
+def test_predikato_aldoni_kopii_creates_and_copies(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--kopii should copy the predicate_id to clipboard on success."""
+    import A_semantika._cli_predikato as pred_mod
+    copied = []
+    monkeypatch.setattr(pred_mod, "copy_to_clipboard", lambda text: copied.append(text) or True)
+
+    result = runner.invoke(app, [
+        "predikato", "aldoni", "ex:kopii_pred",
+        "-e", "eo::Testa Predikato",
+        "-k", "--jes",
+    ])
+    assert result.exit_code == 0
+    assert "kreita" in result.stdout
+    assert copied == ["ex:kopii_pred"], f"Should have copied predicate_id, got {copied}"
+
+
+def test_predikato_aldoni_kopii_warns_on_failure(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When clipboard fails, --kopii should warn but still succeed."""
+    import A_semantika._cli_predikato as pred_mod
+    monkeypatch.setattr(pred_mod, "copy_to_clipboard", lambda text: False)
+
+    result = runner.invoke(app, [
+        "predikato", "aldoni", "ex:kopii_fail",
+        "-e", "eo::Fiasko",
+        "-k", "--jes",
+    ])
+    assert result.exit_code == 0
+    assert "kreita" in result.stdout
+    assert "Ne povis" in result.stdout or "Could not" in result.stdout or "Impossible" in result.stdout

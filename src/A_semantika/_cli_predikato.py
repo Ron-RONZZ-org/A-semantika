@@ -10,7 +10,7 @@ import typer
 from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
-from A import error, info, tr_multi, warning as awarning
+from A import copy_to_clipboard, error, info, tr_multi, warning as awarning
 from A.utils.interactive import confirm_action
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika.data.storage import label_from_json
@@ -171,7 +171,16 @@ def aldoni(
     predicate_id: str = typer.Argument(..., help=tr_multi("Predikato ID (ekz. wdt:P31)", "Predicate ID (e.g. wdt:P31)", "ID du prédicat (ex. wdt:P31)")),
     etikedoj: Optional[list[str]] = typer.Option(None, "-e", "--etikedo", help=tr_multi("Etikedo en formo LANGCODE::TEKSTO (ripetebla)", "Label as LANGCODE::TEXT (repeatable)", "Étiquette au format LANGCODE::TEXTE (répétable)")),
     priskriboj: Optional[list[str]] = typer.Option(None, "-p", "--priskribo", help=tr_multi("Priskribo en formo LANGCODE::TEKSTO (ripetebla)", "Description as LANGCODE::TEXT (repeatable)", "Description au format LANGCODE::TEXTE (répétable)")),
-    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    kopii: bool = typer.Option(False, "-k", "--kopii", help=tr_multi(
+        "Kopii predikato-ID al poŝo",
+        "Copy predicate ID to clipboard",
+        "Copier l'ID du prédicat dans le presse-papier",
+    )),
+    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi(
+        "Preterpasi konfirmon",
+        "Skip confirmation",
+        "Ignorer la confirmation",
+    )),
 ) -> None:
     """Aldoni novan predikaton.
 
@@ -264,6 +273,14 @@ def aldoni(
     except ValueError as e:
         error(tr_multi("Eraro: {e}", "Error: {e}", "Erreur : {e}").format(e=str(e)))
         raise typer.Exit(1) from e
+
+    if kopii:
+        if not copy_to_clipboard(predicate_id):
+            awarning(tr_multi(
+                "Ne povis kopii al poŝo: {id}",
+                "Could not copy to clipboard: {id}",
+                "Impossible de copier dans le presse-papier : {id}",
+            ).format(id=predicate_id))
 
 
 @predikato_app.command("modifi")

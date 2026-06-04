@@ -1,6 +1,7 @@
 """Nodo CLI tests: aldoni, ls, vidi, serci, forigi."""
 from __future__ import annotations
 
+import pytest
 from typer.testing import CliRunner
 
 from A_semantika.cli import app
@@ -220,3 +221,38 @@ def test_kunfandi_nonexistent_target(runner: CliRunner) -> None:
     runner.invoke(app, ["nodo", "aldoni", "-e", "eo::SOURCE_NODE", "--jes"])
     result = runner.invoke(app, ["nodo", "kunfandi", "SOURCE_NODE", "NOEXIST_TGT_ID", "--jes"])
     assert result.exit_code == 1
+
+
+def test_nodo_aldoni_kopii_creates_and_copies(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--kopii should copy the node_id to clipboard on success."""
+    import A_semantika._cli_nodo_crud as crud_mod
+    copied = []
+    monkeypatch.setattr(crud_mod, "copy_to_clipboard", lambda text: copied.append(text) or True)
+
+    result = runner.invoke(app, [
+        "nodo", "aldoni", "KOPII_NODO",
+        "-e", "eo::Kopiilo",
+        "-k", "--jes",
+    ])
+    assert result.exit_code == 0
+    assert "kreita" in result.stdout
+    assert copied == ["KOPII_NODO"], f"Should have copied node_id, got {copied}"
+
+
+def test_nodo_aldoni_kopii_warns_on_failure(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When clipboard fails, --kopii should warn but still succeed."""
+    import A_semantika._cli_nodo_crud as crud_mod
+    monkeypatch.setattr(crud_mod, "copy_to_clipboard", lambda text: False)
+
+    result = runner.invoke(app, [
+        "nodo", "aldoni", "KOPII_FAIL",
+        "-e", "eo::Fiasko",
+        "-k", "--jes",
+    ])
+    assert result.exit_code == 0
+    assert "kreita" in result.stdout
+    assert "Ne povis" in result.stdout or "Could not" in result.stdout or "Impossible" in result.stdout

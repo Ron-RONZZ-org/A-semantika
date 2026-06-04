@@ -120,7 +120,7 @@ def aldoni(
         ),
     ),
     katex: Optional[str] = typer.Option(
-        None, "--katex", "-k",
+        None, "--katex", "-K",
         help=tr_multi(
             "KaTeX formulo (kun aŭ sen $...$ delimitiloj)",
             "KaTeX formula (with or without $...$ delimiters)",
@@ -128,7 +128,7 @@ def aldoni(
         ),
     ),
     kodbloko: Optional[str] = typer.Option(
-        None, "--kodbloko", "-K",
+        None, "--kodbloko",
         hidden=True,
         help=tr_multi(
             "Malrekomendita: uzu --str-dosiero --kodlingvo <lingvo>",

@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 import typer
 
-from A import error, info, tr_multi, warning
+from A import copy_to_clipboard, error, info, tr_multi, warning
 from A.utils.interactive import confirm_action
 from A_semantika._cli_arc_helpers import create_node_arcs, resolve_arc_targets
 from A_semantika._cli_helpers import ensure_predicate
@@ -71,7 +71,16 @@ def aldoni(
     superklaso: Optional[list[str]] = typer.Option(None, "-so", "--superklaso", help=tr_multi("Superklaso (rdfs:subClassOf) nod-indekso", "Superclass (rdfs:subClassOf) node ID", "Superclasse (rdfs:subClassOf) ID du nœud")),
     ne: Optional[list[str]] = typer.Option(None, "--ne", help=tr_multi("Malakorda (owl:disjointWith) nod-indekso", "Disjoint (owl:disjointWith) node ID", "Disjoint (owl:disjointWith) ID du nœud")),
     invers: Optional[list[str]] = typer.Option(None, "--invers", "-iv", help=tr_multi("Inversa (owl:inverseOf) nod-indekso", "Inverse (owl:inverseOf) node ID", "Inverse (owl:inverseOf) ID du nœud")),
-    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi("Preterpasi konfirmon", "Skip confirmation", "Ignorer la confirmation")),
+    kopii: bool = typer.Option(False, "-k", "--kopii", help=tr_multi(
+        "Kopii nod-indekson al poŝo",
+        "Copy node ID to clipboard",
+        "Copier l'ID du nœud dans le presse-papier",
+    )),
+    yes: bool = typer.Option(False, "-y", "--jes", "--yes", help=tr_multi(
+        "Preterpasi konfirmon",
+        "Skip confirmation",
+        "Ignorer la confirmation",
+    )),
 ) -> None:
     """Aldoni novan nodon kun laŭvolaj arkoj."""
     node_svc = get_node_service()
@@ -418,6 +427,14 @@ def aldoni(
         "Node created: {label} ({node_id})",
         "Nœud créé : {label} ({node_id})",
     ).format(label=resolve_node_label(node_svc, node_id_val), node_id=truncate_uuid(node_id_val)))
+
+    if kopii:
+        if not copy_to_clipboard(node_id_val):
+            warning(tr_multi(
+                "Ne povis kopii al poŝo: {id}",
+                "Could not copy to clipboard: {id}",
+                "Impossible de copier dans le presse-papier : {id}",
+            ).format(id=node_id_val))
 
 
 def modifi(
