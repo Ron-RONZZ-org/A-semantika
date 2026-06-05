@@ -265,6 +265,36 @@ def aldoni(
     pred_svc = get_predicate_service()
     triple_svc = get_triple_service()
 
+    # Validate unit node ID if provided (prefix → substring fallback)
+    if unuo:
+        try:
+            unuo_node = node_svc.resolve_node_id_prefix(unuo)
+        except AmbiguousUUIDError as e:
+            error(tr_multi(
+                "Ambigua unuo-prefikso: {e}",
+                "Ambiguous unit prefix: {e}",
+                "Préfixe d'unité ambigu : {e}",
+            ).format(e=str(e)))
+            raise typer.Exit(1) from e
+        if not unuo_node:
+            try:
+                unuo_node = node_svc.resolve_node_id_substring(unuo)
+            except AmbiguousUUIDError as e:
+                error(tr_multi(
+                    "Ambigua unuo: {e}",
+                    "Ambiguous unit: {e}",
+                    "Unité ambiguë : {e}",
+                ).format(e=str(e)))
+                raise typer.Exit(1) from e
+        if not unuo_node:
+            error(tr_multi(
+                "Unuo ne trovita: {u}",
+                "Unit not found: {u}",
+                "Unité non trouvée : {u}",
+            ).format(u=unuo))
+            raise typer.Exit(1)
+        unuo = unuo_node["node_id"]  # Use resolved full ID
+
     # Resolve subject UUID (prefix → substring fallback)
     try:
         subj_node = node_svc.resolve_node_id_prefix(subject)

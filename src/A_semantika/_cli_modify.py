@@ -263,6 +263,7 @@ def modifi(
 
     # Determine new object type from flags (default URI for backward compat)
     new_datatype, new_object_type = validate_type_flags(str_, int_, float_, bool_, lingvo, unuo)
+    old_object_unit: str | None = None
 
     # ── Interactive mode: partial args → show picker ───────────────
     if predicate is None or object is None:
@@ -286,6 +287,7 @@ def modifi(
         old_object_type = object_type
         old_object_value = object
         old_object_lang = object_lang
+        old_object_unit = triple.get("object_unit")
     else:
         # ── Direct mode: full triplet provided ────────────────────
         subject_uuid = _resolve_subject_id(node_svc, subject)
@@ -304,6 +306,7 @@ def modifi(
 
         old_object_value = existing["object_value"]
         old_object_lang = old_object_lang or existing.get("object_lang")
+        old_object_unit = existing.get("object_unit")
 
     # ── Resolve new values ────────────────────────────────────────
     new_subj = new_subject or subject
@@ -318,6 +321,38 @@ def modifi(
         node_svc, new_object_type, new_obj_raw,
         old_object_value, lingvo, str_,
     )
+
+    # ── Resolve unit node ID if provided, otherwise preserve old unit ──
+    if unuo:
+        try:
+            unuo_node = node_svc.resolve_node_id_prefix(unuo)
+        except AmbiguousUUIDError as e:
+            error(tr_multi(
+                "Ambigua unuo-prefikso: {e}",
+                "Ambiguous unit prefix: {e}",
+                "Préfixe d'unité ambigu : {e}",
+            ).format(e=str(e)))
+            raise typer.Exit(1) from e
+        if not unuo_node:
+            try:
+                unuo_node = node_svc.resolve_node_id_substring(unuo)
+            except AmbiguousUUIDError as e:
+                error(tr_multi(
+                    "Ambigua unuo: {e}",
+                    "Ambiguous unit: {e}",
+                    "Unité ambiguë : {e}",
+                ).format(e=str(e)))
+                raise typer.Exit(1) from e
+        if not unuo_node:
+            error(tr_multi(
+                "Unuo ne trovita: {u}",
+                "Unit not found: {u}",
+                "Unité non trouvée : {u}",
+            ).format(u=unuo))
+            raise typer.Exit(1)
+        effective_unuo = unuo_node["node_id"]
+    else:
+        effective_unuo = old_object_unit
 
     # ── Preview & confirm ─────────────────────────────────────────
     if not yes:
@@ -350,6 +385,7 @@ def modifi(
         and predicate == new_pred
         and old_object_value == new_obj_value
         and old_object_type == new_object_type
+        and old_object_unit == effective_unuo
     )
     if noop:
         info(tr_multi(
@@ -388,10 +424,10 @@ def modifi(
             conn.execute(
                 """INSERT INTO triples (subject_uuid, predicate_id, object_type,
                                         object_value, object_lang, object_datatype,
-                                        kreita_je)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                                        object_unit, kreita_je)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (new_subj_uuid, new_pred, new_object_type, new_obj_value,
-                 new_obj_lang, new_datatype, timestamp),
+                 new_obj_lang, new_datatype, effective_unuo, timestamp),
             )
     except sqlite3.IntegrityError:
         error(tr_multi(
