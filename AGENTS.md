@@ -244,7 +244,7 @@ A semantika aldoni <subject> <predicate> [<object>]
   [-s / --str]        string literal
   [-d / --str-dosiero]  read .md file as string literal (instead of <object>)
   [-l / --lingvo]     language tag for string literals
-  [-u / --unuo]       unit UUID for numeric values
+  [-u / --unuo]       unit node ID for numeric values (validated as existing node)
   [-y / --jes]        skip confirmation (was --yes, kept as alias)
 
 A semantika forigi <subject> [<predicate> [<object>]]
