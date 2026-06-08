@@ -38,7 +38,8 @@ src/A_semantika/
 ├── _cli_helpers.py        # Shared CLI helpers (pick_triple, type flag validation)
 ├── _cli_modify.py         # Root `modifi` command (Issue #8 R3 + Issue #10 EO)
 ├── _cli_nodo.py           # Nodo subcommand CLI (ls, vidi, serci)
-├── _cli_nodo_crud.py      # Nodo CRUD subcommands: aldoni, modifi
+├── _cli_nodo_aldoni.py    # Nodo aldoni: auto-ID (I#74) + file attachment flags (I#75)
+├── _cli_nodo_crud.py      # Nodo CRUD subcommands: modifi (aldoni extracted)
 ├── _cli_nodo_forigi.py    # Nodo forigi subcommand (multi-identifier)
 ├── _cli_nodo_kunfandi.py  # Nodo kunfandi (merge) subcommand (Issue #64)
 ├── _cli_predikato.py      # Predikato subcommand CLI (+ Wikidata flags)
@@ -46,7 +47,8 @@ src/A_semantika/
 ├── _cli_query.py          # Root query commands: serci, vidi, eksporti (Issue #10 EO)
 ├── _cli_rubujo.py         # Rubujo (trash) subcommand group: ls, restaurigi, malplenigi, forigi
 ├── _cli_triples.py        # Root triple CLI: aldoni (-i, --str-dosiero), forigi
-├── _node_helpers.py       # Shared helpers: label/difin extraction, FTS5 keywords
+├── _file_helpers.py       # File management: copy/move/download/mime (I#75)
+├── _node_helpers.py       # Shared helpers: label/difin extraction, FTS5 keywords, normalize_label_to_id
 ├── _node_merge_mixin.py   # NodeMergeMixin: merge_nodes() (Issue #64)
 ├── _node_search.py        # NodeSearchMixin: FTS mgmt, search, node_id prefix resolution (extracted from _node_service.py)
 ├── _node_service.py       # NodeService (NodeMergeMixin + NodeSearchMixin + CRUDService)
@@ -236,19 +238,28 @@ def get_stats() -> dict
 ## CLI Commands
 
 ```
-A semantika aldoni <subject> <predicate> [<object>]
-  [-U / --uri]        object is a URI node reference
-  [-i / --int]        integer literal
-  [-f / --float]      float literal
-  [-b / --bool]       boolean literal
-  [-s / --str]        string literal
-  [-d / --str-dosiero]  read .md file as string literal (instead of <object>)
-  [-l / --lingvo]     language tag for string literals
-  [-u / --unuo]       unit node ID for numeric values (validated as existing node)
-  [-y / --jes]        skip confirmation (was --yes, kept as alias)
-
-A semantika forigi <subject> [<predicate> [<object>]]
+A semantika nodo aldoni [UUID]
+  [-e / --etikedo "LANG::STR" | "STR"]*  # LANG::STR for lang-specific, plain STR for language-independent
+  [-d / --difino "LANG::STR" | "STR"]*  # Same format as -e
+  [-t / --tipo UUID]*               [shortcut: rdf:type]
+  [-so / --superklaso UUID]*        [shortcut: rdfs:subClassOf]
+  [--ne UUID]*                      [shortcut: owl:disjointWith]
+  [-iv / --invers UUID]*            [shortcut: owl:inverseOf]
+  [-k / --kopii]                    # Copy node_id to clipboard after creation
+  # File attachment flags (Issue #75)
+  [-I / --img PATH|URL]             # Attach image (copied to managed storage)
+  [-F / --filmeto PATH|URL]         # Attach video (copied to managed storage)
+  [-D / --dosiero PATH|URL]         # Attach arbitrary file (copied to managed storage)
+  [--en-loko]                       # Store reference only, do not copy
+  [-m / --movi]                     # Move file instead of copying (local only)
   [-y / --jes]
+
+  # Auto-ID from first label (Issue #74)
+  # When [UUID] is omitted and -e is given, node_id is auto-generated:
+  #   normalize_label_to_id("Homo Sapiens")   → HOMO_SAPIENS
+  #   normalize_label_to_id("Henri Poincaré") → HENRI_POINCARE
+  #   normalize_label_toid("日本語")          → _UNLABELED (CJK fallback)
+  # Collisions auto-resolved: _2, _3, ... _99 → UUID fallback
   If predicate/object omitted → interactive picker via partial label search
   Picker accepts space-separated numbers for multi-select (e.g. '1 3 6')
   Batch delete with partial success reporting: "Forigis X el Y arkoj."
@@ -272,7 +283,15 @@ A semantika nodo aldoni [UUID]
   [--ne UUID]*                      [shortcut: owl:disjointWith]
   [-iv / --invers UUID]*            [shortcut: owl:inverseOf]
   [-k / --kopii]                    # Copy node_id to clipboard after creation
+  # File attachment (Issue #75)
+  [-I / --img PATH|URL]             # Attach image (copied to managed storage)
+  [-F / --filmeto PATH|URL]         # Attach video (copied to managed storage)
+  [-D / --dosiero PATH|URL]         # Attach arbitrary file (copied to managed storage)
+  [--en-loko]                       # Store reference only, do not copy
+  [-m / --movi]                     # Move file instead of copying (local only)
   [-y / --jes]
+  # Auto-ID (Issue #74): when [UUID] omitted, first label generates node_id
+  # normalize_label_to_id("Homo Sapiens") → HOMO_SAPIENS (collision → _2, _3...)
 
 A semantika predikato aldoni <predicate-id>
   [-e / --etikedo "LANGCODE::STR"]*   # Repeatable, e.g. -e "eo::tipo" -e "en::type"
@@ -344,6 +363,8 @@ A semantika nodo kunfandi <fonto> <celo>
 
 | **I18** | Seed default RDF/OWL predicates at DB creation (Issue #18) | `DEFAULT_PREDICATES` in `data/storage.py` | ✅ Complete |
 | **I64** | Node merge (`nodo kunfandi`) — two nodes into one (Issue #64) | `_node_merge_mixin.py`, `_cli_nodo_kunfandi.py` | ✅ Complete |
+| **I74** | Auto-ID from first label — `normalize_label_to_id()` + collision resolution | `_node_helpers.py`, `_cli_nodo_aldoni.py` | ✅ Complete |
+| **I75** | File attachment flags — `--img/-I`, `--filmeto/-F`, `--dosiero/-D`, `--en-loko`, `--movi` | `_file_helpers.py`, `_cli_nodo_aldoni.py`, `data/storage.py` | ✅ Complete |
 
 ## Critical Bugs Fixed (May 2026)
 
