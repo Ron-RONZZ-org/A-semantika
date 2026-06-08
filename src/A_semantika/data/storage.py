@@ -136,10 +136,15 @@ KATEX_DATATYPE = "https://w3id.org/autish/katex"
 # These match the CLI shortcuts in _cli_nodo.py (--tipo, --superklaso, --ne, --invers).
 # Extended with INSERT OR IGNORE so existing databases are unaffected.
 DEFAULT_PREDICATES: list[dict[str, str]] = [
-    {"predicate_id": "rdf:type",        "source": "rdf",  "etikedoj": '{"eo": "tipo"}'},
-    {"predicate_id": "rdfs:subClassOf",  "source": "rdfs", "etikedoj": '{"eo": "subklaso"}'},
-    {"predicate_id": "owl:disjointWith", "source": "owl",  "etikedoj": '{"eo": "disjunkcio"}'},
-    {"predicate_id": "owl:inverseOf",    "source": "owl",  "etikedoj": '{"eo": "inverso"}'},
+    {"predicate_id": "rdf:type",         "source": "rdf",  "etikedoj": '{"eo": "tipo"}'},
+    {"predicate_id": "rdfs:subClassOf",   "source": "rdfs", "etikedoj": '{"eo": "subklaso"}'},
+    {"predicate_id": "owl:disjointWith",  "source": "owl",  "etikedoj": '{"eo": "disjunkcio"}'},
+    {"predicate_id": "owl:inverseOf",     "source": "owl",  "etikedoj": '{"eo": "inverso"}'},
+    # File attachment metadata predicates (Issue #75)
+    {"predicate_id": ":hasFilePath",      "source": "manual", "etikedoj": '{"eo": "dosiero-loko"}'},
+    {"predicate_id": ":hasFileMime",      "source": "manual", "etikedoj": '{"eo": "MIME-tipo"}'},
+    {"predicate_id": ":hasFileSize",      "source": "manual", "etikedoj": '{"eo": "grandeco"}'},
+    {"predicate_id": ":hasFileSource",    "source": "manual", "etikedoj": '{"eo": "fontindiko"}'},
 ]
 
 
