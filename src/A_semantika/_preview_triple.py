@@ -141,18 +141,16 @@ def build_triple_preview_table(
 
     elif object_type == "literal" and object_datatype:
         if object_datatype == KATEX_DATATYPE:
-            # KaTeX formula
-            formula_preview = object_value[:80] + "..." if len(object_value) > 80 else object_value
-            table.add_row(subj_label, pred_label, formula_preview)
+            # KaTeX formula: show full formula so user can verify before confirming
+            table.add_row(subj_label, pred_label, object_value)
             table.add_row(subj_id, predicate_id, "→ katex formula")
             footnote = tr_multi("→ KaTeX", "→ KaTeX", "→ KaTeX")
         elif object_datatype.startswith("text/") or object_datatype.startswith("application/"):
-            # Code block (MIME typed literal)
+            # Code block (MIME typed literal): show full content so user can verify
             lang_display = object_datatype.split("/")[-1]  # "x-python" -> "x-python"
             lang_display = lang_display.replace("x-", "", 1) if lang_display.startswith("x-") else lang_display
             char_count = len(object_value)
-            val_preview = object_value[:60] + "..." if len(object_value) > 60 else object_value
-            table.add_row(subj_label, pred_label, val_preview)
+            table.add_row(subj_label, pred_label, object_value)
             table.add_row(subj_id, predicate_id, f"→ {object_datatype}, {char_count} chars")
             footnote = tr_multi(
                 "→ {lang}, {n} znakoj", "→ {lang}, {n} chars", "→ {lang}, {n} car.",

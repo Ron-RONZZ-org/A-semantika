@@ -441,7 +441,7 @@ def aldoni(
     # ── Show preview and confirm ────────────────────────────────────
     if arcs:
         label = resolve_node_label(node_svc, node_id_val)
-        if not confirm_node_with_arcs(node_svc, pred_svc, label, node_id_val, arcs, yes=yes):
+        if not confirm_node_with_arcs(node_svc, pred_svc, label, node_id_val, arcs, labels=labels_dict, yes=yes):
             node_svc.delete(node_id_val)
             # Clean up file if it was copied/moved
             for ft in file_triples:

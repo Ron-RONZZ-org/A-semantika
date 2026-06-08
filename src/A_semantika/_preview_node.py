@@ -39,7 +39,7 @@ def build_node_preview_table(node_id: str, labels: dict[str, str], defns: dict[s
     ))
 
     if labels:
-        labels_str = "\n".join(f"[{lang}] {val}" for lang, val in labels.items())
+        labels_str = "\n".join(f"{lang}:{val}" if lang else val for lang, val in labels.items())
         table.add_row(tr_multi("Etikedoj", "Labels", "Etiquettes"), labels_str)
 
     if defns:
@@ -85,8 +85,8 @@ def build_node_modify_preview(
 
     if new_labels is not None and new_labels != old_labels:
         has_changes = True
-        old_lines = "\n".join(f"[{k}] {v}" for k, v in sorted(old_labels.items())) if old_labels else "-"
-        new_lines = "\n".join(f"[{k}] {v}" for k, v in sorted(new_labels.items())) if new_labels else "-"
+        old_lines = "\n".join(f"{k}:{v}" if k else v for k, v in sorted(old_labels.items())) if old_labels else "-"
+        new_lines = "\n".join(f"{k}:{v}" if k else v for k, v in sorted(new_labels.items())) if new_labels else "-"
         table.add_row(
             tr_multi("Etikedoj", "Labels", "Etiquettes"),
             old_lines,
@@ -174,6 +174,7 @@ def confirm_node_with_arcs(
     node_label: str,
     node_uuid: str,
     arcs: list[dict[str, Any]],
+    labels: dict[str, str] | None = None,
     yes: bool = False,
 ) -> bool:
     """Show a confirmation prompt for creating a node with optional arcs.
@@ -184,6 +185,8 @@ def confirm_node_with_arcs(
         arcs: List of arc dicts with keys:
               subject, predicate, object, object_type, object_lang,
               object_datatype, object_unit (all resolved).
+        labels: Optional dict of language->label to show Etikedoj with
+            lang codes in the preview table.
         yes: If True, skip confirmation.
 
     Returns:
@@ -203,6 +206,14 @@ def confirm_node_with_arcs(
         f"{node_label} ({truncate_uuid(node_uuid)})",
         "",
     )
+
+    if labels:
+        labels_str = "\n".join(f"{lang}:{val}" if lang else val for lang, val in labels.items())
+        table.add_row(
+            tr_multi("Etikedoj", "Labels", "Etiquettes"),
+            labels_str,
+            "",
+        )
 
     for i, arc in enumerate(arcs, 1):
         pred_label = resolve_predicate_label(pred_svc, arc["predicate"])
