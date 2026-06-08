@@ -490,10 +490,16 @@ class PredicateService(CRUDService):
 
         Strips special characters that can crash FTS5, but treats
         FTS5 keywords (AND, OR, NOT) as regular content by lowercasing.
+
+        Returns empty string if the query contains ``_`` or ``%``
+        (the ``unicode61`` tokenizer treats ``_`` as a separator, so
+        FTS5 cannot accurately match these; they fall through to LIKE).
         """
+        if "_" in query or "%" in query:
+            return ""
         safe_tokens = []
         for word in query.strip().split():
-            cleaned = "".join(c for c in word if c.isalnum() or c == "_")
+            cleaned = "".join(c for c in word if c.isalnum())
             if not cleaned:
                 continue
             if cleaned.upper() in _FTS5_KEYWORDS:

@@ -169,11 +169,23 @@ def build_triple_preview_table(
                 try:
                     unit_node = node_svc.resolve_node_id_prefix(object_unit)
                 except AmbiguousUUIDError as e:
-                    warning(tr_multi("Ambigua unuo-prefikso: {e}", "Ambiguous unit prefix: {e}", "Prefixe unite ambigu : {e}").format(e=str(e)))
+                    warning(tr_multi("Ambigua unuo-prefikso: {e}", "Ambiguous unit prefix: {e}", "Prefixe unité ambigu : {e}").format(e=str(e)))
                     return None, ""
-                unit_label = resolve_node_label_from_node(unit_node) if unit_node else truncate_uuid(object_unit)
-                unit_id = truncate_uuid(unit_node["node_id"]) if unit_node else truncate_uuid(object_unit)
-                parts.append(f"unit: {unit_label} ({unit_id})")
+                # Look up unit symbol via :symbol triple for a more informative display
+                if unit_node:
+                    sym_row = node_svc.db.execute_one(
+                        "SELECT object_value FROM triples "
+                        "WHERE subject_uuid = ? AND predicate_id = ':symbol' "
+                        "AND object_type = 'literal'",
+                        (unit_node["node_id"],),
+                    )
+                    if sym_row:
+                        unit_display = f"{sym_row['object_value']} ({truncate_uuid(unit_node['node_id'])})"
+                    else:
+                        unit_display = resolve_node_label_from_node(unit_node)
+                else:
+                    unit_display = truncate_uuid(object_unit)
+                parts.append(f"unit: {unit_display}")
             footnote = ", ".join(parts)
     else:
         # String literal
