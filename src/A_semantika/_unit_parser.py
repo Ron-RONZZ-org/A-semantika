@@ -68,7 +68,7 @@ class UnitDivision(UnitExpression):
 
 _TOKEN_PATTERN = re.compile(r"""
     (?P<WORD>[a-zA-Z_][a-zA-Z0-9_]*)   |
-    (?P<INTEGER>\d+)                     |
+    (?P<INTEGER>-?\d+)                   |
     (?P<STAR>\*)                         |
     (?P<SLASH>/)                         |
     (?P<CARET>\^)                        |
@@ -170,13 +170,21 @@ class _Parser:
         return UnitProduct(terms=_flatten_and_sort(factors))
 
     def _parse_factor(self) -> UnitExpression:
-        """``factor → WORD ("^" INTEGER)? | "(" expression ")"``"""
+        """``factor → WORD ("^" INTEGER)? | INTEGER | "(" expression ")"``"""
         tok = self.peek()
         if tok is None:
             raise ParseError("Unexpected end of expression")
 
         if tok[0] == "WORD":
             self.consume("WORD")
+            name = tok[1]
+            exponent = self._parse_exponent()
+            if exponent is not None:
+                return UnitPower(SingularUnit(name), exponent)
+            return SingularUnit(name)
+
+        if tok[0] == "INTEGER":
+            self.consume("INTEGER")
             name = tok[1]
             exponent = self._parse_exponent()
             if exponent is not None:
