@@ -178,7 +178,7 @@ def test_kunfandi_merge(runner: CliRunner) -> None:
     for line in ls_result.stdout.strip().split("\n"):
         if "HOMO" in line.upper():
             parts = line.strip().split()
-            if parts and parts[0].isalnum():
+            if parts and parts[0]:
                 ids.append(parts[0])
     assert len(ids) >= 2, f"Expected 2 nodes, got {ids}"
 
@@ -199,7 +199,7 @@ def test_kunfandi_same_node_error(runner: CliRunner) -> None:
     for line in ls_result.stdout.strip().split("\n"):
         if "SAME_NODE" in line.upper() and not node_id:
             parts = line.strip().split()
-            if parts and parts[0].isalnum():
+            if parts and parts[0]:
                 node_id = parts[0]
     if not node_id:
         return
@@ -227,9 +227,9 @@ def test_nodo_aldoni_kopii_creates_and_copies(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """--kopii should copy the node_id to clipboard on success."""
-    import A_semantika._cli_nodo_crud as crud_mod
+    import A_semantika._cli_nodo_aldoni as aldoni_mod
     copied = []
-    monkeypatch.setattr(crud_mod, "copy_to_clipboard", lambda text: (copied.append(text) or True, ""))
+    monkeypatch.setattr(aldoni_mod, "copy_to_clipboard", lambda text: (copied.append(text) or True, ""))
 
     result = runner.invoke(app, [
         "nodo", "aldoni", "KOPII_NODO",
@@ -245,8 +245,8 @@ def test_nodo_aldoni_kopii_warns_on_failure(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When clipboard fails, --kopii should warn but still succeed."""
-    import A_semantika._cli_nodo_crud as crud_mod
-    monkeypatch.setattr(crud_mod, "copy_to_clipboard", lambda text: (False, "test error"))
+    import A_semantika._cli_nodo_aldoni as aldoni_mod
+    monkeypatch.setattr(aldoni_mod, "copy_to_clipboard", lambda text: (False, "test error"))
 
     result = runner.invoke(app, [
         "nodo", "aldoni", "KOPII_FAIL",

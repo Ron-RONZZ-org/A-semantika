@@ -7,6 +7,7 @@ and display label resolution.
 from __future__ import annotations
 
 import json
+import re
 import unicodedata
 from typing import Any
 
@@ -189,4 +190,30 @@ def sanitize_node_id(raw_id: str) -> str:
         if unicodedata.category(ch) not in ("Cf", "Cc")
         or ch in (" ", "\t")
     )
-    return uuid[:16]
+
+
+def normalize_label_to_id(label: str) -> str:
+    """Convert a human label into a node_id-safe ASCII string.
+
+    Transformation pipeline:
+    1. NFKD Unicode decomposition (accents separated from base chars)
+    2. Filter to ASCII only (strips combining diacritics, CJK, emoji)
+    3. Collapse non-alphanumeric sequences to a single ``_``
+    4. Strip leading/trailing ``_``
+    5. UPPERCASE
+
+    Args:
+        label: Human-readable label (e.g. ``"Henri Poincaré"``).
+
+    Returns:
+        ASCII node ID ready for use (e.g. ``"HENRI_POINCARE"``).
+        Returns ``"_UNLABELED"`` if the label produces no ASCII chars.
+    """
+    nfkd = unicodedata.normalize("NFKD", label)
+    ascii_str = nfkd.encode("ascii", "ignore").decode("ascii")
+    # Collapse runs of non-alphanumeric chars to single underscore
+    safe = re.sub(r"[^a-zA-Z0-9]+", "_", ascii_str)
+    safe = safe.strip("_")
+    if not safe:
+        return "_UNLABELED"
+    return safe.upper()

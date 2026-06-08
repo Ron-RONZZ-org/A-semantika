@@ -10,7 +10,8 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi
-from A_semantika._cli_nodo_crud import aldoni, modifi
+from A_semantika._cli_nodo_aldoni import aldoni
+from A_semantika._cli_nodo_crud import modifi
 from A_semantika._cli_nodo_forigi import forigi
 from A_semantika._cli_nodo_kunfandi import kunfandi
 from A_semantika._node_helpers import truncate_uuid
