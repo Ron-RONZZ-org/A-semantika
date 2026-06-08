@@ -36,12 +36,12 @@ def build_predicate_preview_table(pred_data: dict) -> Table:
 
     etikedoj = pred_data.get("etikedoj", {})
     if isinstance(etikedoj, dict) and etikedoj:
-        labels_str = "\n".join(f"{lang}: {val}" for lang, val in etikedoj.items())
+        labels_str = "\n".join(f"[{lang}] {val}" for lang, val in etikedoj.items())
         table.add_row(tr_multi("Etikedoj", "Labels", "Etiquettes"), labels_str)
 
     priskriboj = pred_data.get("priskriboj", {})
     if isinstance(priskriboj, dict) and priskriboj:
-        descs_str = "\n".join(f"{lang}: {val}" for lang, val in priskriboj.items())
+        descs_str = "\n".join(f"[{lang}] {val}" for lang, val in priskriboj.items())
         table.add_row(tr_multi("Priskriboj", "Descriptions", "Descriptions"), descs_str)
 
     return table
@@ -94,8 +94,8 @@ def build_predicate_modify_preview(
     # Labels (etikedoj)
     if new_etikedoj is not None and new_etikedoj != old_etikedoj:
         has_changes = True
-        old_lines = "\n".join(f"{k}: {v}" for k, v in sorted(old_etikedoj.items())) if old_etikedoj else "-"
-        new_lines = "\n".join(f"{k}: {v}" for k, v in sorted(new_etikedoj.items())) if new_etikedoj else "-"
+        old_lines = "\n".join(f"[{k}] {v}" for k, v in sorted(old_etikedoj.items())) if old_etikedoj else "-"
+        new_lines = "\n".join(f"[{k}] {v}" for k, v in sorted(new_etikedoj.items())) if new_etikedoj else "-"
         table.add_row(
             tr_multi("Etikedoj", "Labels", "Etiquettes"),
             old_lines,
@@ -105,8 +105,8 @@ def build_predicate_modify_preview(
     # Descriptions (priskriboj)
     if new_priskriboj is not None and new_priskriboj != old_priskriboj:
         has_changes = True
-        old_lines = "\n".join(f"{k}: {v}" for k, v in sorted(old_priskriboj.items())) if old_priskriboj else "-"
-        new_lines = "\n".join(f"{k}: {v}" for k, v in sorted(new_priskriboj.items())) if new_priskriboj else "-"
+        old_lines = "\n".join(f"[{k}] {v}" for k, v in sorted(old_priskriboj.items())) if old_priskriboj else "-"
+        new_lines = "\n".join(f"[{k}] {v}" for k, v in sorted(new_priskriboj.items())) if new_priskriboj else "-"
         table.add_row(
             tr_multi("Priskriboj", "Descriptions", "Descriptions"),
             old_lines,

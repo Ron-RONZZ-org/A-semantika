@@ -39,11 +39,11 @@ def build_node_preview_table(node_id: str, labels: dict[str, str], defns: dict[s
     ))
 
     if labels:
-        labels_str = "\n".join(f"{lang}: {val}" for lang, val in labels.items())
+        labels_str = "\n".join(f"[{lang}] {val}" for lang, val in labels.items())
         table.add_row(tr_multi("Etikedoj", "Labels", "Etiquettes"), labels_str)
 
     if defns:
-        defns_str = "\n".join(f"{lang}: {val}" for lang, val in defns.items())
+        defns_str = "\n".join(f"[{lang}] {val}" for lang, val in defns.items())
         table.add_row(tr_multi("Difinoj", "Definitions", "Definitions"), defns_str)
 
     return table
@@ -85,8 +85,8 @@ def build_node_modify_preview(
 
     if new_labels is not None and new_labels != old_labels:
         has_changes = True
-        old_lines = "\n".join(f"{k}: {v}" for k, v in sorted(old_labels.items())) if old_labels else "-"
-        new_lines = "\n".join(f"{k}: {v}" for k, v in sorted(new_labels.items())) if new_labels else "-"
+        old_lines = "\n".join(f"[{k}] {v}" for k, v in sorted(old_labels.items())) if old_labels else "-"
+        new_lines = "\n".join(f"[{k}] {v}" for k, v in sorted(new_labels.items())) if new_labels else "-"
         table.add_row(
             tr_multi("Etikedoj", "Labels", "Etiquettes"),
             old_lines,

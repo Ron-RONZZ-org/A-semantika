@@ -274,3 +274,21 @@ class NodeSearchMixin:
             f" VALUES ({placeholders})"
         )
         self.db.execute(sql, values)
+
+    # ── FTS5 maintenance ──────────────────────────────────────────────
+
+    def optimize_fts(self) -> None:
+        """Run FTS5 OPTIMIZE on ``nodes_fts`` to rebuild the index.
+
+        FTS5 tables accumulate internal fragmentation over time as rows
+        are inserted, updated, and deleted.  Periodic optimization
+        prevents progressive search-performance degradation.
+
+        Safe to call at any time — no-op on empty/non-existent FTS.
+        """
+        if not self._fts_config:
+            return
+        config = self._fts_config
+        self.db.execute(
+            f"INSERT INTO {config.fts_table}({config.fts_table}) VALUES('optimize')"
+        )

@@ -12,6 +12,11 @@ from A_semantika._cli_arc_helpers import create_node_arcs, resolve_arc_targets
 from A_semantika._cli_helpers import ensure_predicate
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
+
+# FTS5 optimize counter: trigger OPTIMIZE every N node creates to prevent
+# progressive search-performance degradation from index fragmentation.
+_OPTIMIZE_INTERVAL = 50
+_optimize_counter: int = 0
 from A_semantika._preview import (
     build_node_modify_preview,
     confirm_node_creation,
@@ -297,6 +302,14 @@ def aldoni(
                     raise typer.Exit(0)
         error(tr_multi("Eraro: {e}", "Error: {e}", "Erreur : {e}").format(e=err_str))
         raise typer.Exit(1) from e
+
+    # Periodic FTS5 optimization — prevents index fragmentation
+    global _optimize_counter
+    _optimize_counter += 1
+    if _optimize_counter >= _OPTIMIZE_INTERVAL:
+        _optimize_counter = 0
+        node_svc.optimize_fts()
+
     node_id_val = node["node_id"]
 
     # Check for duplicate: if node has labels, search for similar existing nodes
