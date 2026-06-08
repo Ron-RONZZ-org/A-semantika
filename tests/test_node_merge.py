@@ -103,11 +103,11 @@ class TestNodeMerge:
         triple_svc.add(src["node_id"], "ex:conflict", obj["node_id"], "uri")
         triple_svc.add(tgt["node_id"], "ex:conflict", obj["node_id"], "uri")
 
-        assert triple_svc.count() == 9  # 7 seed + 2 test
+        assert triple_svc.count() == 8  # 6 seed + 2 test
 
         node_svc.merge_nodes(src["node_id"], tgt["node_id"])
 
-        assert triple_svc.count() == 8  # 7 seed + 1 remaining
+        assert triple_svc.count() == 7  # 6 seed + 1 remaining
         triples = triple_svc.get_by_subject(tgt["node_id"])
         assert len(triples) == 1
         assert triples[0]["predicate_id"] == "ex:conflict"

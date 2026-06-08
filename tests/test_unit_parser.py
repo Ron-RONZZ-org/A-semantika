@@ -167,14 +167,22 @@ class TestNormalize:
         assert result.terms[2].name == "kg"
 
     def test_division_with_product_denominator(self) -> None:
-        """Division should preserve denominators."""
+        """Division normalises to product with negative powers."""
         expr = UnitDivision(
             SingularUnit("J"),
             UnitProduct(terms=(SingularUnit("K"), SingularUnit("kg"))),
         )
         result = normalize(expr)
-        assert isinstance(result, UnitDivision)
-        assert isinstance(result.denominator, UnitProduct)
+        # J/(K*kg) → J * K^-1 * kg^-1
+        assert isinstance(result, UnitProduct)
+        assert len(result.terms) == 3
+        assert result.terms[0] == SingularUnit("J")
+        assert isinstance(result.terms[1], UnitPower)
+        assert result.terms[1].base.name == "K"
+        assert result.terms[1].exponent == -1
+        assert isinstance(result.terms[2], UnitPower)
+        assert result.terms[2].base.name == "kg"
+        assert result.terms[2].exponent == -1
 
 
 class TestDisplayString:
@@ -191,6 +199,44 @@ class TestDisplayString:
 
     def test_power(self) -> None:
         assert to_display_string(UnitPower(SingularUnit("m"), 2)) == "m^2"
+
+    def test_negative_power_standalone(self) -> None:
+        """Standalone negative exponent displays as base^-N."""
+        assert to_display_string(
+            normalize(UnitPower(SingularUnit("K"), -1))
+        ) == "K^-1"
+        assert to_display_string(
+            normalize(UnitPower(SingularUnit("m"), -2))
+        ) == "m^-2"
+
+    def test_negative_power_in_product_shows_division(self) -> None:
+        """Product with negative exponent displays as division."""
+        expr = UnitProduct(terms=(
+            SingularUnit("J"),
+            UnitPower(SingularUnit("K"), -1),
+        ))
+        result = to_display_string(normalize(expr))
+        assert result == "J/K"
+
+    def test_complex_division_display(self) -> None:
+        """Complex division with multiple denominator terms."""
+        expr = UnitProduct(terms=(
+            SingularUnit("kg"),
+            SingularUnit("m"),
+            UnitPower(SingularUnit("s"), -2),
+        ))
+        result = to_display_string(normalize(expr))
+        assert result == "kg*m/s^2"
+
+    def test_multi_denominator_parenthesized(self) -> None:
+        """Multiple denominator terms get parenthesized."""
+        expr = UnitProduct(terms=(
+            SingularUnit("J"),
+            UnitPower(SingularUnit("K"), -1),
+            UnitPower(SingularUnit("kg"), -1),
+        ))
+        result = to_display_string(normalize(expr))
+        assert result == "J/(K*kg)"
 
     def test_division_with_product_denominator_parenthesized(self) -> None:
         """Division with product denominator adds parentheses."""

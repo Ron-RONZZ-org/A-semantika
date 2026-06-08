@@ -34,11 +34,6 @@ UNIT_TYPE_NODES: list[dict] = [
         "parent_type": ":UnitType",
     },
     {
-        "node_id": ":UnitDivision",
-        "etikedoj": {"eo": "Unuodivido", "en": "Unit division", "fr": "Division d'unité"},
-        "parent_type": ":CompoundUnit",
-    },
-    {
         "node_id": ":UnitProduct",
         "etikedoj": {"eo": "Unuoprodukto", "en": "Unit product", "fr": "Produit d'unité"},
         "parent_type": ":CompoundUnit",

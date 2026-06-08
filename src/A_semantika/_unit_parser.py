@@ -4,14 +4,21 @@ Grammar::
 
     expression  → product ("/" product)*
     product     → factor ("*" factor)*
-    factor      → WORD ("^" INTEGER)? | "(" expression ")"
+    factor      → WORD ("^" INTEGER)? | INTEGER | "(" expression ")"
 
-Examples:
-    "J"           → SingularUnit("J")
-    "J/K"         → UnitDivision(SingularUnit("J"), SingularUnit("K"))
-    "J/(K*kg)"    → UnitDivision(SingularUnit("J"), UnitProduct([K, kg]))
-    "m^2"         → UnitPower(SingularUnit("m"), 2)
-    "kg*m/s^2"    → UnitDivision(UnitProduct([kg, m]), UnitPower(SingularUnit("s"), 2))
+The parser produces ``UnitDivision`` nodes for ``/`` syntax, but
+``normalize()`` converts them to the canonical product-of-powers form
+(``a/b → a * b^-1``).
+
+Examples (raw parse):
+    ``"J"``       → ``SingularUnit("J")``
+    ``"J/K"``     → ``UnitDivision(SingularUnit("J"), SingularUnit("K"))``
+    ``"m^2"``     → ``UnitPower(SingularUnit("m"), 2)``
+    ``"K^-1"``    → ``UnitPower(SingularUnit("K"), -1)``
+
+Examples (normalised — service layer always normalises):
+    ``"J/K"``     → ``UnitProduct([J, UnitPower(K, -1)])``
+    ``"m/s^2"``   → ``UnitProduct([m, UnitPower(s, -2)])``
 
 All functions are pure — no DB access, no side effects.
 """
@@ -235,6 +242,15 @@ def _sort_key(expr: UnitExpression) -> tuple:
     return (99,)
 
 
+def _invert_power(expr: UnitExpression) -> UnitExpression:
+    """Invert a unit expression: ``a → a^-1``, ``a^n → a^-n``."""
+    if isinstance(expr, UnitPower):
+        if expr.exponent == -1:
+            return expr.base  # a^-1 inverted → a
+        return UnitPower(base=expr.base, exponent=-expr.exponent)
+    return UnitPower(base=expr, exponent=-1)
+
+
 def _flatten_and_sort(factors: list[UnitExpression]) -> tuple[UnitExpression, ...]:
     """Flatten nested products and sort factors into canonical order.
 
@@ -286,11 +302,12 @@ def normalize(expr: UnitExpression) -> UnitExpression:
     """Return a canonical (normalised) form of a unit expression.
 
     Flattens nested products, sorts terms alphabetically,
-    and simplifies trivial expressions.
+    simplifies trivial expressions, and converts ``UnitDivision``
+    to the uniform product-of-powers form (``a/b → a * b^-1``).
 
     The normalised form is suitable for structural deduplication:
     two expressions that are semantically equivalent (e.g. ``J/K``
-    and ``(J)/K``) produce the same normalised AST.
+    and ``J*K^-1``) produce the same normalised AST.
     """
     if isinstance(expr, SingularUnit):
         return expr
@@ -298,21 +315,44 @@ def normalize(expr: UnitExpression) -> UnitExpression:
         return UnitPower(base=normalize(expr.base), exponent=expr.exponent)
     if isinstance(expr, UnitProduct):
         terms = _flatten_and_sort([normalize(t) for t in expr.terms])
-        if len(terms) == 1:
-            return terms[0]
-        return UnitProduct(terms=terms)
+        # Filter out dimensionless "1" terms (e.g. from normalising "1/K")
+        filtered = [t for t in terms
+                    if not (isinstance(t, SingularUnit) and t.name == "1")]
+        if not filtered:
+            return SingularUnit("1")
+        if len(filtered) == 1:
+            return filtered[0]
+        return UnitProduct(terms=filtered)
     if isinstance(expr, UnitDivision):
+        # Normalise a/b to a * b^-1 — uniform product-of-powers model.
+        # Distribute the -1 exponent across all denominator terms.
         num = normalize(expr.numerator)
         den = normalize(expr.denominator)
-        return UnitDivision(numerator=num, denominator=den)
+
+        # Numerator terms
+        num_terms = list(num.terms) if isinstance(num, UnitProduct) else [num]
+
+        # Denominator terms with inverted exponents
+        den_raw = list(den.terms) if isinstance(den, UnitProduct) else [den]
+        den_inv = [_invert_power(t) for t in den_raw]
+
+        all_terms = _flatten_and_sort(num_terms + den_inv)
+        # Filter out dimensionless "1" (e.g. from normalising "1/K")
+        filtered = [t for t in all_terms
+                    if not (isinstance(t, SingularUnit) and t.name == "1")]
+        if not filtered:
+            return SingularUnit("1")
+        if len(filtered) == 1:
+            return filtered[0]
+        return UnitProduct(terms=filtered)
     return expr
 
 
 def to_display_string(expr: UnitExpression) -> str:
     """Convert a normalised unit expression to a human-readable string.
 
-    This is the inverse of ``parse()`` — produces a canonical
-    representation like ``"J/K"``, ``"kg*m/s^2"``.
+    Handles negative exponents by rendering them as division
+    (``a*b^-1 → "a/b"``) for readability.
     """
     if isinstance(expr, SingularUnit):
         return expr.name
@@ -322,11 +362,24 @@ def to_display_string(expr: UnitExpression) -> str:
             return base
         return f"{base}^{expr.exponent}"
     if isinstance(expr, UnitProduct):
-        return "*".join(to_display_string(t) for t in expr.terms)
+        # Split terms into numerator (non-negative exp) and denominator (negative exp)
+        num_parts: list[str] = []
+        den_parts: list[str] = []
+        for t in expr.terms:
+            if isinstance(t, UnitPower) and t.exponent < 0:
+                # Invert for display: K^-1 → K^1 → "K"
+                inv = UnitPower(base=t.base, exponent=-t.exponent)
+                den_parts.append(to_display_string(inv))
+            else:
+                num_parts.append(to_display_string(t))
+        if not den_parts:
+            return "*".join(num_parts)
+        num_str = "*".join(num_parts) if num_parts else "1"
+        den_str = "*".join(den_parts)
+        if len(den_parts) > 1:
+            den_str = f"({den_str})"
+        return f"{num_str}/{den_str}"
     if isinstance(expr, UnitDivision):
-        num = to_display_string(expr.numerator)
-        den = to_display_string(expr.denominator)
-        if isinstance(expr.denominator, (UnitProduct, UnitDivision)):
-            den = f"({den})"
-        return f"{num}/{den}"
+        # Fallback for un-normalised ASTs — normalise first for the canonical path
+        return to_display_string(normalize(expr))
     return ""

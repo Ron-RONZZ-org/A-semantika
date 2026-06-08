@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from A_semantika._unit_parser import (
-    UnitDivision,
     UnitExpression,
     UnitPower,
     UnitProduct,
@@ -20,6 +19,7 @@ from A_semantika._unit_parser import (
     to_display_string,
 )
 from A_semantika._unit_seed_data import ALL_UNITS, BASE_AND_DERIVED, SI_BASE_UNITS
+from A_semantika._node_helpers import AmbiguousUUIDError
 from A_semantika.data.storage import now
 
 if TYPE_CHECKING:
@@ -164,14 +164,19 @@ class UnitService:
         """Resolve a WORD token from the expression parser to a unit node.
 
         Resolution chain:
-          1. Try as an exact ``node_id`` match
+          1. Try as an exact ``node_id`` match (falls through on ambiguous)
           2. Try as a ``:symbol`` triple value
           3. Try as a label / FTS5 search
         """
         # Phase 1: exact node_id
-        node = self.node_svc.resolve_node_id_prefix(word)
-        if node:
-            return node
+        try:
+            node = self.node_svc.resolve_node_id_prefix(word)
+            if node:
+                return node
+        except AmbiguousUUIDError:
+            # Short prefixes like "J" or "K" can match multiple node_ids;
+            # fall through to symbol lookup instead of failing
+            pass
 
         # Phase 2: symbol lookup
         node = self._find_unit_by_symbol(word)
@@ -213,11 +218,6 @@ class UnitService:
                 term_ids.append(term_id)
             return self._build_product_node(term_ids)
 
-        if isinstance(expr, UnitDivision):
-            num_id = self._create_from_ast(expr.numerator)
-            den_id = self._create_from_ast(expr.denominator)
-            return self._build_division_node(num_id, den_id)
-
         raise UnitNotFoundError(f"Unsupported expression type: {type(expr).__name__}")
 
     def _build_power_node(self, base_id: str, exponent: int) -> str:
@@ -234,8 +234,6 @@ class UnitService:
             suffix = "_SQ"
         elif exponent == 3:
             suffix = "_CU"
-        elif exponent == -1:
-            suffix = "_RECIP"
         else:
             suffix = f"_POW{exponent}"
         node_id = f"unit:{local_name}{suffix}"
@@ -334,47 +332,6 @@ class UnitService:
             "(subject_uuid, predicate_id, object_value, object_type, kreita_je) "
             "VALUES (?, ':hasTerm2', ?, 'uri', ?)",
             (node_id, term2_id, now_iso),
-        )
-        return node_id
-
-    def _build_division_node(self, num_id: str, den_id: str) -> str:
-        """Create or find a UnitDivision node."""
-        now_iso = now()
-        num_name = num_id.split(":")[-1]
-        den_name = den_id.split(":")[-1]
-        node_id = f"unit:{num_name}_PER_{den_name}"
-
-        existing = self.node_svc.resolve_node_id_prefix(node_id)
-        if existing:
-            return existing["node_id"]
-
-        etikedoj = json.dumps({
-            "eo": f"{num_name}/{den_name}",
-            "en": f"{num_name}/{den_name}",
-        })
-        self.db.execute(
-            "INSERT OR IGNORE INTO nodes "
-            "(node_id, etikedoj, label_text, difinoj, difin_text, kreita_je, modifita_je) "
-            "VALUES (?, ?, '', '{}', '', ?, ?)",
-            (node_id, etikedoj, now_iso, now_iso),
-        )
-        self.db.execute(
-            "INSERT OR IGNORE INTO triples "
-            "(subject_uuid, predicate_id, object_value, object_type, kreita_je) "
-            "VALUES (?, 'rdf:type', ':UnitDivision', 'uri', ?)",
-            (node_id, now_iso),
-        )
-        self.db.execute(
-            "INSERT OR IGNORE INTO triples "
-            "(subject_uuid, predicate_id, object_value, object_type, kreita_je) "
-            "VALUES (?, ':hasNumerator', ?, 'uri', ?)",
-            (node_id, num_id, now_iso),
-        )
-        self.db.execute(
-            "INSERT OR IGNORE INTO triples "
-            "(subject_uuid, predicate_id, object_value, object_type, kreita_je) "
-            "VALUES (?, ':hasDenominator', ?, 'uri', ?)",
-            (node_id, den_id, now_iso),
         )
         return node_id
 
@@ -480,7 +437,7 @@ class UnitService:
                WHERE t.predicate_id = 'rdf:type'
                  AND t.object_value IN (
                      ':SingularUnit', ':PrefixedUnit', ':CompoundUnit',
-                     ':UnitDivision', ':UnitProduct', ':UnitPower'
+                     ':UnitProduct', ':UnitPower'
                  )
                ORDER BY n.node_id"""
         )
@@ -579,12 +536,40 @@ class UnitService:
     def _get_decomposition(self, node_id: str) -> str:
         """Build a human-readable decomposition string for a unit.
 
-        For compound units, traces through :hasNumerator/:hasDenominator
-        etc. to produce something like ``"J / (K * kg)"``.
+        Walks the compound unit structure to produce something like
+        ``"J / (K * kg)"``, detecting negative exponents to show
+        division for readability.
         """
-        parts: list[str] = []
+        # Check for UnitPower first (catches standalone negative exponents)
+        base = self.db.execute_one(
+            "SELECT object_value FROM triples "
+            "WHERE subject_uuid = ? AND predicate_id = ':hasBase' AND object_type = 'uri'",
+            (node_id,),
+        )
+        exp = self.db.execute_one(
+            "SELECT object_value FROM triples "
+            "WHERE subject_uuid = ? AND predicate_id = ':hasExponent' AND object_type = 'literal'",
+            (node_id,),
+        )
+        if base and exp:
+            base_label = self._format_unit_ref(base["object_value"])
+            return f"{base_label}^{exp['object_value']}"
 
-        # Check for UnitDivision
+        # Check for UnitProduct — split terms by exponent sign
+        t1 = self.db.execute_one(
+            "SELECT object_value FROM triples "
+            "WHERE subject_uuid = ? AND predicate_id = ':hasTerm1' AND object_type = 'uri'",
+            (node_id,),
+        )
+        t2 = self.db.execute_one(
+            "SELECT object_value FROM triples "
+            "WHERE subject_uuid = ? AND predicate_id = ':hasTerm2' AND object_type = 'uri'",
+            (node_id,),
+        )
+        if t1 and t2:
+            return self._decompose_product(t1["object_value"], t2["object_value"])
+
+        # Fallback: legacy :hasNumerator/:hasDenominator (from old DB data)
         num = self.db.execute_one(
             "SELECT object_value FROM triples "
             "WHERE subject_uuid = ? AND predicate_id = ':hasNumerator' AND object_type = 'uri'",
@@ -600,38 +585,49 @@ class UnitService:
             den_label = self._format_unit_ref(den["object_value"])
             return f"{num_label} / {den_label}"
 
-        # Check for UnitProduct
-        t1 = self.db.execute_one(
-            "SELECT object_value FROM triples "
-            "WHERE subject_uuid = ? AND predicate_id = ':hasTerm1' AND object_type = 'uri'",
-            (node_id,),
-        )
-        t2 = self.db.execute_one(
-            "SELECT object_value FROM triples "
-            "WHERE subject_uuid = ? AND predicate_id = ':hasTerm2' AND object_type = 'uri'",
-            (node_id,),
-        )
-        if t1 and t2:
-            t1_label = self._format_unit_ref(t1["object_value"])
-            t2_label = self._format_unit_ref(t2["object_value"])
-            return f"{t1_label} · {t2_label}"
-
-        # Check for UnitPower
-        base = self.db.execute_one(
-            "SELECT object_value FROM triples "
-            "WHERE subject_uuid = ? AND predicate_id = ':hasBase' AND object_type = 'uri'",
-            (node_id,),
-        )
-        exp = self.db.execute_one(
-            "SELECT object_value FROM triples "
-            "WHERE subject_uuid = ? AND predicate_id = ':hasExponent' AND object_type = 'literal'",
-            (node_id,),
-        )
-        if base and exp:
-            base_label = self._format_unit_ref(base["object_value"])
-            return f"{base_label}^{exp['object_value']}"
-
         return ""
+
+    def _decompose_product(self, term1_id: str, term2_id: str) -> str:
+        """Decompose a binary product, detecting negative exponents.
+
+        Terms with negative exponents move to the denominator side
+        for human-readable display (e.g. ``J / K`` instead of ``J * K^-1``).
+        """
+        num_parts: list[str] = []
+        den_parts: list[str] = []
+
+        for tid in (term1_id, term2_id):
+            # Check if this term is a UnitPower with negative exponent
+            t_exp = self.db.execute_one(
+                "SELECT object_value FROM triples "
+                "WHERE subject_uuid = ? AND predicate_id = ':hasExponent' AND object_type = 'literal'",
+                (tid,),
+            )
+            if t_exp and t_exp["object_value"].startswith("-"):
+                # Negative exponent → denominator side (invert for display)
+                pos_exp = t_exp["object_value"][1:]
+                base = self.db.execute_one(
+                    "SELECT object_value FROM triples "
+                    "WHERE subject_uuid = ? AND predicate_id = ':hasBase' AND object_type = 'uri'",
+                    (tid,),
+                )
+                if base:
+                    label = self._format_unit_ref(base["object_value"])
+                    den_parts.append(f"{label}^{pos_exp}" if pos_exp != "1" else label)
+                else:
+                    den_parts.append(self._format_unit_ref(tid))
+            else:
+                # Positive exponent or simple unit → numerator
+                label = self._format_unit_ref(tid)
+                num_parts.append(label)
+
+        num_str = " · ".join(num_parts) if num_parts else "1"
+        den_str = " · ".join(den_parts)
+        if not den_parts:
+            return num_str
+        if len(den_parts) > 1:
+            den_str = f"({den_str})"
+        return f"{num_str} / {den_str}"
 
     def _format_unit_ref(self, node_id: str) -> str:
         """Format a unit node reference for display.

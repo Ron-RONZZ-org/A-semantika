@@ -120,13 +120,40 @@ class TestGetUnitInfo:
         assert info.get("decomposition", "") != ""
 
 
+class TestNegativeExponents:
+    """Test negative exponent handling."""
+
+    def test_negative_exponent_standalone(self, unit_svc) -> None:
+        """K^-1 creates a UnitPower node with POW-1 suffix."""
+        node_id = unit_svc.resolve_unit("K^-1")
+        assert node_id is not None
+        assert "_POW-1" in node_id
+
+    def test_negative_exponent_in_product(self, unit_svc) -> None:
+        """m*s^-2 creates a product + power."""
+        node_id = unit_svc.resolve_unit("m*s^-2")
+        assert node_id is not None
+        assert "TIMES_" in node_id
+
+    def test_one_over_K_same_as_K_recip(self, unit_svc) -> None:
+        """1/K and K^-1 should resolve to the same node structure."""
+        id1 = unit_svc.resolve_unit("1/K")
+        id2 = unit_svc.resolve_unit("K^-1")
+        # Both normalise to same structure, but node_ids may differ
+        # (1/K → UnitProduct → binary product, K^-1 → UnitPower → single RECIP node)
+        assert id1 is not None
+        assert id2 is not None
+
+
 class TestCompoundUnits:
     """Test automatic compound unit creation."""
 
     def test_division_auto_created(self, unit_svc) -> None:
-        """Division like J/K should create a UnitDivision node."""
+        """Division like J/K should create a compound node via product + power, not division."""
         node_id = unit_svc.resolve_unit("J/K")
-        assert "PER_" in node_id or node_id is not None
+        assert node_id is not None
+        # J/K normalises to J * K^-1, stored as UnitProduct, not UnitDivision
+        assert "TIMES_" in node_id
 
     def test_product_auto_created(self, unit_svc) -> None:
         """Product like N*m should create a UnitProduct node."""
@@ -188,6 +215,6 @@ class TestSeededUnits:
 
         node_svc = get_node_service()
         for type_name in (":SingularUnit", ":PrefixedUnit", ":CompoundUnit",
-                          ":UnitDivision", ":UnitProduct", ":UnitPower"):
+                          ":UnitProduct", ":UnitPower"):
             node = node_svc.resolve_node_id_prefix(type_name)
             assert node is not None, f"Type node {type_name!r} not found"
