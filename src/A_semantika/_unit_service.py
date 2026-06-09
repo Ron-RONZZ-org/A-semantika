@@ -19,7 +19,7 @@ from A_semantika._unit_parser import (
     to_display_string,
 )
 from A_semantika._unit_seed_data import ALL_UNITS, BASE_AND_DERIVED, SI_BASE_UNITS
-from A_semantika._node_helpers import AmbiguousUUIDError
+from A_semantika._node_helpers import AmbiguousUUIDError, extract_label_text
 from A_semantika.data.storage import now
 
 if TYPE_CHECKING:
@@ -76,11 +76,12 @@ class UnitService:
     def _insert_unit_node(self, unit: dict, now_iso: str) -> None:
         """Insert a unit node with its type, symbol, and UCUM triples."""
         etikedoj = json.dumps(unit["etikedoj"])
+        label_text = extract_label_text(unit["etikedoj"])
         self.db.execute(
             "INSERT OR IGNORE INTO nodes "
             "(node_id, etikedoj, label_text, difinoj, difin_text, kreita_je, modifita_je) "
-            "VALUES (?, ?, '', '{}', '', ?, ?)",
-            (unit["node_id"], etikedoj, now_iso, now_iso),
+            "VALUES (?, ?, ?, '{}', '', ?, ?)",
+            (unit["node_id"], etikedoj, label_text, now_iso, now_iso),
         )
         # rdf:type: base units and derived units are SingularUnit
         self.db.execute(
@@ -384,6 +385,50 @@ class UnitService:
             raise UnitNotFoundError(
                 f"Cannot resolve unit expression {expr!r}: {exc}"
             ) from exc
+
+    def normalize_unit(self, node_id_or_symbol: str) -> str:
+        """Return the canonical ``node_id`` for a unit without auto-creating.
+
+        Pure read-only lookup.  Unlike :meth:`resolve_unit`, this never
+        creates compound unit nodes or parses expressions.  It resolves:
+          1. Exact ``node_id`` match
+          2. ``:symbol`` triple lookup
+          3. FTS5 label search (exactly 1 result only)
+
+        Args:
+            node_id_or_symbol: A unit node ID, symbol, or label.
+
+        Returns:
+            The canonical ``node_id`` if found, or the original input if
+            resolution fails (graceful fallback for no-op detection).
+        """
+        self._ensure_unit_initialised()
+
+        # Phase 1: Exact node_id match
+        node = self.db.execute_one(
+            "SELECT * FROM nodes WHERE node_id = ? COLLATE NOCASE",
+            (node_id_or_symbol,),
+        )
+        if node:
+            return node["node_id"]
+
+        # Phase 2: Prefix match (handles truncated UUIDs)
+        node = self.node_svc.resolve_node_id_prefix(node_id_or_symbol)
+        if node:
+            return node["node_id"]
+
+        # Phase 3: Symbol lookup
+        node = self._find_unit_by_symbol(node_id_or_symbol)
+        if node:
+            return node["node_id"]
+
+        # Phase 4: FTS5 label search (exactly 1 result only)
+        results = self.node_svc.search(node_id_or_symbol, limit=2)
+        if len(results) == 1:
+            return results[0]["node_id"]
+
+        # Graceful fallback: return input unchanged
+        return node_id_or_symbol
 
     def create_singleton(self, node_id: str, label: str, symbol: str) -> str:
         """Create a custom singular unit node.

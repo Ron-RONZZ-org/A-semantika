@@ -218,3 +218,61 @@ class TestSeededUnits:
                           ":UnitProduct", ":UnitPower"):
             node = node_svc.resolve_node_id_prefix(type_name)
             assert node is not None, f"Type node {type_name!r} not found"
+
+
+class TestNormalizeUnit:
+    """Test read-only unit normalization without auto-creation."""
+
+    def test_normalize_by_exact_node_id(self, unit_svc) -> None:
+        """Exact node_id returns itself."""
+        result = unit_svc.normalize_unit("unit:JOULE")
+        assert result == "unit:JOULE"
+
+    def test_normalize_by_symbol(self, unit_svc) -> None:
+        """Symbol lookup returns the canonical node_id."""
+        result = unit_svc.normalize_unit("J")
+        assert result == "unit:JOULE"
+
+    def test_normalize_by_label(self, unit_svc) -> None:
+        """Label (FTS5) lookup returns the canonical node_id."""
+        result = unit_svc.normalize_unit("kulombo")
+        assert result == "unit:COULOMB"
+
+    def test_normalize_c_to_coulomb(self, unit_svc) -> None:
+        """Symbol 'C' should resolve to Coulombo."""
+        result = unit_svc.normalize_unit("C")
+        assert result == "unit:COULOMB"
+
+    def test_normalize_unknown_returns_input(self, unit_svc) -> None:
+        """Unknown symbol returns the input unchanged (no error)."""
+        result = unit_svc.normalize_unit("ZZZ_UNKNOWN")
+        assert result == "ZZZ_UNKNOWN"
+
+    def test_normalize_does_not_create_compound(self, unit_svc) -> None:
+        """normalize_unit should NOT auto-create compound units."""
+        result = unit_svc.normalize_unit("J/K")
+        # Not found → returns input unchanged
+        assert result == "J/K"
+        # Verify no compound node was created
+        from A_semantika.service import get_node_service
+        node_svc = get_node_service()
+        # J/K normalizes to J * K^-1, product sorted: JOULE < KELVIN_POW-1
+        compound_node = node_svc.resolve_node_id_prefix("unit:JOULE_TIMES_KELVIN_POW-1")
+        assert compound_node is None, "normalize_unit should not auto-create compounds"
+
+    def test_normalize_prefix_match(self, unit_svc) -> None:
+        """Prefix match on node_id should resolve."""
+        result = unit_svc.normalize_unit("unit:JOU")
+        assert result == "unit:JOULE"
+
+    def test_normalize_case_insensitive(self, unit_svc) -> None:
+        """Case-insensitive node_id match should work."""
+        result = unit_svc.normalize_unit("unit:joule")
+        assert result == "unit:JOULE"
+
+    def test_normalize_same_unit_different_inputs(self, unit_svc) -> None:
+        """'C', 'kulombo', and 'unit:COULOMB' should all normalize to the same ID."""
+        id1 = unit_svc.normalize_unit("C")
+        id2 = unit_svc.normalize_unit("kulombo")
+        id3 = unit_svc.normalize_unit("unit:COULOMB")
+        assert id1 == id2 == id3 == "unit:COULOMB"
