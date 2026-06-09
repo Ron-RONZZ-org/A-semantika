@@ -317,17 +317,26 @@ def validate_type_flags(
     str_: bool, int_: bool, float_: bool, bool_: bool,
     lingvo: str | None, unuo: str | None,
     katex: bool = False, kodbloko: bool = False, kodlingvo: str | None = None,
+    modifi_mode: bool = False,
 ) -> tuple[str | None, str]:
     """Validate type flag combinations.
 
     Supports plain string (--str), numeric (--int/--float/--bool),
     KaTeX formula (--katex), and code block (--kodbloko) literals.
 
+    When *modifi_mode* is True and only ``--unuo`` is given without a
+    type flag, the function returns ``("__KEEP__", "__KEEP__")`` instead
+    of raising an error.  The caller should interpret this as "keep the
+    existing arc's type unchanged, only update the unit".  The sentinel
+    value is a private implementation detail.
+
     Returns:
         Tuple of (datatype, object_type):
         - datatype: ``None`` for URI/string, ``"xsd:integer"``, etc.
           For KaTeX: returns ``KATEX_DATATYPE`` constant.
           For code block: returns MIME type from ``LANG_TO_MIME`` dict.
+        - ``("__KEEP__", "__KEEP__")`` when *modifi_mode* is True and
+          only ``--unuo`` is provided.
         - object_type: ``"uri"`` or ``"literal"``
 
     Calls error() and raises typer.Exit(1) on invalid combinations.
@@ -363,6 +372,11 @@ def validate_type_flags(
             )
             raise typer.Exit(1)
         if unuo:
+            if modifi_mode:
+                # In modifi mode, --unuo without type flag means "keep
+                # existing type". The caller must verify the existing
+                # arc is numeric, otherwise this is an error.
+                return ("__KEEP__", "__KEEP__")
             error(
                 tr_multi(
                     "--unuo bezonas --int aŭ --float",

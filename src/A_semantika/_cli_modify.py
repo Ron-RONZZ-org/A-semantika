@@ -262,7 +262,8 @@ def modifi(
     triple_svc = get_triple_service()
 
     # Determine new object type from flags (default URI for backward compat)
-    new_datatype, new_object_type = validate_type_flags(str_, int_, float_, bool_, lingvo, unuo)
+    # In modifi mode, --unuo alone keeps the existing arc's type.
+    new_datatype, new_object_type = validate_type_flags(str_, int_, float_, bool_, lingvo, unuo, modifi_mode=True)
     old_object_unit: str | None = None
 
     # ── Interactive mode: partial args → show picker ───────────────
@@ -288,6 +289,7 @@ def modifi(
         old_object_value = object
         old_object_lang = object_lang
         old_object_unit = triple.get("object_unit")
+        old_object_datatype = triple.get("object_datatype")
     else:
         # ── Direct mode: full triplet provided ────────────────────
         subject_uuid = _resolve_subject_id(node_svc, subject)
@@ -307,6 +309,23 @@ def modifi(
         old_object_value = existing["object_value"]
         old_object_lang = old_object_lang or existing.get("object_lang")
         old_object_unit = existing.get("object_unit")
+        old_object_datatype = existing.get("object_datatype")
+
+    # ── Handle __KEEP__ sentinel from validate_type_flags ─────────
+    # When --unuo is given without a type flag, modifi_mode returns
+    # the sentinel.  Check that the existing arc is numeric.
+    if new_object_type == "__KEEP__":
+        old_dtype = old_object_datatype or ""
+        if old_object_type != "literal" or old_dtype not in ("xsd:integer", "xsd:decimal"):
+            from A import error as _error
+            _error(tr_multi(
+                "--unuo bezonas ekzistantan nombran arkon (int/float)",
+                "--unuo requires an existing numeric arc (int/float)",
+                "--unuo nécessite un arc numérique existant (int/float)",
+            ))
+            raise typer.Exit(1)
+        new_datatype = old_object_datatype
+        new_object_type = "literal"
 
     # ── Resolve new values ────────────────────────────────────────
     new_subj = new_subject or subject

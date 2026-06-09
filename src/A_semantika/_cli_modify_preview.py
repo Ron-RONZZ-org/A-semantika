@@ -97,24 +97,16 @@ def _find_triple_by_spo(
             return existing
 
     # Try literal match by subject + predicate + object_value
-    results = triple_svc.search_triples(
-        subject_uuids=[subject_uuid],
-        predicate_ids=[predicate],
-        object_values=[object_raw],
-        limit=2,
-    )
+    where_clause = "subject_uuid = ? AND predicate_id = ? AND object_value = ?"
+    results = triple_svc.search_triples(where_clause, [subject_uuid, predicate, object_raw], limit=2)
     if results:
         return results[0]
 
     # Last resort: try with raw object as URI (for object that matched UUID
     # but was not a triple with object_type='uri')
     if obj_node:
-        results = triple_svc.search_triples(
-            subject_uuids=[subject_uuid],
-            predicate_ids=[predicate],
-            object_values=[obj_node["node_id"]],
-            limit=2,
-        )
+        where_clause = "subject_uuid = ? AND predicate_id = ? AND object_value = ?"
+        results = triple_svc.search_triples(where_clause, [subject_uuid, predicate, obj_node["node_id"]], limit=2)
         if results:
             return results[0]
 
