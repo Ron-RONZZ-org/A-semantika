@@ -55,6 +55,8 @@ def build_node_modify_preview(
     new_labels: dict[str, str] | None,
     old_defns: dict[str, str],
     new_defns: dict[str, str] | None,
+    *,
+    new_id: str | None = None,
     old_arcs: list[dict] | None = None,
     new_arcs: list[dict] | None = None,
 ) -> Table | None:
@@ -64,11 +66,12 @@ def build_node_modify_preview(
     fields changed (no-op).
 
     Args:
-        node_id: Node ID.
+        node_id: Current node ID.
         old_labels: Existing labels dict.
         new_labels: New labels dict, or ``None`` if not changing.
         old_defns: Existing definitions dict.
         new_defns: New definitions dict, or ``None`` if not changing.
+        new_id: New node ID if renaming, or ``None`` if not changing.
         old_arcs: Existing arcs (triples where node is subject), or ``None``.
         new_arcs: New arcs to add, or ``None``.  If not ``None``, arcs not
             present in *old_arcs* are shown as additions.
@@ -82,6 +85,14 @@ def build_node_modify_preview(
     table.add_column(tr_multi("Nova", "New", "Nouveau"))
 
     has_changes = False
+
+    if new_id is not None and new_id != node_id:
+        has_changes = True
+        table.add_row(
+            tr_multi("ID", "ID", "ID"),
+            node_id,
+            new_id,
+        )
 
     if new_labels is not None and new_labels != old_labels:
         has_changes = True

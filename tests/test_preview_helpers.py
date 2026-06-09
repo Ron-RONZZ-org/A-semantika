@@ -285,6 +285,90 @@ class TestBuildModifyPreview:
         assert "Malnova Etikedo" in output or "Nova Etikedo" in output
 
 
+class TestBuildNodeModifyPreview:
+    """build_node_modify_preview() should produce correct old->new tables for nodo modifi."""
+
+    def test_rename_id_preview(self):
+        """Preview should show ID row when new_id differs from node_id."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        from A_semantika._preview_node import build_node_modify_preview
+
+        table = build_node_modify_preview(
+            "OLDID",
+            {"eo": "Nodo"}, {"eo": "Nodo"},  # labels unchanged
+            {}, None,                          # defns unchanged
+            new_id="NEWID",
+        )
+        assert table is not None
+        buf = StringIO()
+        console = Console(file=buf, width=120)
+        console.print(table)
+        output = buf.getvalue()
+        assert "OLDID" in output
+        assert "NEWID" in output
+
+    def test_rename_id_noop_returns_none(self):
+        """Preview should return None when new_id equals node_id."""
+        from A_semantika._preview_node import build_node_modify_preview
+
+        table = build_node_modify_preview(
+            "SAMEID",
+            {"eo": "Nodo"}, None,  # labels unchanged
+            {}, None,               # defns unchanged
+            new_id="SAMEID",
+        )
+        assert table is None
+
+    def test_rename_id_no_labels_changes(self):
+        """Preview should still show ID row even without label changes."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        from A_semantika._preview_node import build_node_modify_preview
+
+        table = build_node_modify_preview(
+            "VERY_LONG_NODE_ID_THAT_EXCEEDS_16",
+            {"eo": "Nodo"}, None,  # labels unchanged
+            {}, None,               # defns unchanged
+            new_id="NEW_SHORT_ID",
+        )
+        assert table is not None
+        buf = StringIO()
+        console = Console(file=buf, width=120)
+        console.print(table)
+        output = buf.getvalue()
+        assert "VERY_LONG" in output
+        assert "NEW_SHORT" in output
+
+    def test_rename_and_labels_preview(self):
+        """Preview should show both ID and label rows when both change."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        from A_semantika._preview_node import build_node_modify_preview
+
+        table = build_node_modify_preview(
+            "OLDID",
+            {"eo": "Malnova Etikedo"}, {"eo": "Nova Etikedo"},  # labels changed
+            {}, None,                             # defns unchanged
+            new_id="NEWID",
+        )
+        assert table is not None
+        buf = StringIO()
+        console = Console(file=buf, width=120)
+        console.print(table)
+        output = buf.getvalue()
+        assert "OLDID" in output
+        assert "NEWID" in output
+        assert "Malnova Etikedo" in output
+        assert "Nova Etikedo" in output
+
+
 # ── format_tipo detailed type display ─────────────────────────────────
 
 

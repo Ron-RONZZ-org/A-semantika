@@ -135,6 +135,7 @@ def modifi(
             node["node_id"],
             old_labels, new_labels,
             old_defns, new_defns,
+            new_id=nova_id,
         )
         if table:
             info("")

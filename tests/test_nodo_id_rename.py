@@ -129,6 +129,27 @@ class TestNodoRenameCLI:
         assert result.exit_code == 1
         assert "Neniu ŝanĝo" in result.stdout or "No change" in result.stdout
 
+    def test_cli_rename_preview_shows_id_change(self, runner: CliRunner, node_svc):
+        """Interactive rename should show ID change in preview table."""
+        node_svc.create({"node_id": "OLDID", "etikedoj": {"eo": "Nodo"}})
+        result = runner.invoke(app, [
+            "nodo", "modifi", "OLDID", "--nova-id", "NEWID",
+        ], input="\n")  # accept default confirmation
+        assert result.exit_code == 0
+        assert "OLDID" in result.stdout
+        assert "NEWID" in result.stdout
+        assert "ID" in result.stdout  # ID field row shown
+
+    def test_cli_rename_preview_shows_without_labels(self, runner: CliRunner, node_svc):
+        """Rename preview shows ID change even without label changes."""
+        node_svc.create({"node_id": "LONG_NODE_ID_OLD", "etikedoj": {"eo": "Nodo"}})
+        result = runner.invoke(app, [
+            "nodo", "modifi", "LONG_NODE_ID_OLD", "--nova-id", "NEW_ID",
+        ], input="\n")
+        assert result.exit_code == 0
+        assert "LONG_NODE" in result.stdout  # truncated old ID in preview
+        assert "NEW_ID" in result.stdout
+
     def test_cli_rename_nonexistent(self, runner: CliRunner):
         """Renaming a non-existent node shows error."""
         result = runner.invoke(app, [
