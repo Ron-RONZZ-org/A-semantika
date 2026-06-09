@@ -365,6 +365,7 @@ A semantika nodo kunfandi <fonto> <celo>
 | **I64** | Node merge (`nodo kunfandi`) — two nodes into one (Issue #64) | `_node_merge_mixin.py`, `_cli_nodo_kunfandi.py` | ✅ Complete |
 | **I74** | Auto-ID from first label — `normalize_label_to_id()` + collision resolution | `_node_helpers.py`, `_cli_nodo_aldoni.py` | ✅ Complete |
 | **I75** | File attachment flags — `--img/-I`, `--filmeto/-F`, `--dosiero/-D`, `--en-loko`, `--movi` | `_file_helpers.py`, `_cli_nodo_aldoni.py`, `data/storage.py` | ✅ Complete |
+| **I79** | Show `node_id` rename in `nodo modifi` preview (`-ni` now shows ID change) | `_preview_node.py`, `_cli_nodo_crud.py` | ✅ Complete |
 
 ## Critical Bugs Fixed (May 2026)
 
@@ -1224,6 +1225,31 @@ labels in preview. 469 total (460 existing + 9 new).
 - ✓ Deletion count correct: `Forigis 2 el 2 arkoj.`
 - ✓ Remaining arcs correctly reflected in search
 - ✓ Empty result shows "Neniuj arkoj trovitaj."
+
+### Issue #79: Nodo modifi rename preview (June 2026)
+
+**Scope:** Show `node_id` rename in `nodo modifi --nova-id` (`-ni`) preview table.
+
+| Fix | File | Description |
+|-----|------|-------------|
+| F1 | `_preview_node.py` | Added `new_id` keyword-only param to `build_node_modify_preview()`. When provided and differs from `node_id`, adds an ID row (old → new). |
+| F2 | `_cli_nodo_crud.py` | Passes `nova_id` to the preview function. |
+
+**Tests added (6):**
+| Test | File |
+|------|------|
+| `test_rename_id_preview` | test_preview_helpers.py |
+| `test_rename_id_noop_returns_none` | test_preview_helpers.py |
+| `test_rename_id_no_labels_changes` | test_preview_helpers.py |
+| `test_rename_and_labels_preview` | test_preview_helpers.py |
+| `test_cli_rename_preview_shows_id_change` | test_nodo_id_rename.py |
+| `test_cli_rename_preview_shows_without_labels` | test_nodo_id_rename.py |
+
+**User Simulation Verified:**
+- ✓ Rename only: shows `ID  OLDID → NEWID` row
+- ✓ Rename + labels: shows both ID and label rows
+- ✓ `-y`/`--jes` flag: skips preview (backward compat)
+- ✓ No-op (same ID): shows "Neniu ŝanĝo" without preview
 
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
