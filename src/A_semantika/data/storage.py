@@ -136,15 +136,28 @@ KATEX_DATATYPE = "https://w3id.org/autish/katex"
 # These match the CLI shortcuts in _cli_nodo.py (--tipo, --superklaso, --ne, --invers).
 # Extended with INSERT OR IGNORE so existing databases are unaffected.
 DEFAULT_PREDICATES: list[dict[str, str]] = [
-    {"predicate_id": "rdf:type",         "source": "rdf",  "etikedoj": '{"eo": "tipo"}'},
-    {"predicate_id": "rdfs:subClassOf",   "source": "rdfs", "etikedoj": '{"eo": "subklaso"}'},
-    {"predicate_id": "owl:disjointWith",  "source": "owl",  "etikedoj": '{"eo": "disjunkcio"}'},
-    {"predicate_id": "owl:inverseOf",     "source": "owl",  "etikedoj": '{"eo": "inverso"}'},
+    {"predicate_id": "rdf:type",              "source": "rdf",    "etikedoj": '{"eo": "tipo"}'},
+    {"predicate_id": "rdfs:subClassOf",        "source": "rdfs",  "etikedoj": '{"eo": "subklaso"}'},
+    {"predicate_id": "owl:disjointWith",       "source": "owl",   "etikedoj": '{"eo": "disjunkcio"}'},
+    {"predicate_id": "owl:inverseOf",          "source": "owl",   "etikedoj": '{"eo": "inverso"}'},
     # File attachment metadata predicates (Issue #75)
-    {"predicate_id": ":hasFilePath",      "source": "manual", "etikedoj": '{"eo": "dosiero-loko"}'},
-    {"predicate_id": ":hasFileMime",      "source": "manual", "etikedoj": '{"eo": "MIME-tipo"}'},
-    {"predicate_id": ":hasFileSize",      "source": "manual", "etikedoj": '{"eo": "grandeco"}'},
-    {"predicate_id": ":hasFileSource",    "source": "manual", "etikedoj": '{"eo": "fontindiko"}'},
+    {"predicate_id": ":hasFilePath",           "source": "manual", "etikedoj": '{"eo": "dosiero-loko"}'},
+    {"predicate_id": ":hasFileMime",           "source": "manual", "etikedoj": '{"eo": "MIME-tipo"}'},
+    {"predicate_id": ":hasFileSize",           "source": "manual", "etikedoj": '{"eo": "grandeco"}'},
+    {"predicate_id": ":hasFileSource",         "source": "manual", "etikedoj": '{"eo": "fontindiko"}'},
+    # Unit ontology predicates (Issue #77)
+    {"predicate_id": ":hasNumerator",          "source": "manual", "etikedoj": '{"eo": "havas numeratoron"}'},
+    {"predicate_id": ":hasDenominator",        "source": "manual", "etikedoj": '{"eo": "havas denominatoron"}'},
+    {"predicate_id": ":hasBase",               "source": "manual", "etikedoj": '{"eo": "havas bazon"}'},
+    {"predicate_id": ":hasExponent",           "source": "manual", "etikedoj": '{"eo": "havas eksponenton"}'},
+    {"predicate_id": ":hasTerm1",              "source": "manual", "etikedoj": '{"eo": "havas terminon 1"}'},
+    {"predicate_id": ":hasTerm2",              "source": "manual", "etikedoj": '{"eo": "havas terminon 2"}'},
+    {"predicate_id": ":multiplier",            "source": "manual", "etikedoj": '{"eo": "multiplikilo"}'},
+    {"predicate_id": ":offset",                "source": "manual", "etikedoj": '{"eo": "ofseto"}'},
+    {"predicate_id": ":ucumCode",              "source": "manual", "etikedoj": '{"eo": "UCUM-kodo"}'},
+    {"predicate_id": ":symbol",                "source": "manual", "etikedoj": '{"eo": "simbolo"}'},
+    {"predicate_id": ":alternativeSymbol",     "source": "manual", "etikedoj": '{"eo": "alternativa simbolo"}'},
+    {"predicate_id": ":unitPrefix",            "source": "manual", "etikedoj": '{"eo": "unu-prefikso"}'},
 ]
 
 
@@ -210,6 +223,60 @@ def _seed_default_predicates(db: "SQLiteDB") -> bool:
     return needs_seeding
 
 
+def _seed_default_unit_types(db: "SQLiteDB") -> bool:
+    """Seed unit type nodes and their ``rdf:type`` triples.
+
+    Uses INSERT OR IGNORE so that repeated calls are no-ops.
+
+    Returns:
+        True if any new nodes were inserted, False otherwise.
+    """
+    from A_semantika._unit_seed_data import UNIT_TYPE_NODES
+
+    # Check how many type nodes already exist
+    type_ids = [n["node_id"] for n in UNIT_TYPE_NODES]
+    existing = {
+        r["node_id"]
+        for r in db.execute(
+            "SELECT node_id FROM nodes WHERE node_id IN "
+            f"({','.join('?' * len(type_ids))})",
+            tuple(type_ids),
+        )
+    }
+    new_count = sum(1 for n in UNIT_TYPE_NODES if n["node_id"] not in existing)
+    if new_count == 0:
+        return False
+
+    now_iso = now()
+    for node in UNIT_TYPE_NODES:
+        etikedoj = json.dumps(node["etikedoj"])
+        db.execute(
+            "INSERT OR IGNORE INTO nodes "
+            "(node_id, etikedoj, label_text, difinoj, difin_text, kreita_je, modifita_je) "
+            "VALUES (?, ?, '', '{}', '', ?, ?)",
+            (node["node_id"], etikedoj, now_iso, now_iso),
+        )
+        # Add rdf:type triple
+        parent = node["parent_type"]
+        if parent:
+            db.execute(
+                "INSERT OR IGNORE INTO triples "
+                "(subject_uuid, predicate_id, object_value, object_type, kreita_je) "
+                "VALUES (?, 'rdf:type', ?, 'uri', ?)",
+                (node["node_id"], parent, now_iso),
+            )
+        # Also add alternative type if specified (e.g. PrefixedUnit is also SingularUnit)
+        also = node.get("also_type")
+        if also:
+            db.execute(
+                "INSERT OR IGNORE INTO triples "
+                "(subject_uuid, predicate_id, object_value, object_type, kreita_je) "
+                "VALUES (?, 'rdf:type', ?, 'uri', ?)",
+                (node["node_id"], also, now_iso),
+            )
+    return new_count > 0
+
+
 def init_db(db: "SQLiteDB | None" = None) -> None:
     """Initialize the database schema.
 
@@ -250,6 +317,9 @@ def init_db(db: "SQLiteDB | None" = None) -> None:
     # work on every init_db() call (e.g. read-only CLI callbacks).
     if seeded:
         db.execute("INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')")
+
+    # Seed unit type nodes (Issue #77)
+    _seed_default_unit_types(db)
 
     # Rebuild nodes FTS index to fix stale entries from the pre-fix
     # update()/update_node_id() order-of-operations bug.

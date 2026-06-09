@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from A_semantika._predicate_group_service import PredicateGroupService
     from A_semantika._predicate_service import PredicateService
     from A_semantika._triple_service import TripleService
+    from A_semantika._unit_service import UnitService
 
 
 # Singleton holders
@@ -18,6 +19,7 @@ _node_service: NodeService | None = None
 _predicate_service: PredicateService | None = None
 _predicate_group_service: PredicateGroupService | None = None
 _triple_service: TripleService | None = None
+_unit_service: UnitService | None = None
 
 
 def get_node_service() -> "NodeService":
@@ -64,10 +66,26 @@ def get_triple_service() -> "TripleService":
     return _triple_service
 
 
+def get_unit_service() -> "UnitService":
+    """Return the singleton UnitService."""
+    global _unit_service
+    if _unit_service is None:
+        from A_semantika._unit_service import UnitService
+        from A_semantika.data.storage import get_db
+
+        _unit_service = UnitService(
+            db=get_db(),
+            node_svc=get_node_service(),
+            triple_svc=get_triple_service(),
+        )
+    return _unit_service
+
+
 def reset_services() -> None:
     """Reset all service singletons (used in tests)."""
-    global _node_service, _predicate_service, _predicate_group_service, _triple_service
+    global _node_service, _predicate_service, _predicate_group_service, _triple_service, _unit_service
     _node_service = None
     _predicate_service = None
     _predicate_group_service = None
     _triple_service = None
+    _unit_service = None

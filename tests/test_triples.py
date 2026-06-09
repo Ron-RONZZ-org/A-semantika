@@ -158,7 +158,8 @@ class TestTripleDelete:
             object_type="uri",
         )
         assert deleted == 1
-        assert triple_svc.count() == 0
+        # 6 seed triples from unit type initialisation remain
+        assert triple_svc.count() == 6
 
     def test_remove_by_subject(self, triple_svc) -> None:
         """Removing by subject only should delete all for that subject."""
@@ -177,15 +178,15 @@ class TestTripleCountAndStats:
 
     def test_count(self, triple_svc) -> None:
         """Count should return the correct number."""
-        assert triple_svc.count() == 0
+        assert triple_svc.count() == 6  # 6 seed triples from unit types
         triple_svc.add(subject_uuid="s"+"0"*35, predicate_id="rdf:type", object_value="o"+"0"*35, object_type="uri")
-        assert triple_svc.count() == 1
+        assert triple_svc.count() == 7
 
     def test_get_stats(self, triple_svc) -> None:
         """get_stats should return meaningful stats."""
         triple_svc.add(subject_uuid="s"+"0"*35, predicate_id="rdf:type", object_value="o"+"0"*35, object_type="uri")
         stats = triple_svc.get_stats()
-        assert stats["total_triples"] == 1
+        assert stats["total_triples"] == 7  # 6 seed + 1 test
         assert stats["unique_predicates"] >= 1
         assert stats["unique_subjects"] >= 1
 
@@ -255,10 +256,10 @@ class TestTripleCountAndStats:
         triple_svc.add(subject_uuid=subj, predicate_id="rdf:type", object_value=obj, object_type="uri")
         triple_svc.add(subject_uuid=obj, predicate_id="rdf:type", object_value=subj, object_type="uri")
 
-        assert triple_svc.count() == 2
+        assert triple_svc.count() == 8  # 6 seed + 2 test
         removed = triple_svc.remove_by_node(subj)
         assert removed == 2  # removes both triples (subj as subject, subj as obj)
-        assert triple_svc.count() == 0
+        assert triple_svc.count() == 6  # seed triples remain
 
     def test_count_by_subject_or_object(self, triple_svc) -> None:
         """count_by_subject_or_object should match get_by_node count."""

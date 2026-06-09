@@ -13,6 +13,7 @@ from A_semantika._cli_predikat_grupo import predikat_grupo_app
 from A_semantika._cli_predikato import predikato_app
 from A_semantika._cli_predikato_rubujo import predikato_rubujo_app
 from A_semantika._cli_rubujo import rubujo_app
+from A_semantika._cli_unuo import unuo_app
 
 # Root triple commands (defined in _cli_*.py files)
 from A_semantika._cli_modify import modifi
@@ -47,3 +48,4 @@ app.add_typer(predikato_app)
 predikato_app.add_typer(predikato_rubujo_app)
 app.add_typer(predikat_grupo_app)
 app.add_typer(rubujo_app)
+app.add_typer(unuo_app)

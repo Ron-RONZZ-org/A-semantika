@@ -86,3 +86,12 @@ def triple_svc():
 
     reset_services()
     return get_triple_service()
+
+
+@pytest.fixture
+def unit_svc():
+    """Return a UnitService instance."""
+    from A_semantika.service import get_unit_service
+
+    reset_services()
+    return get_unit_service()

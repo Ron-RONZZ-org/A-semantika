@@ -20,10 +20,12 @@ from A_semantika._cli_modify_preview import build_modify_preview, find_triple_di
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
+from A_semantika._unit_service import UnitNotFoundError
 from A_semantika.service import (
     get_node_service,
     get_predicate_service,
     get_triple_service,
+    get_unit_service,
 )
 
 
@@ -341,35 +343,17 @@ def modifi(
         old_object_value, lingvo, str_,
     )
 
-    # ── Resolve unit node ID if provided, otherwise preserve old unit ──
+    # ── Resolve unit via UnitService (node_id → symbol → expression) ──
     if unuo:
         try:
-            unuo_node = node_svc.resolve_node_id_prefix(unuo)
-        except AmbiguousUUIDError as e:
-            error(tr_multi(
-                "Ambigua unuo-prefikso: {e}",
-                "Ambiguous unit prefix: {e}",
-                "Préfixe d'unité ambigu : {e}",
-            ).format(e=str(e)))
-            raise typer.Exit(1) from e
-        if not unuo_node:
-            try:
-                unuo_node = node_svc.resolve_node_id_substring(unuo)
-            except AmbiguousUUIDError as e:
-                error(tr_multi(
-                    "Ambigua unuo: {e}",
-                    "Ambiguous unit: {e}",
-                    "Unité ambiguë : {e}",
-                ).format(e=str(e)))
-                raise typer.Exit(1) from e
-        if not unuo_node:
+            effective_unuo = get_unit_service().resolve_unit(unuo)
+        except UnitNotFoundError as e:
             error(tr_multi(
                 "Unuo ne trovita: {u}",
                 "Unit not found: {u}",
                 "Unité non trouvée : {u}",
-            ).format(u=unuo))
-            raise typer.Exit(1)
-        effective_unuo = unuo_node["node_id"]
+            ).format(u=str(e)))
+            raise typer.Exit(1) from e
     else:
         effective_unuo = old_object_unit
 

@@ -119,20 +119,26 @@ class TestNodesUuidMigration:
 
     def _create_old_schema(self, db) -> None:
         """Create nodes table with old 'uuid' column."""
-        db.execute("DROP TABLE IF EXISTS nodes_fts")
-        db.execute("DROP TABLE IF EXISTS nodes_rubujo")
-        db.execute("DROP TABLE IF EXISTS nodes")
-        db.execute("""
-            CREATE TABLE nodes (
-                uuid        TEXT PRIMARY KEY,
-                etikedoj    TEXT NOT NULL DEFAULT '{}',
-                label_text  TEXT NOT NULL DEFAULT '',
-                difinoj     TEXT NOT NULL DEFAULT '{}',
-                difin_text  TEXT NOT NULL DEFAULT '',
-                kreita_je   TEXT NOT NULL,
-                modifita_je TEXT NOT NULL
-            )
-        """)
+        db.execute("PRAGMA foreign_keys = OFF")
+        try:
+            # Triples and FTS must be dropped first (FK constraints, virtual table dependency)
+            db.execute("DROP TABLE IF EXISTS triples")
+            db.execute("DROP TABLE IF EXISTS nodes_fts")
+            db.execute("DROP TABLE IF EXISTS nodes_rubujo")
+            db.execute("DROP TABLE IF EXISTS nodes")
+            db.execute("""
+                CREATE TABLE nodes (
+                    uuid        TEXT PRIMARY KEY,
+                    etikedoj    TEXT NOT NULL DEFAULT '{}',
+                    label_text  TEXT NOT NULL DEFAULT '',
+                    difinoj     TEXT NOT NULL DEFAULT '{}',
+                    difin_text  TEXT NOT NULL DEFAULT '',
+                    kreita_je   TEXT NOT NULL,
+                    modifita_je TEXT NOT NULL
+                )
+            """)
+        finally:
+            db.execute("PRAGMA foreign_keys = ON")
 
     def test_migration_renames_uuid_to_node_id(self, db) -> None:
         """Migration should rename uuid -> node_id."""
@@ -206,10 +212,10 @@ class TestPredicatesUuidMigration:
 
     def _create_old_schema_flat(self, db) -> None:
         """Create predicates with original flat-label schema (uuid PK)."""
-        db.execute("DROP TABLE IF EXISTS predicates_rubujo")
-        db.execute("DROP TABLE IF EXISTS predicates")
         db.execute("PRAGMA foreign_keys = OFF")
         try:
+            db.execute("DROP TABLE IF EXISTS predicates_rubujo")
+            db.execute("DROP TABLE IF EXISTS predicates")
             db.execute("""
                 CREATE TABLE predicates (
                     uuid           TEXT PRIMARY KEY,
@@ -228,10 +234,10 @@ class TestPredicatesUuidMigration:
 
     def _create_old_schema_json(self, db) -> None:
         """Create predicates with JSON labels but uuid PK."""
-        db.execute("DROP TABLE IF EXISTS predicates_rubujo")
-        db.execute("DROP TABLE IF EXISTS predicates")
         db.execute("PRAGMA foreign_keys = OFF")
         try:
+            db.execute("DROP TABLE IF EXISTS predicates_rubujo")
+            db.execute("DROP TABLE IF EXISTS predicates")
             db.execute("""
                 CREATE TABLE predicates (
                     uuid           TEXT PRIMARY KEY,
