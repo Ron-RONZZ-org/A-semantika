@@ -193,3 +193,97 @@ class TestConfirmTriple:
             yes=True,
         )
         assert result is True
+
+
+class TestModifiUnuo:
+    """Test modifi --unuo integration with normalize_unit()."""
+
+    def test_modifi_unuo_noop_same_unit(self, runner: CliRunner) -> None:
+        """--unuo with the same unit should be a no-op (no auto-creation)."""
+        subj_uuid = "a1000000-0000-0000-0000-000000000001"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::UnuoSubj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "wdt:P1082", "-e", "eo::logxantaro", "--jes"])
+
+        # Create numeric triple with unit
+        result = runner.invoke(app, [
+            "aldoni", subj_uuid, "wdt:P1082", "1000",
+            "--int", "-u", "unit:JOULE", "--jes",
+        ])
+        assert result.exit_code == 0, f"aldoni failed: {result.stdout}"
+
+        # Modify with same value but same unit → no-op
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "wdt:P1082", "1000",
+            "--nova-objekto", "1000", "--unuo", "unit:JOULE",
+            "--int", "--jes",
+        ])
+        assert result.exit_code == 0
+        assert "neŝanĝita" in result.stdout or "unchanged" in result.stdout
+
+    def test_modifi_unuo_noop_symbol(self, runner: CliRunner) -> None:
+        """--unuo with symbol for same unit should be no-op."""
+        subj_uuid = "a2000000-0000-0000-0000-000000000002"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::UnuoSym", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "wdt:P1082", "-e", "eo::logxantaro", "--jes"])
+
+        runner.invoke(app, [
+            "aldoni", subj_uuid, "wdt:P1082", "500",
+            "--int", "-u", "unit:JOULE", "--jes",
+        ])
+
+        # --unuo "J" resolves to unit:JOULE same as existing → no-op
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "wdt:P1082", "500",
+            "--nova-objekto", "500", "--unuo", "J",
+            "--int", "--jes",
+        ])
+        assert result.exit_code == 0
+        assert "neŝanĝita" in result.stdout or "unchanged" in result.stdout
+
+    def test_modifi_unuo_change_unit(self, runner: CliRunner) -> None:
+        """--unuo with a different unit should actually modify."""
+        subj_uuid = "a3000000-0000-0000-0000-000000000003"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::UnuoChg", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "wdt:P1082", "-e", "eo::logxantaro", "--jes"])
+
+        runner.invoke(app, [
+            "aldoni", subj_uuid, "wdt:P1082", "300",
+            "--int", "-u", "unit:JOULE", "--jes",
+        ])
+
+        # Change unit from JOULE to KELVIN
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "wdt:P1082", "300",
+            "--nova-objekto", "300", "--unuo", "K",
+            "--int", "--jes",
+        ])
+        assert result.exit_code == 0, f"modifi failed: {result.stdout}"
+        assert "modifita" in result.stdout or "modified" in result.stdout
+
+    def test_modifi_unuo_noop_does_not_create_compound(self, runner: CliRunner, unit_svc) -> None:
+        """--unuo no-op should NOT auto-create a compound unit."""
+        subj_uuid = "a4000000-0000-0000-0000-000000000004"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::UnuoComp", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "wdt:P1082", "-e", "eo::logxantaro", "--jes"])
+
+        # Create a triple with an existing compound unit
+        runner.invoke(app, [
+            "aldoni", subj_uuid, "wdt:P1082", "100",
+            "--int", "-u", "J/K", "--jes",
+        ])
+
+        # Now modifi with --unuo J/K — should detect no-op without double-creating
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "wdt:P1082", "100",
+            "--nova-objekto", "100", "--unuo", "J/K",
+            "--int", "--jes",
+        ])
+        assert result.exit_code == 0
+        assert "neŝanĝita" in result.stdout or "unchanged" in result.stdout
+        # Two consecutive no-ops should not error either
+        result2 = runner.invoke(app, [
+            "modifi", subj_uuid, "wdt:P1082", "100",
+            "--nova-objekto", "100", "--unuo", "J/K",
+            "--int", "--jes",
+        ])
+        assert result2.exit_code == 0

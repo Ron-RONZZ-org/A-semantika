@@ -21,7 +21,7 @@ from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._predicate_service import AmbiguousPredicateError
 from A_semantika._preview import confirm_triple
-from A_semantika._unit_service import UnitNotFoundError
+from A_semantika._unit_errors import UnitNotFoundError
 from A_semantika.service import (
     get_node_service,
     get_predicate_service,

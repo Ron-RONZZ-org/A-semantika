@@ -13,7 +13,7 @@ from rich.table import Table
 from A import error, info, tr_multi
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._unit_parser import ParseError, parse, to_display_string
-from A_semantika._unit_service import UnitNotFoundError
+from A_semantika._unit_errors import UnitNotFoundError
 from A_semantika.service import get_unit_service
 
 unuo_app = typer.Typer(

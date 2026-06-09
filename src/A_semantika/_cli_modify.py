@@ -20,7 +20,7 @@ from A_semantika._cli_modify_preview import build_modify_preview, find_triple_di
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
-from A_semantika._unit_service import UnitNotFoundError
+from A_semantika._unit_errors import UnitNotFoundError
 from A_semantika.service import (
     get_node_service,
     get_predicate_service,
@@ -343,17 +343,23 @@ def modifi(
         old_object_value, lingvo, str_,
     )
 
-    # ── Resolve unit via UnitService (node_id → symbol → expression) ──
+    # ── Resolve unit via UnitService ──────────────────────────────────
     if unuo:
-        try:
-            effective_unuo = get_unit_service().resolve_unit(unuo)
-        except UnitNotFoundError as e:
-            error(tr_multi(
-                "Unuo ne trovita: {u}",
-                "Unit not found: {u}",
-                "Unité non trouvée : {u}",
-            ).format(u=str(e)))
-            raise typer.Exit(1) from e
+        # Phase 1: Read-only normalization for no-op detection.
+        # If the normalized value matches the existing unit, no update
+        # is needed and we skip auto-creation entirely.
+        effective_unuo = get_unit_service().normalize_unit(unuo)
+        if effective_unuo != old_object_unit:
+            # Phase 2: Full resolution (may auto-create compound units)
+            try:
+                effective_unuo = get_unit_service().resolve_unit(unuo)
+            except UnitNotFoundError as e:
+                error(tr_multi(
+                    "Unuo ne trovita: {u}",
+                    "Unit not found: {u}",
+                    "Unité non trouvée : {u}",
+                ).format(u=str(e)))
+                raise typer.Exit(1) from e
     else:
         effective_unuo = old_object_unit
 

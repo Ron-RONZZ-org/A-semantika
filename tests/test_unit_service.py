@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from A_semantika._unit_service import UnitNotFoundError
+from A_semantika._unit_errors import UnitNotFoundError
 
 
 class TestUnitServiceSingleton:
