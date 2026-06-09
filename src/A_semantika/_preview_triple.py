@@ -26,19 +26,25 @@ def format_tipo(
     object_type: str,
     object_datatype: str | None = None,
     object_lang: str | None = None,
+    object_unit_display: str | None = None,
 ) -> str:
     """Map (object_type, object_datatype) to a localized type display string.
 
     Returns a short localized label for the Tipo (Type) column in search
     results, preview tables, and interactive pickers.
 
+    If *object_unit_display* is provided and the type is a numeric XSD type
+    (integer or decimal), the unit symbol is appended in parentheses.
+    The unit symbol must be pre-resolved from the caller.
+
     Examples:
-        format_tipo("uri")                         → "nodreferenco"
-        format_tipo("literal")                     → "teksto"
-        format_tipo("literal", "xsd:integer")      → "entjero"
-        format_tipo("literal", KATEX_DATATYPE)     → "katex (formulo)"
-        format_tipo("literal", "text/x-python")    → "kodo (python)"
-        format_tipo("literal", object_lang="eo")   → "teksto (eo)"
+        format_tipo("uri")                                            → "nodreferenco"
+        format_tipo("literal")                                        → "teksto"
+        format_tipo("literal", "xsd:integer")                         → "entjero"
+        format_tipo("literal", "xsd:integer", object_unit_display="C") → "entjero (C)"
+        format_tipo("literal", KATEX_DATATYPE)                        → "katex (formulo)"
+        format_tipo("literal", "text/x-python")                       → "kodo (python)"
+        format_tipo("literal", object_lang="eo")                      → "teksto (eo)"
     """
     if object_type == "uri":
         return tr_multi("nodreferenco", "node ref", "réf. nœud")
@@ -63,7 +69,10 @@ def format_tipo(
         }
         if dtype in xsd_labels:
             eo, en, fr = xsd_labels[dtype]
-            return tr_multi(eo, en, fr)
+            base = tr_multi(eo, en, fr)
+            if object_unit_display and dtype in ("integer", "decimal"):
+                return f"{base} ({object_unit_display})"
+            return base
         # Fallback: show raw datatype suffix
         return dtype
 

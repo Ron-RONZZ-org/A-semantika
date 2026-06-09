@@ -148,23 +148,40 @@ def serci(
     table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=False)
     table.add_column(tr_multi("Tipo", "Type", "Type"), no_wrap=True)
 
-    # Collect all subject UUIDs for context-aware truncation
+    # Collect all UUIDs for context-aware truncation
     all_subject_uuids = [r["subject_uuid"] for r in results]
+    all_object_uuids = [r["object_value"] for r in results if r["object_type"] == "uri"]
     for r in results:
         s_label = resolve_node_label(node_svc, r["subject_uuid"])
         p_label = resolve_predicate_label(pred_svc, r["predicate_id"])
         if r["object_type"] == "uri":
             o_label = resolve_node_label(node_svc, r["object_value"])
+            o_display = f"{o_label} ({truncate_uuid(r['object_value'], all_object_uuids)})"
         else:
             o_label = r["object_value"]
+            o_display = o_label
+
+        # Resolve unit node_id to display label
+        unit_display = None
+        if r.get("object_unit") and r.get("object_type") == "literal" and r.get("object_datatype") in ("xsd:integer", "xsd:decimal"):
+            try:
+                unit_node = node_svc.resolve_node_id_prefix(r["object_unit"])
+                if unit_node:
+                    unit_display = resolve_node_label(node_svc, unit_node["node_id"])
+            except AmbiguousUUIDError:
+                pass
+            if not unit_display:
+                unit_display = truncate_uuid(r["object_unit"])
+
         table.add_row(
             f"{s_label} ({truncate_uuid(r['subject_uuid'], all_subject_uuids)})",
             p_label,
-            o_label,
+            o_display,
             format_tipo(
                 r.get("object_type", "uri"),
                 r.get("object_datatype"),
                 r.get("object_lang"),
+                unit_display,
             ),
         )
 
@@ -259,6 +276,18 @@ def vidi(
             o_label = resolve_node_label(node_svc, r["object_value"])
         else:
             o_label = r["object_value"]
+        # Resolve unit node_id to display label for vidi output
+        unit_display = None
+        if r.get("object_unit") and r.get("object_type") == "literal" and r.get("object_datatype") in ("xsd:integer", "xsd:decimal"):
+            try:
+                unit_node = node_svc.resolve_node_id_prefix(r["object_unit"])
+                if unit_node:
+                    unit_display = resolve_node_label(node_svc, unit_node["node_id"])
+            except AmbiguousUUIDError:
+                pass
+            if not unit_display:
+                unit_display = truncate_uuid(r["object_unit"])
+
         table.add_row(
             p_label,
             o_label,
@@ -266,6 +295,7 @@ def vidi(
                 r.get("object_type", "uri"),
                 r.get("object_datatype"),
                 r.get("object_lang"),
+                unit_display,
             ),
         )
 

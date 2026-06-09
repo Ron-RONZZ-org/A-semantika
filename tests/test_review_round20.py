@@ -93,7 +93,8 @@ class TestM1HardDeleteRollback:
             create_node_arcs(triple_svc, node_svc, "test-m1c", arcs)
 
         # No triples should remain for the failed node
-        triples = triple_svc.search_triples(subject_uuids=["test-m1c"])
+        where_clause = "subject_uuid = ?"
+        triples = triple_svc.search_triples(where_clause, ["test-m1c"])
         assert len(triples) == 0, (
             "Partially created arcs must be removed during rollback. "
             f"Found {len(triples)} remaining triples."

@@ -319,78 +319,37 @@ class TripleService:
 
     def search_triples(
         self,
-        subject_uuids: list[str] | None = None,
-        predicate_ids: list[str] | None = None,
-        object_values: list[str] | None = None,
-        object_types: list[str] | None = None,
-        object_values_like: list[str] | None = None,
+        where_clause: str,
+        params: list,
+        order_by: str | None = None,
         limit: int = 100,
     ) -> list[dict]:
-        """Search triples by pre-resolved lists.
-
-        Within each list the condition is OR; across lists it is AND.
-        None means 'no restriction' for that parameter.
-
+        """Search triples by unified WHERE clause.
+        
         Args:
-            subject_uuids: List of subject UUIDs to match (OR).
-            predicate_ids: List of predicate IDs to match (OR).
-            object_values: List of object values to match (OR, exact match).
-            object_types: List of object types to match (OR).
-            object_values_like: List of literal patterns to match against
-                ``object_value`` using ``LIKE %val%`` (OR). Values are
-                automatically wildcard-escaped. Use this for partial
-                matching on literal values instead of ``object_values``.
-            limit: Maximum number of results.
-
+            where_clause: SQL WHERE condition (e.g., "subject_uuid IN (?, ?) OR predicate_id = ?").
+                         Empty string is treated as "1=1" (no restriction).
+            params: Parameter values to bind to WHERE clause. Will be extended with limit.
+            order_by: SQL ORDER BY clause (e.g., "CASE ... END, subject_uuid, predicate_id").
+                      If None, defaults to "subject_uuid, predicate_id".
+            limit: Maximum results to return.
+        
         Returns:
             List of matching triple dicts.
+        
+        Raises:
+            ValueError: If where_clause is None or not a string.
         """
-        clauses: list[str] = []
-        params: list[str] = []
-
-        if subject_uuids is not None:
-            if not subject_uuids:
-                return []
-            placeholders = ",".join("?" * len(subject_uuids))
-            clauses.append(f"subject_uuid IN ({placeholders})")
-            params.extend(subject_uuids)
-
-        if predicate_ids is not None:
-            if not predicate_ids:
-                return []
-            placeholders = ",".join("?" * len(predicate_ids))
-            clauses.append(f"predicate_id IN ({placeholders})")
-            params.extend(predicate_ids)
-
-        if object_values is not None:
-            if not object_values:
-                return []
-            placeholders = ",".join("?" * len(object_values))
-            clauses.append(f"object_value IN ({placeholders})")
-            params.extend(object_values)
-
-        if object_values_like is not None:
-            if not object_values_like:
-                return []
-            like_parts = []
-            for val in object_values_like:
-                escaped = val.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-                like_parts.append("object_value LIKE ? ESCAPE '\\'")
-                params.append(f"%{escaped}%")
-            clauses.append(f"({' OR '.join(like_parts)})")
-
-        if object_types is not None:
-            if not object_types:
-                return []
-            placeholders = ",".join("?" * len(object_types))
-            clauses.append(f"object_type IN ({placeholders})")
-            params.extend(object_types)
-
-        where_clause = " AND ".join(clauses) if clauses else "1=1"
-        sql = f"SELECT * FROM triples WHERE {where_clause} ORDER BY subject_uuid, predicate_id LIMIT ?"
-        params.append(limit)
-
-        return self.db.execute(sql, params)
+        if not where_clause or not where_clause.strip():
+            where_clause = "1=1"
+        
+        sort_clause = order_by if order_by else "subject_uuid, predicate_id"
+        sql = f"SELECT * FROM triples WHERE {where_clause} ORDER BY {sort_clause} LIMIT ?"
+        
+        params_copy = list(params)  # avoid mutating caller's list
+        params_copy.append(limit)
+        
+        return self.db.execute(sql, params_copy)
 
     # ── Count / Stats ───────────────────────────────────────────────────
 

@@ -204,6 +204,108 @@ def resolve_objects(node_svc: NodeService, text: str) -> tuple[list[str], list[s
 # ── Combined search orchestration ─────────────────────────────────────────────
 
 
+def _build_search_clause_any_field(
+    search_term: str,
+    node_svc,
+    pred_svc,
+) -> tuple[str, list]:
+    """Build a unified WHERE clause for any-field search.
+    
+    Resolves search_term to UUIDs/IDs across subjects, predicates, and objects,
+    then constructs a single WHERE clause that ORs across all fields.
+    
+    Args:
+        search_term: The user's search input.
+        node_svc: NodeService instance for node resolution.
+        pred_svc: PredicateService instance for predicate resolution.
+    
+    Returns:
+        (where_clause, params): SQL WHERE string and parameter values.
+    """
+    subject_uuids = resolve_subjects(node_svc, search_term)
+    predicate_ids = resolve_predicates(pred_svc, search_term)
+    object_uuids, object_literals = resolve_objects(node_svc, search_term)
+    
+    field_clauses = []
+    params = []
+    
+    # Subject matches: subject_uuid IN (?, ?, ...)
+    if subject_uuids:
+        placeholders = ",".join("?" * len(subject_uuids))
+        field_clauses.append(f"subject_uuid IN ({placeholders})")
+        params.extend(subject_uuids)
+    
+    # Predicate matches: predicate_id IN (?, ?, ...)
+    if predicate_ids:
+        placeholders = ",".join("?" * len(predicate_ids))
+        field_clauses.append(f"predicate_id IN ({placeholders})")
+        params.extend(predicate_ids)
+    
+    # Object URI matches: object_value IN (?, ?, ...)
+    if object_uuids:
+        placeholders = ",".join("?" * len(object_uuids))
+        field_clauses.append(f"object_value IN ({placeholders})")
+        params.extend(object_uuids)
+    
+    # Object literal partial matches: object_value LIKE ... OR object_value LIKE ...
+    if object_literals:
+        like_parts = []
+        for val in object_literals:
+            escaped = val.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            like_parts.append("object_value LIKE ? ESCAPE '\\'")
+            params.append(f"%{escaped}%")
+        field_clauses.append(f"({' OR '.join(like_parts)})")
+    
+    # Join all field clauses with OR
+    where_clause = " OR ".join(f"({c})" for c in field_clauses) if field_clauses else "1=1"
+    
+    return where_clause, params
+
+
+def _build_relevance_order_by(search_term: str, node_svc, pred_svc) -> str | None:
+    """Build a SQL ORDER BY CASE expression that prioritizes exact matches.
+    
+    Resolves search_term to exact node_ids and constructs a CASE expression
+    that sorts results with exact matches first.
+    
+    Args:
+        search_term: The user's search input.
+        node_svc: NodeService instance.
+        pred_svc: PredicateService instance.
+    
+    Returns:
+        SQL ORDER BY clause string (e.g., "CASE WHEN ... END, subject_uuid, predicate_id")
+        or None if no exact matches are found (caller should use default sort).
+    
+    **Security note:** UUIDs are escaped to prevent SQL injection.
+    """
+    # Resolve to exact matches
+    exact_subjects = resolve_subjects(node_svc, search_term)
+    exact_predicates = resolve_predicates(pred_svc, search_term)
+    exact_objects, _ = resolve_objects(node_svc, search_term)
+    
+    all_exact = exact_subjects + exact_predicates + exact_objects
+    
+    if not all_exact:
+        return None  # No exact matches; use default sort
+    
+    # Build CASE expression: exact object matches (priority 0), then subjects (priority 100+), then predicates (priority 200+)
+    case_parts = []
+    for i, uuid_id in enumerate(all_exact):
+        # Escape single quotes for SQL string literals
+        safe_id = uuid_id.replace("'", "''")
+        
+        # Object exact match (highest priority)
+        case_parts.append(f"WHEN object_value = '{safe_id}' THEN {i}")
+        # Subject exact match (medium priority)
+        case_parts.append(f"WHEN subject_uuid = '{safe_id}' THEN {i + 100}")
+        # Predicate exact match (low priority)
+        case_parts.append(f"WHEN predicate_id = '{safe_id}' THEN {i + 200}")
+    
+    case_expr = "CASE " + " ".join(case_parts) + " ELSE 999 END"
+    return f"{case_expr}, subject_uuid, predicate_id"
+
+
 def search_triples_any_field(
     triple_svc: TripleService,
     node_svc: NodeService,
@@ -213,10 +315,8 @@ def search_triples_any_field(
 ) -> list[dict]:
     """Search triples where *search_term* matches subject, predicate, OR object.
 
-    Resolution is done independently per field, then triples are queried
-    separately for each non-empty field resolution and merged with
-    deduplication.  This gives true OR semantics across fields, unlike
-    :func:`search_triples_by_labels` which ANDs across fields.
+    Constructs a unified WHERE clause that ORs across all fields,
+    prioritizing exact matches via relevance ordering.
 
     Literal object values use LIKE-based partial matching so that
     searching for e.g. ``"Lament"`` finds arcs with ``"A Mathematician's Lament"``.
@@ -229,54 +329,102 @@ def search_triples_any_field(
         limit: Maximum results to return.
 
     Returns:
-        List of unique matching triple dicts.
+        List of unique matching triple dicts, ranked by relevance.
     """
     if not search_term or not search_term.strip():
         return []
 
-    # Resolve each field independently
-    subject_uuids = resolve_subjects(node_svc, search_term)
-    predicate_ids = resolve_predicates(pred_svc, search_term)
-    object_uuids, object_literals = resolve_objects(node_svc, search_term)
+    # Build unified WHERE clause
+    where_clause, params = _build_search_clause_any_field(search_term, node_svc, pred_svc)
+    
+    # Build relevance ORDER BY clause
+    order_by = _build_relevance_order_by(search_term, node_svc, pred_svc)
+    
+    # Execute single query with unified WHERE
+    return triple_svc.search_triples(where_clause, params, order_by=order_by, limit=limit)
 
-    seen: set[tuple[str, str, str, str]] = set()
-    results: list[dict] = []
 
-    # Helper: query one field and deduplicate
-    def _query_and_merge(**field_params: list[str] | None) -> None:
-        has_values = any(
-            v is not None and len(v) > 0
-            for v in field_params.values()
-        )
-        if not has_values:
-            return
-        for triple in triple_svc.search_triples(**field_params, limit=limit):
-            key = (
-                triple["subject_uuid"],
-                triple["predicate_id"],
-                triple["object_value"],
-                triple["object_type"],
-            )
-            if key not in seen:
-                seen.add(key)
-                results.append(triple)
-
-    if subject_uuids:
-        _query_and_merge(subject_uuids=subject_uuids)
-    if predicate_ids:
-        _query_and_merge(predicate_ids=predicate_ids)
-    if object_uuids:
-        _query_and_merge(object_values=object_uuids)
-        # Also search by LIKE on the original search_term for prefix
-        # matching — e.g. searching "H_GL" should also find triples
-        # where object_value is "H_GLEMAITRE" (a longer node_id that
-        # starts with the same prefix).  Without this fallback the
-        # search only hits exact node_id matches.
-        _query_and_merge(object_values_like=[search_term])
-    if object_literals:
-        _query_and_merge(object_values_like=object_literals)
-
-    return results
+def _build_search_clause_by_labels(
+    triple_svc,
+    node_svc,
+    pred_svc,
+    subject: str | None = None,
+    predicate: str | None = None,
+    object: str | None = None,  # noqa: A002
+) -> tuple[str, list]:
+    """Build a unified WHERE clause for label-based search.
+    
+    Each parameter is independently resolved (OR within each parameter,
+    AND across parameters). Empty resolution for any parameter means
+    'no restriction' (not 'no results').
+    
+    Args:
+        triple_svc: TripleService instance (not used, but kept for consistency).
+        node_svc: NodeService instance.
+        pred_svc: PredicateService instance.
+        subject: Subject label or UUID prefix.
+        predicate: Predicate label or exact ID.
+        object: Object label, UUID prefix, or literal value.
+    
+    Returns:
+        (where_clause, params): SQL WHERE string and parameter values.
+    """
+    # Resolve each parameter independently
+    subject_uuids = resolve_subjects(node_svc, subject) if subject else None
+    predicate_ids = resolve_predicates(pred_svc, predicate) if predicate else None
+    object_uuids: list[str] | None = None
+    object_literals: list[str] | None = None
+    if object:
+        object_uuids, object_literals = resolve_objects(node_svc, object)
+    
+    clauses: list[str] = []
+    params: list = []
+    
+    # Subject constraint
+    if subject_uuids is not None:
+        if not subject_uuids:
+            # Empty resolution means no results
+            return "0=1", []  # Impossible WHERE clause
+        placeholders = ",".join("?" * len(subject_uuids))
+        clauses.append(f"subject_uuid IN ({placeholders})")
+        params.extend(subject_uuids)
+    
+    # Predicate constraint
+    if predicate_ids is not None:
+        if not predicate_ids:
+            # Empty resolution means no results
+            return "0=1", []  # Impossible WHERE clause
+        placeholders = ",".join("?" * len(predicate_ids))
+        clauses.append(f"predicate_id IN ({placeholders})")
+        params.extend(predicate_ids)
+    
+    # Object constraint (URI or literal)
+    object_clauses = []
+    if object_uuids is not None:
+        if not object_uuids and not object_literals:
+            # Empty resolution means no results
+            return "0=1", []
+        if object_uuids:
+            placeholders = ",".join("?" * len(object_uuids))
+            object_clauses.append(f"object_value IN ({placeholders})")
+            params.extend(object_uuids)
+    
+    if object_literals is not None:
+        if object_literals:
+            like_parts = []
+            for val in object_literals:
+                escaped = val.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                like_parts.append("object_value LIKE ? ESCAPE '\\'")
+                params.append(f"%{escaped}%")
+            object_clauses.append(f"({' OR '.join(like_parts)})")
+    
+    if object_clauses:
+        clauses.append(f"({' OR '.join(object_clauses)})")
+    
+    # Join all clauses with AND
+    where_clause = " AND ".join(clauses) if clauses else "1=1"
+    
+    return where_clause, params
 
 
 def search_triples_by_labels(
@@ -309,21 +457,10 @@ def search_triples_by_labels(
     Returns:
         List of matching triple dicts.
     """
-    # Resolve each parameter independently
-    subject_uuids = resolve_subjects(node_svc, subject) if subject else None
-    predicate_ids = resolve_predicates(pred_svc, predicate) if predicate else None
-    object_uuids: list[str] | None = None
-    object_literals: list[str] | None = None
-    if object:
-        object_uuids, object_literals = resolve_objects(node_svc, object)
-
-    # Delegate to TripleService.search_triples().
-    # Pass None (not []) for empty lists so that object_values_like
-    # doesn't get blocked by the empty-list early return in search_triples.
-    return triple_svc.search_triples(
-        subject_uuids=subject_uuids,
-        predicate_ids=predicate_ids,
-        object_values=object_uuids if object_uuids else None,
-        object_values_like=object_literals if object_literals else None,
-        limit=limit,
+    # Build unified WHERE clause
+    where_clause, params = _build_search_clause_by_labels(
+        triple_svc, node_svc, pred_svc, subject, predicate, object
     )
+    
+    # Execute single query with unified WHERE
+    return triple_svc.search_triples(where_clause, params, limit=limit)
