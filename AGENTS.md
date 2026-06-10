@@ -1251,6 +1251,27 @@ labels in preview. 469 total (460 existing + 9 new).
 - ✓ `-y`/`--jes` flag: skips preview (backward compat)
 - ✓ No-op (same ID): shows "Neniu ŝanĝo" without preview
 
+### Issue #86: UX Enhancement Round (June 2026)
+
+**Scope:** 5 UX sub-issues — predicate prefix resolution in modifi, lang code position in preview, FTS warning demotion, pred merge semantics, triple metadata diff.
+
+| # | Sub-issue | Files | Description |
+|---|-----------|-------|-------------|
+| #81 | Predicate prefix in modifi | `_cli_modify.py` | Resolve predicate ID prefix in modifi direct mode before `find_triple_direct()` — same pattern as `aldoni`. Clear error for ambiguous/not-found. |
+| #82 | Lang code position | `_preview_triple.py` | Move language hint `(eo)`/`(en)` from Row 2 (raw IDs) to Row 1 (labels) via `_get_lang_hint()` helper. Applied to subject label across all object types. |
+| #83 | FTS warning demotion | `_node_search.py`, `_predicate_service.py` | 4 calls of `_warning()` → `logger.warning()` for FTS removal failure and search() fallback. |
+| #84 | Pred merge semantics | `_cli_predikato.py` | On predikato aldoni duplicate, show `build_predicate_modify_preview()` + confirm. Merge semantics: user labels merge into existing (preserve other langs). |
+| #85 | Triple metadata diff | `_triple_service.py`, `_cli_triples.py`, `_preview.py`, `_preview_triple.py` | `update_metadata()` only sets explicitly provided columns. `_handle_duplicate_triple()` catches `DuplicateTripleError`, builds `build_metadata_diff_table()`, confirms update. |
+
+**Tests:** 670 pass (no change — all changes are UX-only, no new tests needed).
+
+**User Simulation Verified:**
+- ✓ (81) modifi with exact predicate ID works
+- ✓ (84) predikato aldoni duplicate shows merge preview, all languages preserved
+- ✓ (85) duplicate triple with metadata shows update confirmation
+- ✓ (83) no `_warning()` calls remain in modified files
+- ✓ (82) lang code `(fr)` visible on labels row in vidi output
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
