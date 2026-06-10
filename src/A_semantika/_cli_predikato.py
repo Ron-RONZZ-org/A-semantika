@@ -201,32 +201,78 @@ def aldoni(
 
     existing = pred_svc.get_by_predicate_id(predicate_id)
     if existing:
-        existing_label = label_from_json(existing.get("etikedoj", {}))
-        info(tr_multi("Predikato jam ekzistas: {p}", "Predicate already exists: {p}", "Prédicat existe déjà : {p}").format(p=predicate_id))
-        # Only auto-prompt if not in skip-confirmation mode (-y)
+        info(tr_multi(
+            "Predikato jam ekzistas: {p}",
+            "Predicate already exists: {p}",
+            "Prédicat existe déjà : {p}",
+        ).format(p=predicate_id))
+
+        # Parse existing etikedoj and priskriboj
+        try:
+            old_etikedoj = json.loads(existing.get("etikedoj", "{}"))
+        except (json.JSONDecodeError, TypeError):
+            old_etikedoj = {}
+        try:
+            old_priskriboj = json.loads(existing.get("priskriboj", "{}"))
+        except (json.JSONDecodeError, TypeError):
+            old_priskriboj = {}
+
+        # Merge semantics: preserve existing, user input wins on conflict
+        update_data: dict[str, Any] = {}
+        new_etikedoj: dict[str, str] | None = None
+        new_priskriboj: dict[str, str] | None = None
+        if labels_dict:
+            new_etikedoj = dict(old_etikedoj)
+            new_etikedoj.update(labels_dict)
+            update_data["etikedoj"] = new_etikedoj
+        if descs_dict:
+            new_priskriboj = dict(old_priskriboj)
+            new_priskriboj.update(descs_dict)
+            update_data["priskriboj"] = new_priskriboj
+
+        # No-op detection
+        noop = (
+            (new_etikedoj is None or new_etikedoj == old_etikedoj)
+            and (new_priskriboj is None or new_priskriboj == old_priskriboj)
+        )
+        if noop:
+            info(tr_multi(
+                "Neniu ŝanĝo: predikato restas neŝanĝita.",
+                "No change: predicate remains unchanged.",
+                "Aucun changement : le prédicat reste inchangé.",
+            ))
+            raise typer.Exit(0)
+
+        # Show preview and confirm (skip if -y)
         if not yes:
-            msg = tr_multi(
-                "Ĉu ĝi estas la sama predikato? Se jes, mi ĝisdatigos ĝin anstataŭe.",
-                "Is it the same predicate? If yes, I will update it instead.",
-                "Est-ce le même prédicat ? Si oui, je vais le mettre à jour à la place.",
+            table = build_predicate_modify_preview(
+                predicate_id,
+                old_etikedoj, new_etikedoj,
+                old_priskriboj, new_priskriboj,
             )
-            if confirm_action(msg, default=False):
-                # Build update data from user-provided labels/descriptions
-                update_data: dict[str, Any] = {}
-                if labels_dict:
-                    update_data["etikedoj"] = labels_dict
-                if descs_dict:
-                    update_data["priskriboj"] = descs_dict
-                if update_data:
-                    pred_svc.update(predicate_id, update_data)
-                info(tr_multi(
-                    "Predikato ĝisdatigita: {p}",
-                    "Predicate updated: {p}",
-                    "Prédicat mis à jour : {p}",
-                ).format(p=predicate_id))
+            if table:
+                info("")
+                info(table)
+
+            if not confirm_action(
+                tr_multi(
+                    "Ĉu ĝisdatigi la predikaton per la supraj ŝanĝoj?",
+                    "Update the predicate with the above changes?",
+                    "Mettre à jour le prédicat avec les changements ci-dessus ?",
+                ),
+                default=False,
+            ):
+                info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
                 raise typer.Exit(0)
-        # If yes=-y, just exit (don't create)
-        raise typer.Exit(1)
+
+        # Apply merge update
+        pred_svc.update(predicate_id, update_data)
+        info(tr_multi(
+            "Predikato ĝisdatigita: {p}",
+            "Predicate updated: {p}",
+            "Prédicat mis à jour : {p}",
+        ).format(p=predicate_id))
+        raise typer.Exit(0)
 
     # Auto-fetch Wikidata details for Wikidata property IDs
     wd_details: dict | None = None
