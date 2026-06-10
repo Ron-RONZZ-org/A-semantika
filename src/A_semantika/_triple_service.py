@@ -117,6 +117,58 @@ class TripleService:
 
         return self.get_one(subject_uuid, predicate_id, object_value, object_type)
 
+    # ── Update Metadata ─────────────────────────────────────────────────
+
+    def update_metadata(
+        self,
+        subject_uuid: str,
+        predicate_id: str,
+        object_value: str,
+        object_type: str = "uri",
+        object_lang: str | None = None,
+        object_datatype: str | None = None,
+        object_unit: str | None = None,
+    ) -> dict | None:
+        """Update mutable metadata on an existing triple.
+
+        Only updates non-PK columns (object_lang, object_datatype, object_unit).
+        PK columns (subject_uuid, predicate_id, object_value, object_type)
+        cannot change — the SPO identity is fixed. Preserves kreita_je.
+
+        Only the columns that are explicitly provided (not None) are updated,
+        so passing only ``object_lang`` does not overwrite existing
+        ``object_datatype`` or ``object_unit``.
+
+        Returns:
+            The updated triple dict, or ``None`` if no columns to update.
+
+        Raises:
+            ValueError: If no matching triple is found.
+        """
+        set_parts: list[str] = []
+        params: list = []
+        if object_lang is not None:
+            set_parts.append("object_lang = ?")
+            params.append(object_lang)
+        if object_datatype is not None:
+            set_parts.append("object_datatype = ?")
+            params.append(object_datatype)
+        if object_unit is not None:
+            set_parts.append("object_unit = ?")
+            params.append(object_unit)
+
+        if not set_parts:
+            return None  # no metadata columns to update
+
+        params.extend([subject_uuid, predicate_id, object_value, object_type])
+        sql = (
+            f"UPDATE triples SET {', '.join(set_parts)}"
+            " WHERE subject_uuid = ? AND predicate_id = ? AND object_value = ? AND object_type = ?"
+        )
+        with self.db.transaction() as conn:
+            conn.execute(sql, params)
+        return self.get_one(subject_uuid, predicate_id, object_value, object_type)
+
     # ── Read ────────────────────────────────────────────────────────────
 
     def get_one(
