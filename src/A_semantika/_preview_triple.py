@@ -83,6 +83,23 @@ def format_tipo(
         ).format(l=object_lang)
     return tr_multi("teksto", "string", "chaîne")
 
+def _get_lang_hint(node: dict | None) -> str:
+    """Extract a language hint string from a node's etikedoj.
+
+    Returns ``"(eo)"``, ``"(en)"``, or ``""`` if no matching language found.
+    """
+    if not node:
+        return ""
+    try:
+        labels = json.loads(node.get("etikedoj", "{}"))
+    except (json.JSONDecodeError, TypeError):
+        return ""
+    for lang in ("eo", "en"):
+        if labels.get(lang):
+            return f" ({lang})"
+    return ""
+
+
 def build_triple_preview_table(
     node_svc: NodeService,
     pred_svc: PredicateService,
@@ -120,6 +137,9 @@ def build_triple_preview_table(
         return None, ""
     subj_id = truncate_uuid(subj_node["node_id"]) if subj_node else truncate_uuid(subject_uuid)
     subj_label = resolve_node_label_from_node(subj_node) if subj_node else truncate_uuid(subject_uuid)
+    # Language hint for subject label (applied in all branches)
+    subj_hint = _get_lang_hint(subj_node)
+    subj_label_display = f"{subj_label}{subj_hint}" if subj_hint else subj_label
 
     pred_label = resolve_predicate_label(pred_svc, predicate_id)
 
@@ -131,27 +151,19 @@ def build_triple_preview_table(
             return None, ""
         obj_id = truncate_uuid(obj_node["node_id"]) if obj_node else truncate_uuid(object_value)
         obj_label = resolve_node_label_from_node(obj_node) if obj_node else truncate_uuid(object_value)
-        # Labels row
-        table.add_row(subj_label, pred_label, obj_label)
-        # Raw IDs row
-        lang_hint = ""
-        if subj_node:
-            try:
-                labels_db = json.loads(subj_node["etikedoj"])
-                for lang in ("eo", "en"):
-                    val = labels_db.get(lang)
-                    if val:
-                        lang_hint = f" ({lang})"
-                        break
-            except (json.JSONDecodeError, TypeError):
-                pass
-        table.add_row(f"{subj_id}{lang_hint}", predicate_id, obj_id)
+        # Object language hint
+        obj_hint = _get_lang_hint(obj_node)
+        obj_label_display = f"{obj_label}{obj_hint}" if obj_hint else obj_label
+        # Labels row with language hints
+        table.add_row(subj_label_display, pred_label, obj_label_display)
+        # Raw IDs row (no language hints)
+        table.add_row(subj_id, predicate_id, obj_id)
         footnote = tr_multi("→ URI", "→ URI", "→ URI")
 
     elif object_type == "literal" and object_datatype:
         if object_datatype == KATEX_DATATYPE:
             # KaTeX formula: show full formula so user can verify before confirming
-            table.add_row(subj_label, pred_label, object_value)
+            table.add_row(subj_label_display, pred_label, object_value)
             table.add_row(subj_id, predicate_id, "→ katex formula")
             footnote = tr_multi("→ KaTeX", "→ KaTeX", "→ KaTeX")
         elif object_datatype.startswith("text/") or object_datatype.startswith("application/"):
@@ -159,7 +171,7 @@ def build_triple_preview_table(
             lang_display = object_datatype.split("/")[-1]  # "x-python" -> "x-python"
             lang_display = lang_display.replace("x-", "", 1) if lang_display.startswith("x-") else lang_display
             char_count = len(object_value)
-            table.add_row(subj_label, pred_label, object_value)
+            table.add_row(subj_label_display, pred_label, object_value)
             table.add_row(subj_id, predicate_id, f"→ {object_datatype}, {char_count} chars")
             footnote = tr_multi(
                 "→ {lang}, {n} znakoj", "→ {lang}, {n} chars", "→ {lang}, {n} car.",
@@ -170,7 +182,7 @@ def build_triple_preview_table(
             obj_display = tr_multi(
                 "Tipita literal ({d})", "Typed literal ({d})", "Litteral type ({d})",
             ).format(d=dtype)
-            table.add_row(subj_label, pred_label, object_value)
+            table.add_row(subj_label_display, pred_label, object_value)
             table.add_row(subj_id, predicate_id, obj_display)
 
             parts = [f"→ {dtype}"]
@@ -199,7 +211,7 @@ def build_triple_preview_table(
     else:
         # String literal
         quoted_val = f'"{object_value}"'
-        table.add_row(subj_label, pred_label, quoted_val)
+        table.add_row(subj_label_display, pred_label, quoted_val)
         lang_info = (
             tr_multi(
                 "literal, lingvo: {l}", "literal, lang: {l}", "litteral, langue : {l}",
@@ -211,6 +223,59 @@ def build_triple_preview_table(
         footnote = ""
 
     return table, footnote
+
+
+def build_metadata_diff_table(
+    existing: dict,
+    object_lang: str | None = None,
+    object_datatype: str | None = None,
+    object_unit: str | None = None,
+) -> Table | None:
+    """Build a compact diff table for triple metadata changes.
+
+    Only shows rows for fields that actually differ from the existing triple.
+    Returns ``None`` if no fields differ.
+
+    Args:
+        existing: Existing triple dict.
+        object_lang: New language tag (or None to keep existing).
+        object_datatype: New datatype (or None to keep existing).
+        object_unit: New unit node ID (or None to keep existing).
+    """
+    old_lang = existing.get("object_lang")
+    old_dtype = existing.get("object_datatype")
+    old_unit = existing.get("object_unit")
+
+    rows: list[tuple[str, str, str]] = []
+    if object_lang is not None and object_lang != old_lang:
+        rows.append((
+            tr_multi("Lingvo", "Language", "Langue"),
+            old_lang or tr_multi("(nenio)", "(none)", "(aucun)"),
+            object_lang or tr_multi("(nenio)", "(none)", "(aucun)"),
+        ))
+    if object_datatype is not None and object_datatype != old_dtype:
+        rows.append((
+            tr_multi("Datatype", "Datatype", "Datatype"),
+            old_dtype or tr_multi("(nenio)", "(none)", "(aucun)"),
+            object_datatype or tr_multi("(nenio)", "(none)", "(aucun)"),
+        ))
+    if object_unit is not None and object_unit != old_unit:
+        rows.append((
+            tr_multi("Unuo", "Unit", "Unité"),
+            old_unit or tr_multi("(nenio)", "(none)", "(aucun)"),
+            object_unit or tr_multi("(nenio)", "(none)", "(aucun)"),
+        ))
+
+    if not rows:
+        return None
+
+    table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
+    table.add_column(tr_multi("Kampo", "Field", "Champ"), no_wrap=True)
+    table.add_column(tr_multi("Malnova", "Old", "Ancien"), no_wrap=False)
+    table.add_column(tr_multi("Nova", "New", "Nouveau"), no_wrap=False)
+    for field, old_val, new_val in rows:
+        table.add_row(field, old_val, new_val)
+    return table
 
 
 def confirm_triple(
