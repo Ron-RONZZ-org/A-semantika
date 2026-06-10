@@ -6,11 +6,12 @@ Contains search, node_id prefix resolution, and FTS index operations.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import warnings
 from typing import Any
 
-from A import warning as _warning
+logger = logging.getLogger(__name__)
 from A_semantika._node_helpers import AmbiguousUUIDError, FTS5_KEYWORDS, sanitize_node_id
 
 
@@ -144,7 +145,7 @@ class NodeSearchMixin:
             # FTS index has dangling references (e.g. rows that were
             # deleted without a matching 'delete' command). Rebuild from
             # current content table and retry.
-            _warning("FTS index inconsistent — rebuilding and retrying search.")
+            logger.warning("FTS index inconsistent — rebuilding and retrying search.")
             self.db.execute(
                 f"INSERT INTO {self._fts_config.fts_table}"
                 f"({self._fts_config.fts_table}) VALUES('rebuild')"
@@ -234,10 +235,11 @@ class NodeSearchMixin:
                 (rowid,),
             )
         except sqlite3.DatabaseError as exc:
-            _warning(
-                f"FTS 'delete' failed for {node_id} (rowid={rowid}): "
-                f"{exc}. FTS index may be stale — a search query will "
-                f"trigger a rebuild automatically."
+            logger.warning(
+                "FTS 'delete' failed for %s (rowid=%s): %s. "
+                "FTS index may be stale — a search query will "
+                "trigger a rebuild automatically.",
+                node_id, rowid, exc,
             )
 
     # ── Override _index_fts to use node_id column ─────────────────────────
