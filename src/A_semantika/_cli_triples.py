@@ -16,11 +16,13 @@ from typing import Optional
 import typer
 
 from A import error, info, tr_multi, warning
+from A.utils.interactive import confirm_action
 from A_semantika._cli_helpers import resolve_deprecated, validate_type_flags
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._predicate_service import AmbiguousPredicateError
-from A_semantika._preview import confirm_triple
+from A_semantika._preview import build_metadata_diff_table, confirm_triple
+from A_semantika._triple_service import DuplicateTripleError
 from A_semantika._unit_errors import UnitNotFoundError
 from A_semantika.service import (
     get_node_service,
@@ -28,6 +30,89 @@ from A_semantika.service import (
     get_triple_service,
     get_unit_service,
 )
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────
+
+
+def _handle_duplicate_triple(
+    triple_svc,
+    subject_uuid: str,
+    predicate_id: str,
+    object_value: str,
+    object_type: str,
+    object_lang: str | None,
+    object_datatype: str | None,
+    object_unit: str | None,
+    yes: bool,
+) -> None:
+    """Handle duplicate triple: show metadata diff and offer update.
+
+    Called when ``triple_svc.add()`` raises ``DuplicateTripleError``.
+    Computes which metadata columns (lang, datatype, unit) differ,
+    shows a compact diff table, and asks the user to confirm the update.
+
+    With ``yes=True``, silently auto-updates if metadata differs.
+    """
+    existing = triple_svc.get_one(subject_uuid, predicate_id, object_value, object_type)
+    if not existing:
+        error(tr_multi(
+            "Ne povis preni la ekzistantan arkon.",
+            "Could not retrieve existing triple.",
+            "Impossible de récupérer le triplet existant.",
+        ))
+        raise typer.Exit(1)
+
+    # Build changes: only track columns that were explicitly provided
+    changes: dict[str, str | None] = {}
+    if object_lang is not None and object_lang != existing.get("object_lang"):
+        changes["object_lang"] = object_lang
+    if object_datatype is not None and object_datatype != existing.get("object_datatype"):
+        changes["object_datatype"] = object_datatype
+    if object_unit is not None and object_unit != existing.get("object_unit"):
+        changes["object_unit"] = object_unit
+
+    if not changes:
+        info(tr_multi(
+            "Arko jam ekzistas kun samaj metadatumoj.",
+            "Triple already exists with identical metadata.",
+            "Le triplet existe déjà avec les mêmes métadonnées.",
+        ))
+        raise typer.Exit(0)
+
+    # Show preview (skip if -y)
+    if not yes:
+        table = build_metadata_diff_table(
+            existing,
+            object_lang=changes.get("object_lang"),
+            object_datatype=changes.get("object_datatype"),
+            object_unit=changes.get("object_unit"),
+        )
+        if table:
+            info("")
+            info(table)
+
+        if not confirm_action(
+            tr_multi(
+                "Ĉu ĝisdatigi la metadatumojn de la ekzistanta arko?",
+                "Update the metadata of the existing arc?",
+                "Mettre à jour les métadonnées de l'arc existant ?",
+            ),
+            default=False,
+        ):
+            info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
+            raise typer.Exit(0)
+
+    # Apply metadata update
+    updated = triple_svc.update_metadata(
+        subject_uuid, predicate_id, object_value, object_type,
+        object_lang=changes.get("object_lang"),
+        object_datatype=changes.get("object_datatype"),
+        object_unit=changes.get("object_unit"),
+    )
+    if updated:
+        info(tr_multi("Arko ĝisdatigita.", "Arc updated.", "Arc mis à jour."))
+    raise typer.Exit(0)
 
 
 # ── Root triple commands ──────────────────────────────────────────────
@@ -396,6 +481,14 @@ def aldoni(
         ).format(
             s=s_display, p=predicate_id, o=o_display,
         ))
+    except DuplicateTripleError:
+        # Triple already exists — offer metadata update
+        _handle_duplicate_triple(
+            triple_svc,
+            subject_uuid, predicate_id, object_uuid, object_type,
+            lingvo if str_ else None, datatype, unuo,
+            yes,
+        )
     except ValueError as e:
         error(tr_multi(
             "Eraro: {e}", "Error: {e}", "Erreur : {e}",

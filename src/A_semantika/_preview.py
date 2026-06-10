@@ -19,6 +19,7 @@ from A_semantika._preview_helpers import (
     resolve_predicate_label,
 )
 from A_semantika._preview_triple import (
+    build_metadata_diff_table,
     build_triple_preview_table,
     confirm_triple,
 )

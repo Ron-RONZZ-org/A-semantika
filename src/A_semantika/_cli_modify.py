@@ -19,6 +19,7 @@ from A_semantika._cli_helpers import (
 from A_semantika._cli_modify_preview import build_modify_preview, find_triple_direct
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
+from A_semantika._predicate_service import AmbiguousPredicateError
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
 from A_semantika._unit_errors import UnitNotFoundError
 from A_semantika.service import (
@@ -295,6 +296,26 @@ def modifi(
     else:
         # ── Direct mode: full triplet provided ────────────────────
         subject_uuid = _resolve_subject_id(node_svc, subject)
+
+        # Resolve predicate ID prefix (like aldoni does, not like
+        # the interactive picker which already returns resolved IDs).
+        try:
+            pred = pred_svc.resolve_predicate_id_prefix(predicate)
+        except AmbiguousPredicateError as e:
+            error(tr_multi(
+                "Ambigua predikato-prefikso: {e}",
+                "Ambiguous predicate prefix: {e}",
+                "Préfixe prédicat ambigu : {e}",
+            ).format(e=str(e)))
+            raise typer.Exit(1) from e
+        if not pred:
+            error(tr_multi(
+                "Predikato ne trovita: {p}",
+                "Predicate not found: {p}",
+                "Prédicat non trouvé : {p}",
+            ).format(p=predicate))
+            raise typer.Exit(1)
+        predicate = pred["predicate_id"]  # Use resolved full ID
 
         # Try to find existing triple (URI or literal)
         existing, old_object_type, old_object_lang = find_triple_direct(

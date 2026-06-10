@@ -11,12 +11,14 @@ are identified by their URI/ID, not by an artifact.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from A import warning as _warning
 from A.core.service import CRUDService
+
+logger = logging.getLogger(__name__)
 from A_semantika._constants import FTS5_KEYWORDS as _FTS5_KEYWORDS
 from A_semantika._node_helpers import extract_label_text
 from A_semantika.data.storage import label_from_json, now
@@ -119,10 +121,11 @@ class PredicateService(CRUDService):
                 (rowid,),
             )
         except sqlite3.DatabaseError as exc:
-            _warning(
-                f"FTS 'delete' failed for {predicate_id} (rowid={rowid}): "
-                f"{exc}. FTS index may be stale — a search query will "
-                f"trigger a rebuild automatically."
+            logger.warning(
+                "FTS 'delete' failed for %s (rowid=%s): %s. "
+                "FTS index may be stale — a search query will "
+                "trigger a rebuild automatically.",
+                predicate_id, rowid, exc,
             )
 
     def _index_fts(self, predicate_id: str) -> None:
@@ -531,7 +534,7 @@ class PredicateService(CRUDService):
             try:
                 results = self.db.execute(fts_sql, (fts_query, limit))
             except sqlite3.DatabaseError:
-                _warning("Predicates FTS index inconsistent — rebuilding and retrying search.")
+                logger.warning("Predicates FTS index inconsistent — rebuilding and retrying search.")
                 self.db.execute(
                     "INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')"
                 )
