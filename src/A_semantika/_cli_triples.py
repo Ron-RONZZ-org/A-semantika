@@ -17,7 +17,7 @@ import typer
 
 from A import error, info, tr_multi, warning
 from A.utils.interactive import confirm_action
-from A_semantika._cli_helpers import resolve_deprecated, validate_type_flags
+from A_semantika._cli_helpers import EXT_TO_LANG, resolve_deprecated, validate_type_flags
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._predicate_service import AmbiguousPredicateError
@@ -260,8 +260,8 @@ def aldoni(
             "--kodbloko is deprecated, use --str-dosiero --kodlingvo <language>",
             "--kodbloko est déprécié, utilisez --str-dosiero --kodlingvo <langue>",
         ))
-        if kodlingvo is None:
-            kodlingvo = "plain"
+        # Don't default kodlingvo to "plain" here — let extension
+        # auto-detection or validate_type_flags() handle the fallback.
         str_dosiero = kodbloko
         kodbloko = None  # Fall through to str_dosiero logic
 
@@ -271,6 +271,15 @@ def aldoni(
             "Ne eblas uzi samtempe --katex kun OBJEKTO aŭ --str-dosiero",
             "Cannot use --katex with OBJEKTO or --str-dosiero",
             "Impossible d'utiliser --katex avec OBJEKTO ou --str-dosiero",
+        ))
+        raise typer.Exit(1)
+
+    # --katex and --kodlingvo katex are mutually exclusive
+    if katex is not None and kodlingvo == "katex":
+        error(tr_multi(
+            "Ne eblas uzi samtempe --katex kaj --kodlingvo katex",
+            "Cannot use both --katex and --kodlingvo katex",
+            "Impossible d'utiliser --katex et --kodlingvo katex",
         ))
         raise typer.Exit(1)
 
@@ -331,6 +340,10 @@ def aldoni(
         object_value = content
         katex_flag = False
         kodlingvo_val = kodlingvo
+        # Auto-detect language from file extension if -L not explicitly given
+        if kodlingvo_val is None:
+            ext = file_path.suffix.lower()
+            kodlingvo_val = EXT_TO_LANG.get(ext)
     elif object is not None:
         object_value = object
         katex_flag = False

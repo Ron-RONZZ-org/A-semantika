@@ -73,6 +73,74 @@ LANG_TO_MIME: dict[str, str] = {
     "text": "text/plain",
 }
 
+# -- File extension-to-language mapping for code block auto-detection ---
+# Maps common file extensions (with leading dot) to LANG_TO_MIME keys.
+# Used when --str-dosiero is passed without explicit --kodlingvo.
+
+EXT_TO_LANG: dict[str, str] = {
+    ".py": "python",
+    ".js": "javascript",
+    ".ts": "typescript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".jsx": "javascript",
+    ".tsx": "typescript",
+    ".java": "java",
+    ".html": "html",
+    ".htm": "html",
+    ".css": "css",
+    ".sh": "bash",
+    ".bash": "bash",
+    ".zsh": "bash",
+    ".sql": "sql",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".json": "json",
+    ".xml": "xml",
+    ".rs": "rust",
+    ".go": "go",
+    ".c": "c",
+    ".cpp": "cpp",
+    ".cc": "cpp",
+    ".cxx": "cpp",
+    ".h": "c",
+    ".hpp": "cpp",
+    ".rb": "ruby",
+    ".php": "php",
+    ".swift": "swift",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
+    ".scala": "scala",
+    ".r": "r",
+    ".lua": "lua",
+    ".pl": "perl",
+    ".pm": "perl",
+    ".hs": "haskell",
+    ".clj": "clojure",
+    ".cljs": "clojure",
+    ".edn": "clojure",
+    ".ex": "elixir",
+    ".exs": "elixir",
+    ".erl": "erlang",
+    ".hrl": "erlang",
+    ".dart": "dart",
+    ".groovy": "groovy",
+    ".gvy": "groovy",
+    ".m": "matlab",
+    ".tex": "latex",
+    ".sty": "latex",
+    ".cls": "latex",
+    ".txt": "plain",
+    ".md": "plain",
+    ".rst": "plain",
+    ".diff": "diff",
+    ".patch": "diff",
+    ".dockerfile": "dockerfile",
+    ".makefile": "makefile",
+    ".mk": "makefile",
+    ".qd": "qd",
+}
+
 
 # ── Ambiguous prefix → interactive selection ──────────────────────────
 
@@ -394,6 +462,8 @@ def validate_type_flags(
         return (mime, "literal")
     if str_:
         if kodlingvo:
+            if kodlingvo == "katex":
+                return (KATEX_DATATYPE, "literal")
             mime = LANG_TO_MIME.get(kodlingvo, "text/plain")
             return (mime, "literal")  # Code snippet
         return (None, "literal")  # Plain string literal
