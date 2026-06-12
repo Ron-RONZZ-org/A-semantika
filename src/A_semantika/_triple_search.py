@@ -6,44 +6,17 @@ interactive modifi/forigi picker.
 """
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING
 
 from A import tr_multi, warning as _warning
+from A_semantika._constants import is_numeric, looks_like_uuid_prefix
 from A_semantika._node_service import AmbiguousUUIDError
+from A_semantika._triple_ranking import rank_triples_by_bm25
 
 if TYPE_CHECKING:
     from A_semantika._node_service import NodeService
     from A_semantika._predicate_service import PredicateService
     from A_semantika._triple_service import TripleService
-
-
-# ── Heuristic helpers ──────────────────────────────────────────────────────────
-
-_UUID_PREFIX_RE = re.compile(r"^[0-9a-fA-F\-]+$")
-
-
-def _looks_like_uuid_prefix(text: str) -> bool:
-    """Check if text looks like a UUID prefix.
-
-    A text looks like a UUID prefix if it is:
-    - Between 8 and 16 characters long (UUID prefix typical length)
-    - Contains only hex digits [0-9a-fA-F] and hyphens
-
-    Short alphanumeric strings that are not hex (like 'Hundo' at 5 chars,
-    'tipo' at 4 chars) won't match because they're too short or contain
-    non-hex characters, preventing pointless DB lookups.
-    """
-    return 8 <= len(text) <= 16 and bool(_UUID_PREFIX_RE.match(text))
-
-
-def _is_numeric(text: str) -> bool:
-    """Check if text represents a numeric value (int or float)."""
-    try:
-        float(text)
-        return True
-    except (ValueError, TypeError):
-        return False
 
 
 # ── Subject resolution ────────────────────────────────────────────────────────
@@ -74,7 +47,7 @@ def _resolve_node_by_label(
         return []
 
     # Step 1: Try UUID prefix resolution
-    if _looks_like_uuid_prefix(text):
+    if looks_like_uuid_prefix(text):
         try:
             node = node_svc.resolve_node_id_prefix(text)
             if node:
@@ -100,7 +73,7 @@ def _resolve_node_by_label(
     # This covers short human-readable node IDs like "H_GL" (4 chars,
     # non-hex) that don't look like UUID prefixes but are valid node_id
     # prefixes.  FTS5 doesn't index node_id, so label search won't match.
-    if not _looks_like_uuid_prefix(text):
+    if not looks_like_uuid_prefix(text):
         try:
             node = node_svc.resolve_node_id_prefix(text)
             if node:
@@ -191,7 +164,7 @@ def resolve_objects(node_svc: NodeService, text: str) -> tuple[list[str], list[s
     _is_obvious_literal = (
         text.strip().startswith('"')
         or text.strip().startswith("'")
-        or _is_numeric(text.strip())
+        or is_numeric(text.strip())
         or len(text.strip().split()) > 1
     )
     if not _is_obvious_literal:
@@ -341,7 +314,8 @@ def search_triples_any_field(
     order_by = _build_relevance_order_by(search_term, node_svc, pred_svc)
     
     # Execute single query with unified WHERE
-    return triple_svc.search_triples(where_clause, params, order_by=order_by, limit=limit)
+    results = triple_svc.search_triples(where_clause, params, order_by=order_by, limit=limit)
+    return rank_triples_by_bm25(results, node_svc, search_term)
 
 
 def _build_search_clause_by_labels(
@@ -463,4 +437,5 @@ def search_triples_by_labels(
     )
     
     # Execute single query with unified WHERE
-    return triple_svc.search_triples(where_clause, params, limit=limit)
+    results = triple_svc.search_triples(where_clause, params, limit=limit)
+    return rank_triples_by_bm25(results, node_svc, subject, predicate, object)
