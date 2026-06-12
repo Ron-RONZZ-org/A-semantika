@@ -18,6 +18,7 @@ from A_semantika.data.migrations import (
     migrate_predicates_uuid_to_predicate_id,
     rebuild_nodes_fts,
 )
+from A_semantika.data.recenzi_storage import RECENZI_SCHEMA_SQL
 
 if TYPE_CHECKING:
     from A.data.base import SQLiteDB
@@ -320,6 +321,12 @@ def init_db(db: "SQLiteDB | None" = None) -> None:
 
     # Seed unit type nodes (Issue #77)
     _seed_default_unit_types(db)
+
+    # Recenzi (interactive review) tables (Issue #71)
+    for statement in RECENZI_SCHEMA_SQL.strip().split(";"):
+        stmt = statement.strip()
+        if stmt:
+            db.execute(stmt)
 
     # Rebuild nodes FTS index to fix stale entries from the pre-fix
     # update()/update_node_id() order-of-operations bug.
