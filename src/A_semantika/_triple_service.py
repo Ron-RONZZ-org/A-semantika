@@ -375,16 +375,23 @@ class TripleService:
         params: list,
         order_by: str | None = None,
         limit: int = 100,
+        dato_de: str | None = None,
+        dato_gis: str | None = None,
     ) -> list[dict]:
-        """Search triples by unified WHERE clause.
+        """Search triples by unified WHERE clause, with optional date filtering.
         
         Args:
             where_clause: SQL WHERE condition (e.g., "subject_uuid IN (?, ?) OR predicate_id = ?").
                          Empty string is treated as "1=1" (no restriction).
-            params: Parameter values to bind to WHERE clause. Will be extended with limit.
+            params: Parameter values to bind to WHERE clause. Will be extended with limit
+                     and optionally date params.
             order_by: SQL ORDER BY clause (e.g., "CASE ... END, subject_uuid, predicate_id").
                       If None, defaults to "subject_uuid, predicate_id".
             limit: Maximum results to return.
+            dato_de: ISO 8601 start datetime (inclusive). If provided, adds
+                     ``AND kreita_je >= ?`` to WHERE clause.
+            dato_gis: ISO 8601 end datetime (inclusive). If provided, adds
+                      ``AND kreita_je <= ?`` to WHERE clause.
         
         Returns:
             List of matching triple dicts.
@@ -395,10 +402,25 @@ class TripleService:
         if not where_clause or not where_clause.strip():
             where_clause = "1=1"
         
-        sort_clause = order_by if order_by else "subject_uuid, predicate_id"
-        sql = f"SELECT * FROM triples WHERE {where_clause} ORDER BY {sort_clause} LIMIT ?"
+        # Append date filters if provided.
+        # Date clauses are appended after the WHERE clause, so date params
+        # must come AFTER the original WHERE params in the parameter list.
+        date_clauses: list[str] = []
+        if dato_de is not None:
+            date_clauses.append("kreita_je >= ?")
+        if dato_gis is not None:
+            date_clauses.append("kreita_je <= ?")
         
-        params_copy = list(params)  # avoid mutating caller's list
+        full_where = f"({where_clause})" + (" AND " + " AND ".join(date_clauses) if date_clauses else "")
+        
+        sort_clause = order_by if order_by else "subject_uuid, predicate_id"
+        sql = f"SELECT * FROM triples WHERE {full_where} ORDER BY {sort_clause} LIMIT ?"
+        
+        params_copy = list(params)        # original WHERE params first
+        if dato_de is not None:
+            params_copy.append(dato_de)
+        if dato_gis is not None:
+            params_copy.append(dato_gis)
         params_copy.append(limit)
         
         return self.db.execute(sql, params_copy)

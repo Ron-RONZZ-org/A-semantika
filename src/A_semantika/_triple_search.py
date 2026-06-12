@@ -285,6 +285,8 @@ def search_triples_any_field(
     pred_svc: PredicateService,
     search_term: str,
     limit: int = 100,
+    dato_de: str | None = None,
+    dato_gis: str | None = None,
 ) -> list[dict]:
     """Search triples where *search_term* matches subject, predicate, OR object.
 
@@ -300,6 +302,8 @@ def search_triples_any_field(
         pred_svc: PredicateService instance.
         search_term: The text to search across all fields.
         limit: Maximum results to return.
+        dato_de: ISO 8601 start datetime (inclusive) for ``kreita_je`` filter.
+        dato_gis: ISO 8601 end datetime (inclusive) for ``kreita_je`` filter.
 
     Returns:
         List of unique matching triple dicts, ranked by relevance.
@@ -314,7 +318,10 @@ def search_triples_any_field(
     order_by = _build_relevance_order_by(search_term, node_svc, pred_svc)
     
     # Execute single query with unified WHERE
-    results = triple_svc.search_triples(where_clause, params, order_by=order_by, limit=limit)
+    results = triple_svc.search_triples(
+        where_clause, params, order_by=order_by, limit=limit,
+        dato_de=dato_de, dato_gis=dato_gis,
+    )
     return rank_triples_by_bm25(results, node_svc, search_term)
 
 
@@ -409,6 +416,8 @@ def search_triples_by_labels(
     predicate: str | None = None,
     object: str | None = None,  # noqa: A002
     limit: int = 100,
+    dato_de: str | None = None,
+    dato_gis: str | None = None,
 ) -> list[dict]:
     """Search triples by resolving partial labels to UUIDs/IDs.
 
@@ -427,6 +436,8 @@ def search_triples_by_labels(
         predicate: Predicate label or exact ID.
         object: Object label, UUID prefix, or literal value.
         limit: Maximum results to return.
+        dato_de: ISO 8601 start datetime (inclusive) for ``kreita_je`` filter.
+        dato_gis: ISO 8601 end datetime (inclusive) for ``kreita_je`` filter.
 
     Returns:
         List of matching triple dicts.
@@ -437,5 +448,8 @@ def search_triples_by_labels(
     )
     
     # Execute single query with unified WHERE
-    results = triple_svc.search_triples(where_clause, params, limit=limit)
+    results = triple_svc.search_triples(
+        where_clause, params, limit=limit,
+        dato_de=dato_de, dato_gis=dato_gis,
+    )
     return rank_triples_by_bm25(results, node_svc, subject, predicate, object)
