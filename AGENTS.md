@@ -35,7 +35,7 @@ src/A_semantika/
 ├── cli.py                 # Typer app with 5 subcommand groups (recenzi added in Issue #71)
 ├── service.py             # NodeService, PredicateService, PredicateGroupService, TripleService
 ├── _wikidata_helper.py    # Wikidata API adapter (validation, search, metadata fetch)
-├── _cli_helpers.py        # Shared CLI helpers (pick_triple, type flag validation)
+├── _cli_helpers.py        # Shared CLI helpers: pick_triple, type flag validation, LANG_TO_MIME + EXT_TO_LANG (I#89)
 ├── _cli_modify.py         # Root `modifi` command (Issue #8 R3 + Issue #10 EO)
 ├── _cli_nodo.py           # Nodo subcommand CLI (ls, vidi, serci)
 ├── _cli_nodo_aldoni.py    # Nodo aldoni: auto-ID (I#74) + file attachment flags (I#75)
@@ -46,7 +46,7 @@ src/A_semantika/
 ├── _cli_predikat_grupo.py # Predikat-grupo subcommand CLI
 ├── _cli_query.py          # Root query commands: serci, vidi, eksporti (Issue #10 EO)
 ├── _cli_rubujo.py         # Rubujo (trash) subcommand group: ls, restaurigi, malplenigi, forigi
-├── _cli_triples.py        # Root triple CLI: aldoni (-i, --str-dosiero), forigi
+├── _cli_triples.py        # Root triple CLI: aldoni (-i, -D, -K, -L), forigi; file extension auto-detect (I#89)
 ├── _file_helpers.py       # File management: copy/move/download/mime (I#75)
 ├── _node_helpers.py       # Shared helpers: label/difin extraction, FTS5 keywords, normalize_label_to_id
 ├── _node_merge_mixin.py   # NodeMergeMixin: merge_nodes() (Issue #64)
@@ -301,6 +301,21 @@ A semantika nodo aldoni [UUID]
   # Auto-ID (Issue #74): when [UUID] omitted, first label generates node_id
   # normalize_label_to_id("Homo Sapiens") → HOMO_SAPIENS (collision → _2, _3...)
 
+A semantika aldoni SUBJEKTO PREDIKATO [OBJEKTO]
+  [-s / --str]                       # Object is a string literal (not URI)
+  [-i / --int]                       # Object is an integer literal
+  [-f / --float]                     # Object is a float literal
+  [-b / --bool]                      # Object is a boolean literal
+  [-l / --lingvo TAG]                # Language tag for string literals
+  [-u / --unuo UUID]                 # Unit for numeric values
+  [-K / --katex FORMULO]             # KaTeX formula (with/without $...$)
+  [-D / --str-dosiero PATH]          # Read file as string literal
+  [-L / --kodlingvo LANG]            # Programming language (python, js, html, katex, etc.)
+                                     # Auto-detected from file extension if -D used without -L
+  [--kodbloko PATH]                  # Deprecated: use -D -L instead
+  [-y / --jes]                       # Skip confirmation
+  Object values starting with -: use -- before them (e.g. aldoni NODO pred -f -- -1.5)
+
 A semantika predikato aldoni <predicate-id>
   [-e / --etikedo "LANGCODE::STR"]*   # Repeatable, e.g. -e "eo::tipo" -e "en::type"
   [-p / --priskribo "LANGCODE::STR"]* # Repeatable, e.g. -p "eo::Priskribo"
@@ -374,6 +389,7 @@ A semantika nodo kunfandi <fonto> <celo>
 | **I74** | Auto-ID from first label — `normalize_label_to_id()` + collision resolution | `_node_helpers.py`, `_cli_nodo_aldoni.py` | ✅ Complete |
 | **I75** | File attachment flags — `--img/-I`, `--filmeto/-F`, `--dosiero/-D`, `--en-loko`, `--movi` | `_file_helpers.py`, `_cli_nodo_aldoni.py`, `data/storage.py` | ✅ Complete |
 | **I79** | Show `node_id` rename in `nodo modifi` preview (`-ni` now shows ID change) | `_preview_node.py`, `_cli_nodo_crud.py` | ✅ Complete |
+| **I89** | Enhance `-L`/`--kodlingvo` with file extension auto-detection and `katex` support | `_cli_helpers.py`, `_cli_triples.py` | ✅ Complete |
 
 ## Critical Bugs Fixed (May 2026)
 

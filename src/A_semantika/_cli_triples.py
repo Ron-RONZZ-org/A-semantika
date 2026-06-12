@@ -114,9 +114,7 @@ def _handle_duplicate_triple(
         info(tr_multi("Arko ĝisdatigita.", "Arc updated.", "Arc mis à jour."))
     raise typer.Exit(0)
 
-
 # ── Root triple commands ──────────────────────────────────────────────
-
 
 def aldoni(
     subject: str = typer.Argument(
