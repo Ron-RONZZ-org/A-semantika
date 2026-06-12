@@ -32,7 +32,7 @@ All source code must import from `A`, never duplicate utilities.
 ```
 src/A_semantika/
 ├── __init__.py            # exports: app
-├── cli.py                 # Typer app with 4 subcommand groups
+├── cli.py                 # Typer app with 5 subcommand groups (recenzi added in Issue #71)
 ├── service.py             # NodeService, PredicateService, PredicateGroupService, TripleService
 ├── _wikidata_helper.py    # Wikidata API adapter (validation, search, metadata fetch)
 ├── _cli_helpers.py        # Shared CLI helpers (pick_triple, type flag validation)
@@ -56,7 +56,11 @@ src/A_semantika/
 ├── _predicate_group_service.py  # PredicateGroupService (CRUDService + member mgmt)
 ├── _triple_search.py      # Triple search by partial labels (Issue #8 R2)
 ├── _triple_service.py     # TripleService (custom, non-CRUDService)
+├── _triple_ranking.py     # BM25 post-query triple relevance ranking (Issue #71)
 ├── _triple_turtle.py      # Turtle (.ttl) export (extracted from _triple_service.py for < 500 lines)
+├── _constants.py          # Shared constants: FTS5_KEYWORDS, heuristic helpers (Issue #71)
+├── _recenzi_cmd.py        # Recenzi (interactive review) CLI: rigardi, multobla, historio, vidi, forigi (Issue #71)
+├── _reczeni_helpers.py    # Recenzi helpers: session CRUD, distractors, question building (Issue #71)
 ├── _preview.py            # Facade — re-exports all preview symbols (Issue #19)
 ├── _preview_helpers.py    # Label resolution helpers (extracted from _preview.py)
 ├── _preview_triple.py     # Triple preview + confirm (extracted from _preview.py)
@@ -65,6 +69,7 @@ src/A_semantika/
 └── data/
     ├── __init__.py        # Package marker
     ├── storage.py         # Schema DDL, get_db(), init_db(), get_service() singletons
+    ├── recenzi_storage.py # Recenzi schema: recenzo_sesio + recenzo_rezulto tables (Issue #71)
     └── migrations.py      # DB migrations: uuid→node_id, predicates JSON, UNIQUE constraints
 tests/
 ├── conftest.py                      # autouse isolation fixture
@@ -90,6 +95,9 @@ tests/
 ├── test_predicates.py               # PredicateService tests
 ├── test_preview_helpers.py          # Edge: preview table + confirm
 ├── test_search_helpers.py           # Edge: UUID heuristic, type flags
+├── test_recenzi.py                  # Recenzi: session CRUD, distractors, CLI (Issue #71)
+├── test_recenzi.py                  # Recenzi: session CRUD, distractors, CLI (Issue #71)
+├── test_serci_date_filter.py        # serci --dato-de/--dato-gis date filtering (Issue #71)
 ├── test_storage_default_predicates.py  # DB: default predicate seeding
 ├── test_storage_migrations.py       # DB: schema migrations
 ├── test_storage_schema.py           # DB: schema & WAL mode
@@ -1271,6 +1279,48 @@ labels in preview. 469 total (460 existing + 9 new).
 - ✓ (85) duplicate triple with metadata shows update confirmation
 - ✓ (83) no `_warning()` calls remain in modified files
 - ✓ (82) lang code `(fr)` visible on labels row in vidi output
+
+### Issue #71: Search Ranking Improvement + Recenzi Interactive Review (June 2026)
+
+**Scope:** BM25 search ranking + recenzi interactive review module.
+
+#### Search Ranking (Commit 1 — `56f59e6`)
+| Change | Files | Description |
+|--------|-------|-------------|
+| BM25 column weights | `_node_search.py` | FTS5 BM25 with weight tuning: `label_text=-5`, `difin_text=-1`, `node_id=0` |
+| BM25 triple ranking | `_triple_ranking.py` (NEW) | Post-query BM25 re-ranking for triple search results |
+| Heuristic helpers | `_constants.py` (NEW) | Extracted from `_triple_search.py` to keep file under 500 lines |
+
+#### Date Filtering (Commit 2 — `cba279b`)
+| Change | Files | Description |
+|--------|-------|-------------|
+| `--dato-de` / `--dato-gis` | `_cli_query.py` | Date range filtering on `serci` command |
+| `date_range()` integration | `_triple_service.py` | `search_triples()` now accepts `dato_de`/`dato_gis` params |
+| 15 tests | `tests/test_serci_date_filter.py` (NEW) | All 3 search paths tested with date bounds |
+
+#### Recenzi Interactive Review (Commit 3 — `66c28f2`)
+| Change | Files | Description |
+|--------|-------|-------------|
+| `recenzi rigardi` | `_recenzi_cmd.py` (NEW) | One-by-one arc review — confirm each triple |
+| `recenzi multobla` | `_recenzi_cmd.py` | Multiple-choice quiz with distractors |
+| `recenzi historio` | `_recenzi_cmd.py` | List past review sessions |
+| `recenzi vidi` | `_recenzi_cmd.py` | View session details with per-question results |
+| `recenzi forigi` | `_recenzi_cmd.py` | Delete a session with confirmation |
+| Session CRUD | `_reczeni_helpers.py` (NEW) | `create_session`, `list_sessions`, `delete_session`, etc. |
+| Distractor gen | `_reczeni_helpers.py` | FTS5-based for URI nodes, LIKE-based for literals |
+| Schema DDL | `data/recenzi_storage.py` (NEW) | `recenzo_sesio` + `recenzo_rezulto` tables |
+| DB init | `data/storage.py` | Seeded via `init_db()` with IF NOT EXISTS |
+| CLI registration | `cli.py` | `app.add_typer(recenzi_app)` — 5th subcommand group |
+| 42 tests | `tests/test_recenzi.py` (NEW) | Unit tests for helpers + CLI integration |
+
+**Tests:** 42 new (recenzi) + 15 new (date filter) = 57 new tests.
+
+**User Simulation Verified:**
+- ✓ `recenzi rigardi` — interactive prompts, score tracking, session completion
+- ✓ `recenzi multobla` — multiple choice with options, correct/wrong handling
+- ✓ `recenzi historio` — empty and populated session listing
+- ✓ `recenzi vidi` — detail view with per-question labels, marks, answers
+- ✓ `recenzi forigi` — delete with `-y` flag and cancellation
 
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
