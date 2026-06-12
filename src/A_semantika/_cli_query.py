@@ -14,6 +14,7 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, info, tr_multi, warning
+from A.utils.date import date_range
 from A_semantika._cli_helpers import (
     _prompt_select_ambiguous_node,
     resolve_deprecated,
@@ -94,12 +95,39 @@ def serci(
         50, "--limit", "-l",
         help=tr_multi("Maksimume rezultoj", "Max results", "Résultats max"),
     ),
+    dato_de: Optional[str] = typer.Option(
+        None, "--dato-de", "--from",
+        help=tr_multi(
+            "Komenca dato (YYYYMMDD, MMDD, aŭ DD)",
+            "Start date (YYYYMMDD, MMDD, or DD)",
+            "Date de début (AAAAMMJJ, MMJJ ou JJ)",
+        ),
+    ),
+    dato_gis: Optional[str] = typer.Option(
+        None, "--dato-gis", "--until",
+        help=tr_multi(
+            "Fina dato (YYYYMMDD, MMDD, aŭ DD)",
+            "End date (YYYYMMDD, MMDD, or DD)",
+            "Date de fin (AAAAMMJJ, MMJJ ou JJ)",
+        ),
+    ),
 ) -> None:
     """Serĉi arkojn laŭ subjekto, predikato aŭ objekto."""
     # Resolve deprecated aliases
     subject = resolve_deprecated(subjekto, subject, "subject", "subjekto")
     predicate = resolve_deprecated(predikato, predicate, "predicate", "predikato")
     object = resolve_deprecated(objekto, object, "object", "objekto")  # noqa: A002
+
+    # Convert partial date tokens to ISO 8601 strings
+    try:
+        iso_de, iso_gis = date_range(dato_de, dato_gis)
+    except ValueError as e:
+        error(tr_multi(
+            "Nevalida dato: {e}",
+            "Invalid date: {e}",
+            "Date invalide : {e}",
+        ).format(e=str(e)))
+        raise typer.Exit(1) from e
 
     node_svc = get_node_service()
     pred_svc = get_predicate_service()
@@ -116,6 +144,8 @@ def serci(
             pred_svc=pred_svc,
             search_term=search_term,
             limit=limit,
+            dato_de=iso_de,
+            dato_gis=iso_gis,
         )
     elif subject or predicate or object:
         # Use the existing AND-across-fields search when explicit flags are given
@@ -127,12 +157,23 @@ def serci(
             predicate=predicate,
             object=object,
             limit=limit,
+            dato_de=iso_de,
+            dato_gis=iso_gis,
         )
     else:
-        # No filters: show all triples
+        # No filters: show all triples (with optional date filtering)
+        where = "1=1"
+        params: list = []
+        if iso_de:
+            where += " AND kreita_je >= ?"
+            params.append(iso_de)
+        if iso_gis:
+            where += " AND kreita_je <= ?"
+            params.append(iso_gis)
+        params.append(limit)
         results = triple_svc.db.execute(
-            "SELECT * FROM triples ORDER BY subject_uuid LIMIT ?",
-            (limit,),
+            f"SELECT * FROM triples WHERE {where} ORDER BY subject_uuid LIMIT ?",
+            params,
         )
 
     if not results:

@@ -133,10 +133,17 @@ class NodeSearchMixin:
         if not safe_tokens:
             return self.list(limit=limit)
         fts_query = " OR ".join(safe_tokens)
+        # BM25 scoring with column weighting:
+        #   label_text (-5.0): most important — matches here are ranked highest
+        #   difin_text (-1.0): moderately important — definitions refine relevance
+        #   node_id (0.0): unindexed content column, zero weight
+        # The bm25() function returns lower scores for better matches.
         fts_sql = """
-            SELECT n.* FROM nodes n
+            SELECT n.*, bm25(nodes_fts, 1.2, 0.75, 0.0, -5.0, -1.0) AS _rank
+            FROM nodes n
             JOIN nodes_fts f ON n.node_id = f.node_id
             WHERE nodes_fts MATCH ?
+            ORDER BY _rank
             LIMIT ?
         """
         try:
@@ -155,8 +162,9 @@ class NodeSearchMixin:
             return results
 
         # Fallback: LIKE on label_text (case-insensitive)
+        # No BM25 rank available for LIKE fallback — set _rank to 0.
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        like_sql = "SELECT * FROM nodes WHERE label_text LIKE ? ESCAPE '\\' COLLATE NOCASE LIMIT ?"
+        like_sql = "SELECT *, 0 AS _rank FROM nodes WHERE label_text LIKE ? ESCAPE '\\' COLLATE NOCASE LIMIT ?"
         pattern = f"%{escaped}%"
         return self.db.execute(like_sql, (pattern, limit))
 
