@@ -25,7 +25,7 @@ def isolate_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Generator[Non
     from A_semantika import data as data_module
 
     monkeypatch.setattr(data_module.storage, "_DATA_DIR", tmp_path)
-    monkeypatch.setattr(data_module.storage, "_DB", None)
+    monkeypatch.setattr(data_module.storage, "_db_instance", None)
     reset_services()
 
     yield
