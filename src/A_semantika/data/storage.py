@@ -23,7 +23,7 @@ from A_semantika.data.recenzi_storage import RECENZI_SCHEMA_SQL
 if TYPE_CHECKING:
     from A.data.base import SQLiteDB
 
-_DB: SQLiteDB | None = None
+_db_instance: SQLiteDB | None = None
 _DATA_DIR: Path | None = None
 
 SCHEMA_SQL = """
@@ -175,15 +175,15 @@ def get_db() -> "SQLiteDB":
 
     Initializes schema on first call.
     """
-    global _DB
-    if _DB is None:
+    global _db_instance
+    if _db_instance is None:
         from A.data.base import SQLiteDB
 
         db_path = _get_data_dir() / "semantika.db"
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        _DB = SQLiteDB(db_path)
-        init_db(_DB)
-    return _DB
+        _db_instance = SQLiteDB(db_path)
+        init_db(_db_instance)
+    return _db_instance
 
 
 def _seed_default_predicates(db: "SQLiteDB") -> bool:
@@ -335,10 +335,10 @@ def init_db(db: "SQLiteDB | None" = None) -> None:
 
 def close_db() -> None:
     """Close the database connection and reset singleton."""
-    global _DB
-    if _DB is not None:
-        _DB.close()
-    _DB = None
+    global _db_instance
+    if _db_instance is not None:
+        _db_instance.close()
+    _db_instance = None
 
 
 def now() -> str:

@@ -11,7 +11,7 @@ def test_default_predicates_seeded(tmp_path: Path) -> None:
     import A_semantika.data.storage as storage_mod
 
     storage_mod._DATA_DIR = tmp_path  # noqa: SLF001
-    storage_mod._DB = None  # noqa: SLF001
+    storage_mod._db_instance = None  # noqa: SLF001
 
     from A_semantika.data.storage import get_db
 
@@ -30,7 +30,7 @@ def test_default_predicates_have_correct_labels(tmp_path: Path) -> None:
     import A_semantika.data.storage as storage_mod
 
     storage_mod._DATA_DIR = tmp_path  # noqa: SLF001
-    storage_mod._DB = None  # noqa: SLF001
+    storage_mod._db_instance = None  # noqa: SLF001
 
     from A_semantika.data.storage import get_db
     from A_semantika.data.storage import DEFAULT_PREDICATES
@@ -58,13 +58,13 @@ def test_default_predicates_seed_idempotent(tmp_path: Path) -> None:
     import A_semantika.data.storage as storage_mod
 
     storage_mod._DATA_DIR = tmp_path  # noqa: SLF001
-    storage_mod._DB = None  # noqa: SLF001
+    storage_mod._db_instance = None  # noqa: SLF001
 
     from A_semantika.data.storage import get_db, close_db
 
     db = get_db()
     close_db()
-    storage_mod._DB = None  # noqa: SLF001
+    storage_mod._db_instance = None  # noqa: SLF001
 
     db = get_db()  # second initialization
 
@@ -80,7 +80,7 @@ def test_default_predicates_existing_not_overwritten(tmp_path: Path) -> None:
     import A_semantika.data.storage as storage_mod
 
     storage_mod._DATA_DIR = tmp_path  # noqa: SLF001
-    storage_mod._DB = None  # noqa: SLF001
+    storage_mod._db_instance = None  # noqa: SLF001
 
     from A_semantika.data.storage import get_db
 

@@ -8,13 +8,13 @@ import pytest
 
 def test_get_db_creates_db_file(tmp_path: Path) -> None:
     """get_db() should create the database file."""
-    from A_semantika.data.storage import _DATA_DIR, _DB, get_db
+    from A_semantika.data.storage import _DATA_DIR, _db_instance, get_db
 
     # Override via monkeypatch (already done by conftest, but ensure)
     import A_semantika.data.storage as storage_mod
 
     storage_mod._DATA_DIR = tmp_path  # noqa: SLF001
-    storage_mod._DB = None  # noqa: SLF001
+    storage_mod._db_instance = None  # noqa: SLF001
 
     db = get_db()
     assert db is not None
@@ -26,7 +26,7 @@ def test_init_db_creates_tables(tmp_path: Path) -> None:
     import A_semantika.data.storage as storage_mod
 
     storage_mod._DATA_DIR = tmp_path  # noqa: SLF001
-    storage_mod._DB = None  # noqa: SLF001
+    storage_mod._db_instance = None  # noqa: SLF001
 
     from A_semantika.data.storage import get_db
 
@@ -52,7 +52,7 @@ def test_init_db_idempotent(tmp_path: Path) -> None:
     import A_semantika.data.storage as storage_mod
 
     storage_mod._DATA_DIR = tmp_path  # noqa: SLF001
-    storage_mod._DB = None  # noqa: SLF001
+    storage_mod._db_instance = None  # noqa: SLF001
 
     from A_semantika.data.storage import get_db
 
@@ -65,7 +65,7 @@ def test_wal_mode_enabled(tmp_path: Path) -> None:
     import A_semantika.data.storage as storage_mod
 
     storage_mod._DATA_DIR = tmp_path  # noqa: SLF001
-    storage_mod._DB = None  # noqa: SLF001
+    storage_mod._db_instance = None  # noqa: SLF001
 
     from A_semantika.data.storage import get_db
 
@@ -81,7 +81,7 @@ def test_foreign_keys_enabled(tmp_path: Path) -> None:
     import A_semantika.data.storage as storage_mod
 
     storage_mod._DATA_DIR = tmp_path  # noqa: SLF001
-    storage_mod._DB = None  # noqa: SLF001
+    storage_mod._db_instance = None  # noqa: SLF001
 
     from A_semantika.data.storage import get_db
 
@@ -96,7 +96,7 @@ def test_triples_without_rowid(tmp_path: Path) -> None:
     import A_semantika.data.storage as storage_mod
 
     storage_mod._DATA_DIR = tmp_path  # noqa: SLF001
-    storage_mod._DB = None  # noqa: SLF001
+    storage_mod._db_instance = None  # noqa: SLF001
 
     from A_semantika.data.storage import get_db
 
