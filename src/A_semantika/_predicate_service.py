@@ -59,13 +59,139 @@ class PredicateService(CRUDService):
             undo_size=0,
         )
 
-    def _ensure_fts(self) -> None:
+    def _ensure_fts(self) -> bool:
         """Create FTS5 virtual table for predicates if not exists.
 
-        Uses predicate_id (not uuid) to match the predicates PK.
+        Returns ``True`` if FTS is usable, ``False`` if FTS is
+        irreparably broken (LIKE-only mode).
+
+        If the virtual table or its shadow tables are corrupted,
+        attempts to purge and recreate them.  If the content table
+        has data, attempts to rebuild the index.
         """
+        # Check if the virtual table exists in sqlite_master.
+        vt_entry = self.db.execute_one(
+            "SELECT name FROM sqlite_master"
+            " WHERE type='table' AND name='predicates_fts'"
+        )
+        if not vt_entry:
+            try:
+                self._create_fts_vt()
+            except sqlite3.DatabaseError:
+                logger.warning("Cannot create predicates_fts virtual table.")
+                return False
+
+        # Try to query the FTS index — if this fails, purge and recreate.
+        try:
+            count = self.db.execute_one(
+                "SELECT COUNT(*) AS cnt FROM predicates_fts"
+            )
+        except sqlite3.DatabaseError:
+            logger.warning(
+                "predicates_fts is corrupted — purging and recreating."
+            )
+            try:
+                self._purge_and_rebuild_fts()
+            except sqlite3.DatabaseError:
+                logger.error("Cannot recreate predicates_fts — LIKE only.")
+                return False
+            return True  # Rebuild succeeded or FTS is empty
+
+        if count and count["cnt"] == 0:
+            try:
+                self.db.execute(
+                    "INSERT INTO predicates_fts(predicates_fts)"
+                    " VALUES('rebuild')"
+                )
+            except sqlite3.DatabaseError:
+                logger.warning(
+                    "predicates_fts rebuild failed — "
+                    "purging and trying fresh rebuild."
+                )
+                self._purge_and_rebuild_fts()
+
+        return True
+
+    def _purge_and_rebuild_fts(self) -> None:
+        """Drop a corrupted predicates_fts and recreate from scratch.
+
+        1. Drops all FTS5 shadow tables directly (real tables).
+        2. Tries ``DROP TABLE IF EXISTS`` on the virtual table.
+        3. If the VT entry cannot be removed via normal DDL (because
+           xConnect fails even with shadow tables gone), falls back
+           to ``PRAGMA writable_schema`` to clear ``sqlite_master``.
+        4. Creates a fresh FTS5 virtual table.
+        5. Rebuilds the index from the predicates content table.
+        """
+        _SHADOW = [
+            "predicates_fts_data",
+            "predicates_fts_idx",
+            "predicates_fts_docsize",
+            "predicates_fts_config",
+            "predicates_fts_content",
+        ]
+        for tbl in _SHADOW:
+            try:
+                self.db.execute(f"DROP TABLE IF EXISTS {tbl}")
+            except sqlite3.DatabaseError:
+                pass
+
+        # Try dropping the virtual table (may fail if xConnect is broken).
+        dropped = False
+        try:
+            self.db.execute("DROP TABLE IF EXISTS predicates_fts")
+            dropped = True
+        except sqlite3.DatabaseError:
+            pass
+
+        if not dropped:
+            # Last resort: remove the broken entry from sqlite_master.
+            # Use try/finally to ensure writable_schema is always reset.
+            self.db.execute("PRAGMA writable_schema=ON")
+            try:
+                self.db.execute(
+                    "DELETE FROM sqlite_master"
+                    " WHERE name='predicates_fts' AND type='table'"
+                )
+                # Bump schema_version to force schema cache reload on
+                # the *next* connection.  We then close the current
+                # connection so the next execute() opens a new one
+                # with a fresh schema.
+                ver = self.db.execute_one("PRAGMA schema_version")
+                if ver:
+                    self.db.execute(
+                        f"PRAGMA schema_version = {ver['schema_version'] + 1}"
+                    )
+            except sqlite3.DatabaseError:
+                logger.error(
+                    "Cannot remove corrupted predicates_fts from schema."
+                )
+                return
+            finally:
+                self.db.execute("PRAGMA writable_schema=OFF")
+
+            # Close the current connection so the next execute()
+            # creates a new one with the updated schema.
+            self.db.close()
+
+        self._create_fts_vt()
+
+        # Rebuild the index from content table.
+        try:
+            self.db.execute(
+                "INSERT INTO predicates_fts(predicates_fts)"
+                " VALUES('rebuild')"
+            )
+        except sqlite3.DatabaseError:
+            logger.warning(
+                "predicates_fts rebuild failed after recreation — "
+                "using LIKE fallback."
+            )
+
+    def _create_fts_vt(self) -> None:
+        """Create the predicates_fts virtual table."""
         self.db.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS predicates_fts"
+            "CREATE VIRTUAL TABLE predicates_fts"
             " USING fts5("
             "  predicate_id UNINDEXED,"
             "  etikedoj,"
@@ -76,13 +202,6 @@ class PredicateService(CRUDService):
             "  tokenize='unicode61'"
             ")"
         )
-        count = self.db.execute_one(
-            "SELECT COUNT(*) AS cnt FROM predicates_fts"
-        )
-        if count and count["cnt"] == 0:
-            self.db.execute(
-                "INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')"
-            )
 
     def _remove_from_fts(self, predicate_id: str) -> None:
         """Remove a predicate from FTS index using FTS5 'delete' command.
@@ -521,9 +640,9 @@ class PredicateService(CRUDService):
         if not query or not query.strip():
             return self.list(limit=limit)
 
-        # Try FTS5 first
-        self._ensure_fts()
-        fts_query = self._sanitize_fts_query(query)
+        # Try FTS5 first (if FTS is usable)
+        fts_ok = self._ensure_fts()
+        fts_query = self._sanitize_fts_query(query) if fts_ok else ""
         if fts_query:
             fts_sql = """
                 SELECT p.* FROM predicates p
