@@ -11,6 +11,7 @@ from typing import Optional
 
 import typer
 from rich.box import SIMPLE as BOX_SIMPLE
+from rich.console import Console
 from rich.table import Table
 
 from A import error, info, tr_multi, warning
@@ -196,14 +197,37 @@ def serci(
         else:
             r["proof_stmt_ids"] = []
 
+    # Detect terminal width so column ratios fit all content on screen.
+    # Falls back to 80 in non-terminal environments (tests, CI).
+    _console = Console()
+    _term_width = _console.size.width
+
     table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
-    table.add_column(tr_multi("Subjekto", "Subject", "Sujet"), no_wrap=True)
-    table.add_column(tr_multi("Predikato", "Predicate", "Predicat"), no_wrap=True)
-    # Object column allows wrapping: literal values can be long text
-    # (paragraphs, sentences).  no_wrap=True would truncate them or
-    # force truncation of other columns to fit the terminal width.
-    table.add_column(tr_multi("Objekto", "Object", "Objet"), no_wrap=False)
-    table.add_column(tr_multi("Tipo", "Type", "Type"), no_wrap=True)
+    # Proportional ratios keep all 4 columns visible regardless of label length.
+    # Labels wrap at word boundaries (overflow="fold") to avoid "...".
+    table.add_column(
+        tr_multi("Subjekto", "Subject", "Sujet"),
+        no_wrap=False,
+        overflow="fold",
+        ratio=3,
+    )
+    table.add_column(
+        tr_multi("Predikato", "Predicate", "Predicat"),
+        no_wrap=False,
+        overflow="fold",
+        ratio=3,
+    )
+    table.add_column(
+        tr_multi("Objekto", "Object", "Objet"),
+        no_wrap=False,
+        overflow="fold",
+        ratio=3,
+    )
+    table.add_column(
+        tr_multi("Tipo", "Type", "Type"),
+        no_wrap=True,
+        ratio=1,
+    )
 
     # Collect all UUIDs for context-aware truncation
     all_subject_uuids = [r["subject_uuid"] for r in results]
@@ -223,7 +247,10 @@ def serci(
                 p_label += f" (:pruvoj x{len(proof_stmt_ids)})"
         if r["object_type"] == "uri":
             o_label = resolve_node_label(node_svc, r["object_value"])
-            o_display = f"{o_label} ({truncate_uuid(r['object_value'], all_object_uuids)})"
+            # Separate label and ID so the label wraps freely while the short
+            # ID stays on its own line — no "..." needed.
+            _o_id = truncate_uuid(r["object_value"], all_object_uuids)
+            o_display = f"{o_label}\n({_o_id})"
         else:
             o_label = r["object_value"]
             o_display = o_label
@@ -240,8 +267,9 @@ def serci(
             if not unit_display:
                 unit_display = truncate_uuid(r["object_unit"])
 
+        _s_id = truncate_uuid(r["subject_uuid"], all_subject_uuids)
         table.add_row(
-            f"{s_label} ({truncate_uuid(r['subject_uuid'], all_subject_uuids)})",
+            f"{s_label}\n({_s_id})",
             p_label,
             o_display,
             format_tipo(
