@@ -17,7 +17,7 @@ from rich.box import SIMPLE as BOX_SIMPLE
 from rich.table import Table
 
 from A import error, tr_multi, warning
-from A.utils.interactive import select_candidate, select_candidates
+from A.utils.interactive import select_candidate
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._node_service import AmbiguousUUIDError, NodeService
 from A_semantika._preview import resolve_node_label, resolve_predicate_label

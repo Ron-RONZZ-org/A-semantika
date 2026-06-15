@@ -592,7 +592,7 @@ def provo_forigi(
             "Preuve supprimée : {id}",
         ).format(id=truncate_uuid(stmt_id)))
     else:
-        # Multiple proofs — show list and let user pick
+        # Multiple proofs — show list and let user pick (multi-select)
         s_label = resolve_node_label(node_svc, triple["subject_uuid"])
         p_label = resolve_predicate_label(pred_svc, triple["predicate_id"])
         o_label = (
@@ -607,8 +607,8 @@ def provo_forigi(
             "Preuves pour {s} --{p}--> {o} :",
         ).format(s=s_label, p=p_label, o=o_label))
 
-        from A.utils.interactive import select_candidate
-        result = select_candidate(
+        from A.utils.interactive import select_candidates, confirm_action
+        selections = select_candidates(
             proofs,
             columns=[
                 {"header": tr_multi("N-ro", "#", "N°")},
@@ -621,32 +621,44 @@ def provo_forigi(
                 (p.get("proof_text") or "")[:50],
             ],
             prompt_text=tr_multi(
-                "Elektu pruvon por forigi (aŭ Enter por nuligi)",
-                "Select proof to delete (or Enter to cancel)",
-                "Choisissez la preuve à supprimer (ou Entrée pour annuler)",
+                "Elektu pruvnumerojn por forigi (spacigitaj, aŭ Enter por nuligi)",
+                "Select proof numbers to delete (space-separated, or Enter to cancel)",
+                "Choisissez les numéros de preuve à supprimer (séparés par des espaces, ou Entrée pour annuler)",
             ),
         )
-        if result is None:
+        if selections is None:
             info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
             raise typer.Exit(0)
 
-        stmt_id = result[1]["stmt_node_id"]
+        selected = [item for _, item in selections]
+
+        # Batch confirmation
         if not yes:
-            from A.utils.interactive import confirm_action
+            stmt_ids_str = ", ".join(truncate_uuid(p["stmt_node_id"]) for p in selected)
+            info(tr_multi(
+                "Forigotaj pruvoj: {ids}",
+                "Proofs to delete: {ids}",
+                "Preuves à supprimer : {ids}",
+            ).format(ids=stmt_ids_str))
             if not confirm_action(
                 tr_multi(
-                    f"Ĉu forigi pruvan nodon {truncate_uuid(stmt_id)}?",
-                    f"Delete proof node {truncate_uuid(stmt_id)}?",
-                    f"Supprimer le nœud de preuve {truncate_uuid(stmt_id)} ?",
-                ),
+                    "Ĉu forigi {n} pruvo(j)n?",
+                    "Delete {n} proof(s)?",
+                    "Supprimer {n} preuve(s) ?",
+                ).format(n=len(selected)),
                 default=False,
             ):
                 info(tr_multi("Nuligita.", "Cancelled.", "Annulé."))
                 raise typer.Exit(0)
 
-        provo_svc.delete_proof(stmt_id)
+        # Delete each proof
+        deleted = 0
+        for p in selected:
+            if provo_svc.delete_proof(p["stmt_node_id"]):
+                deleted += 1
+
         info(tr_multi(
-            "Pruvo forigita: {id}",
-            "Proof deleted: {id}",
-            "Preuve supprimée : {id}",
-        ).format(id=truncate_uuid(stmt_id)))
+            "Forigis {d} el {n} pruvojn.",
+            "Deleted {d} of {n} proofs.",
+            "Supprimé {d} sur {n} preuves.",
+        ).format(d=deleted, n=len(selected)))
