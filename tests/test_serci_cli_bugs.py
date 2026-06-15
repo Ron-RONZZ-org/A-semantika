@@ -29,8 +29,6 @@ class TestSerciCLI:
         print(f"STDERR: {result.stderr}")
         assert result.exit_code == 0
         assert "arkoj trovita" in result.stdout
-        # The label "A Logical Calculus" resolves from the node, but Rich may
-        # wrap it across lines due to no_wrap=False on the object column.
         assert "2 arkoj" in result.stdout or "2 arkoj" in result.stderr
 
     def test_serci_objekto_flag_finds_triples(self):
@@ -47,3 +45,60 @@ class TestSerciCLI:
         print(f"STDOUT: {result.stdout}")
         assert result.exit_code == 0
         assert "arkoj trovita" in result.stdout
+
+
+class TestSerciDisplayFormat:
+    """Tests for serci table display: column headers visible, cell format."""
+
+    @pytest.fixture(autouse=True)
+    def _add_long_label(self, node_svc, pred_svc, triple_svc) -> None:
+        """Add a node with a long subject label for wrapping tests."""
+        node_svc.create({
+            "node_id": "LONG_NODE",
+            "etikedoj": {"eo": "VeryLongSubjectLabelThatShouldWrapToFitTerminalWidth"},
+        })
+        triple_svc.add(
+            subject_uuid="LONG_NODE", predicate_id="estas_autor_de",
+            object_value="DOI_10_1007_BF02", object_type="uri",
+        )
+
+    def test_serci_all_column_headers_present(self, runner: CliRunner) -> None:
+        """All 4 column headers (Subjekto, Predikato, Objekto, Tipo) appear."""
+        result = runner.invoke(app, ["serci"])
+        stdout = result.stdout
+        assert result.exit_code == 0, f"serci failed: {result.stderr}"
+        assert "Subjekto" in stdout or "Subject" in stdout
+        assert "Predikato" in stdout or "Predicate" in stdout
+        assert "Objekto" in stdout or "Object" in stdout
+        assert "Tipo" in stdout or "Type" in stdout
+
+    def test_serci_long_label_visible(self, runner: CliRunner) -> None:
+        """Long subject label text appears in output (may wrap across lines)."""
+        result = runner.invoke(app, ["serci"])
+        assert result.exit_code == 0
+        stdout = result.stdout
+        # The label wraps mid-word at the column boundary with overflow="fold".
+        # Check for the start of the label, which is always contiguous.
+        assert "VeryLongSubjectLabel" in stdout
+
+    def test_serci_long_label_node_id_visible(self, runner: CliRunner) -> None:
+        """Node ID of long-label subject appears in output (separate line)."""
+        result = runner.invoke(app, ["serci"])
+        assert result.exit_code == 0
+        stdout = result.stdout
+        assert "LONG_NODE" in stdout
+
+    def test_serci_count_message_present(self, runner: CliRunner) -> None:
+        """Result count message still appears after table."""
+        result = runner.invoke(app, ["serci"])
+        assert result.exit_code == 0
+        stdout = result.stdout
+        assert "arkoj trovita" in stdout
+
+    def test_serci_object_label_visible(self, runner: CliRunner) -> None:
+        """Object label and ID appear in output."""
+        result = runner.invoke(app, ["serci"])
+        assert result.exit_code == 0
+        stdout = result.stdout
+        assert "A Logical Calculus" in stdout
+        assert "DOI_10_1007" in stdout
