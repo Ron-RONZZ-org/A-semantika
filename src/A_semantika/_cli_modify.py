@@ -620,12 +620,16 @@ def modifi(
         raise typer.Exit(1)
 
     # ── Report success ────────────────────────────────────────────
-    new_obj_display = truncate_uuid(new_obj_value) if new_object_type == "uri" else f'"{new_obj_value}"'
-    if new_object_type == "literal" and new_obj_lang:
-        new_obj_display = f'"{new_obj_value}"@{new_obj_lang}'
+    # Display: URI → truncated, code block → compact MIME+chars,
+    # other literals → truncated (same pattern as aldoni)
+    if new_object_type == "uri":
+        new_obj_display = truncate_uuid(new_obj_value)
+    elif new_datatype and (new_datatype.startswith("text/") or new_datatype.startswith("application/")):
+        new_obj_display = f"{new_datatype}, {len(new_obj_value)} chars"
+    else:
+        new_obj_display = new_obj_value[:80] + "..." if len(new_obj_value) > 80 else new_obj_value
     info(tr_multi(
-        "Arko modifita: {s} --{p}--> {o} ({t})",
-        "Arc modified: {s} --{p}--> {o} ({t})",
-        "Arc modifié : {s} --{p}--> {o} ({t})",
-    ).format(s=truncate_uuid(new_subj_uuid), p=new_pred, o=new_obj_display,
-             t=new_object_type))
+        "Arko modifita: {s} --{p}--> {o}",
+        "Arc modified: {s} --{p}--> {o}",
+        "Arc modifié : {s} --{p}--> {o}",
+    ).format(s=truncate_uuid(new_subj_uuid), p=new_pred, o=new_obj_display))
