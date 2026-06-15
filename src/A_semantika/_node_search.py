@@ -172,7 +172,19 @@ class NodeSearchMixin:
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         like_sql = "SELECT *, 0 AS _rank FROM nodes WHERE label_text LIKE ? ESCAPE '\\' COLLATE NOCASE LIMIT ?"
         pattern = f"%{escaped}%"
-        return self.db.execute(like_sql, (pattern, limit))
+        try:
+            return self.db.execute(like_sql, (pattern, limit))
+        except sqlite3.DatabaseError:
+            # FTS rebuild failed AND the LIKE fallback also failed.
+            # The database is too corrupted to even read — escalate
+            # to the module's corruption error handler which shows
+            # tri-lingual guidance with the restore command.
+            logger.error(
+                "LIKE fallback also failed — database is corrupted "
+                "and needs to be restored from backup."
+            )
+            from A_semantika.data.storage import _raise_corruption_error, _get_data_dir
+            _raise_corruption_error(_get_data_dir() / "semantika.db")
 
     # ── Override _ensure_fts — use node_id instead of uuid in FTS schema ──
 
