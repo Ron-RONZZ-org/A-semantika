@@ -381,7 +381,12 @@ def init_db(db: "SQLiteDB | None" = None) -> None:
     # Skipping the rebuild when no new rows were added avoids unnecessary
     # work on every init_db() call (e.g. read-only CLI callbacks).
     if seeded:
-        db.execute("INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')")
+        db.execute(
+            "INSERT INTO predicates_fts"
+            " (rowid, predicate_id, etikedoj, priskriboj, aliases)"
+            " SELECT rowid, predicate_id, etikedoj, priskriboj, aliases"
+            " FROM predicates"
+        )
 
     # Seed unit type nodes (Issue #77)
     _seed_default_unit_types(db)

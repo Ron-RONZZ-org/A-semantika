@@ -98,17 +98,7 @@ class PredicateService(CRUDService):
             return True  # Rebuild succeeded or FTS is empty
 
         if count and count["cnt"] == 0:
-            try:
-                self.db.execute(
-                    "INSERT INTO predicates_fts(predicates_fts)"
-                    " VALUES('rebuild')"
-                )
-            except sqlite3.DatabaseError:
-                logger.warning(
-                    "predicates_fts rebuild failed — "
-                    "purging and trying fresh rebuild."
-                )
-                self._purge_and_rebuild_fts()
+            self._populate_predicates_fts()
 
         return True
 
@@ -175,17 +165,25 @@ class PredicateService(CRUDService):
             self.db.close()
 
         self._create_fts_vt()
+        self._populate_predicates_fts()
 
-        # Rebuild the index from content table.
+    def _populate_predicates_fts(self) -> None:
+        """Populate predicates_fts from content table using standard INSERT.
+
+        Uses ``INSERT INTO ... SELECT ...`` (standard SQL) instead of the
+        special FTS5 ``'rebuild'`` command, which has been observed to
+        cause database corruption in WAL mode.
+        """
         try:
             self.db.execute(
-                "INSERT INTO predicates_fts(predicates_fts)"
-                " VALUES('rebuild')"
+                "INSERT INTO predicates_fts"
+                " (rowid, predicate_id, etikedoj, priskriboj, aliases)"
+                " SELECT rowid, predicate_id, etikedoj, priskriboj, aliases"
+                " FROM predicates"
             )
         except sqlite3.DatabaseError:
             logger.warning(
-                "predicates_fts rebuild failed after recreation — "
-                "using LIKE fallback."
+                "predicates_fts population failed — using LIKE fallback."
             )
 
     def _create_fts_vt(self) -> None:
@@ -655,12 +653,10 @@ class PredicateService(CRUDService):
             except sqlite3.DatabaseError:
                 logger.warning("Predicates FTS index inconsistent — rebuilding and retrying search.")
                 try:
-                    self.db.execute(
-                        "INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')"
-                    )
+                    self._purge_and_rebuild_fts()
                     results = self.db.execute(fts_sql, (fts_query, limit))
                 except sqlite3.DatabaseError:
-                    logger.error("Predicates FTS rebuild failed — database may be corrupted.")
+                    logger.error("Predicates FTS still failing after rebuild — using LIKE fallback.")
                     results = []
             if results:
                 return results

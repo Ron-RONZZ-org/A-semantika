@@ -154,13 +154,10 @@ class NodeSearchMixin:
             # current content table and retry.
             logger.warning("FTS index inconsistent — rebuilding and retrying search.")
             try:
-                self.db.execute(
-                    f"INSERT INTO {self._fts_config.fts_table}"
-                    f"({self._fts_config.fts_table}) VALUES('rebuild')"
-                )
+                self._drop_and_repopulate_fts()
                 results = self.db.execute(fts_sql, (fts_query, limit))
             except sqlite3.DatabaseError:
-                # FTS rebuild itself failed — database may be corrupted.
+                # FTS repopulate failed — database may be corrupted.
                 # Fall through to the LIKE fallback below.
                 logger.error("FTS rebuild failed — database may be corrupted.")
                 results = []
@@ -210,11 +207,78 @@ class NodeSearchMixin:
             f"SELECT COUNT(*) AS cnt FROM {config.fts_table}"
         )
         if count and count["cnt"] == 0:
-            self.db.execute(
-                f"INSERT INTO {config.fts_table}({config.fts_table}) VALUES('rebuild')"
-            )
+            self._populate_fts_from_content()
 
     # ── Override _remove_from_fts (FTS5 'delete' command) ────────────────
+
+
+    def _populate_fts_from_content(self) -> None:
+        """Populate FTS from content table using standard INSERT.
+
+        Uses ``INSERT INTO ... SELECT ...`` (standard SQL) instead of the
+        special FTS5 ``'rebuild'`` command, which has been observed to
+        cause database corruption in WAL mode.
+        """
+        if not self._fts_config:
+            return
+        cfg = self._fts_config
+        cols = ", ".join(["rowid", "node_id", *cfg.fts_columns])
+        try:
+            self.db.execute(
+                f"INSERT INTO {cfg.fts_table} ({cols})"
+                f" SELECT {cols} FROM {cfg.table}"
+            )
+        except sqlite3.DatabaseError:
+            logger.warning(
+                "FTS population failed — using LIKE fallback."
+            )
+
+    def _drop_and_repopulate_fts(self) -> None:
+        """Drop FTS table and repopulate from content table.
+
+        Avoids the FTS5 ``'rebuild'`` command which has been observed
+        to cause database corruption in WAL mode.
+        """
+        if not self._fts_config:
+            return
+        cfg = self._fts_config
+
+        # Drop all FTS shadow tables directly (real tables — always safe).
+        for suffix in ("_data", "_idx", "_docsize", "_config", "_content"):
+            try:
+                self.db.execute(
+                    f"DROP TABLE IF EXISTS {cfg.fts_table}{suffix}"
+                )
+            except sqlite3.DatabaseError:
+                pass
+
+        # Try to drop the virtual table entry.
+        try:
+            self.db.execute(f"DROP TABLE IF EXISTS {cfg.fts_table}")
+        except sqlite3.DatabaseError:
+            pass  # xConnect failed — entry still in sqlite_master
+
+        # Recreate the FTS virtual table (calls xCreate, safe even if
+        # a broken entry was left behind by the DROP failure above).
+        columns_def = ", ".join(cfg.fts_columns)
+        try:
+            self.db.execute(
+                f"CREATE VIRTUAL TABLE {cfg.fts_table}"
+                f" USING fts5("
+                f"  node_id UNINDEXED,"
+                f"  {columns_def},"
+                f"  content={cfg.table},"
+                f"  content_rowid=rowid,"
+                f"  tokenize='{cfg.tokenize}'"
+                f")"
+            )
+        except sqlite3.DatabaseError:
+            logger.warning(
+                "Cannot recreate FTS table — using LIKE fallback."
+            )
+            return
+
+        self._populate_fts_from_content()
 
     def _remove_from_fts(self, node_id: str) -> None:
         """Remove node from FTS index using FTS5 'delete' command.

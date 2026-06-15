@@ -380,10 +380,15 @@ def migrate_predicates_fts(db: "SQLiteDB") -> None:
         ")"
     )
 
-    # Rebuild FTS index
+    # Rebuild FTS index (using standard INSERT, not FTS5 rebuild command)
     count = db.execute_one("SELECT COUNT(*) AS cnt FROM predicates_fts")
     if count and count["cnt"] == 0:
-        db.execute("INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')")
+        db.execute(
+            "INSERT INTO predicates_fts"
+            " (rowid, predicate_id, etikedoj, priskriboj, aliases)"
+            " SELECT rowid, predicate_id, etikedoj, priskriboj, aliases"
+            " FROM predicates"
+        )
 
 
 def rebuild_nodes_fts(db: "SQLiteDB") -> None:
@@ -396,6 +401,10 @@ def rebuild_nodes_fts(db: "SQLiteDB") -> None:
 
     Silently skips if ``nodes_fts`` does not exist (e.g. first run before
     ``NodeService`` is ever instantiated).  Safe to call repeatedly.
+
+    Uses standard ``INSERT INTO ... SELECT ...`` instead of the FTS5
+    ``'rebuild'`` command, which has been observed to cause database
+    corruption in WAL mode.
     """
     try:
         db.execute_one("SELECT COUNT(*) AS cnt FROM nodes_fts")
@@ -404,4 +413,7 @@ def rebuild_nodes_fts(db: "SQLiteDB") -> None:
 
     # Silent rebuild — no warning/print to avoid polluting CLI output
     # (e.g. ``Turtle export`` which captures stdout).
-    db.execute("INSERT INTO nodes_fts(nodes_fts) VALUES('rebuild')")
+    db.execute(
+        "INSERT INTO nodes_fts (rowid, node_id, label_text, difin_text)"
+        " SELECT rowid, node_id, label_text, difin_text FROM nodes"
+    )
