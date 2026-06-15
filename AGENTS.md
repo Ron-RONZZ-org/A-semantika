@@ -458,7 +458,10 @@ A semantika nodo kunfandi <fonto> <celo>
 7. FTS5 for full-text search
 8. Import from `A` — never duplicate utilities
 9. `box=BOX_SIMPLE` on all Rich tables
-10. **Rich table wrapping policy**: IDs never wrap (`no_wrap=True`), labels/content wrap (`no_wrap=False`) — set `no_wrap` explicitly on every `add_column()` call
+10. **Rich table wrapping policy**: IDs never wrap (`no_wrap=True`), labels/content wrap (`no_wrap=False`) — set `no_wrap` explicitly on every `add_column()` call.
+    When a cell contains both a label and an ID, use a multiline format
+    (``f\"{label}\\n({id})\"``) with `no_wrap=False` on the column — the label wraps
+    freely while the short ID stays on its own line without wrapping.
 11. UUID primary keys on all tables (except triples — compound PK)
 12. **Error Handling**: Never use bare `except: pass` — always catch specific exceptions and re-raise if not expected
 13. **UUID Ambiguity**: Always catch `AmbiguousUUIDError` separately from generic "not found" errors; propagate to user with clear message
