@@ -5,6 +5,8 @@ Schema, get_db() singleton, init_db().
 from __future__ import annotations
 
 import json
+import logging
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -22,6 +24,8 @@ from A_semantika.data.recenzi_storage import RECENZI_SCHEMA_SQL
 
 if TYPE_CHECKING:
     from A.data.base import SQLiteDB
+
+logger = logging.getLogger(__name__)
 
 _db_instance: SQLiteDB | None = None
 _DATA_DIR: Path | None = None
@@ -178,17 +182,75 @@ def _get_data_dir() -> Path:
 def get_db() -> "SQLiteDB":
     """Return the singleton SQLiteDB instance (WAL mode, FK enforced).
 
+    Runs health check and auto-repair before connecting to detect and
+    recover from database corruption early.  If repair fails, raises
+    ``RuntimeError`` with guidance on restoring from backup.
+
     Initializes schema on first call.
     """
     global _db_instance
-    if _db_instance is None:
-        from A.data.base import SQLiteDB
+    if _db_instance is not None:
+        return _db_instance
 
-        db_path = _get_data_dir() / "semantika.db"
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        _db_instance = SQLiteDB(db_path)
+    from A.data.base import SQLiteDB, health_check, repair_db
+
+    db_path = _get_data_dir() / "semantika.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Health check BEFORE connecting so we can repair WAL/SHM
+    # before SQLite opens the database and possibly crashes.
+    if not health_check(db_path):
+        logger.warning("Database health check failed — attempting repair.")
+        if not repair_db(db_path):
+            _raise_corruption_error(db_path)
+
+    _db_instance = SQLiteDB(db_path)
+
+    try:
         init_db(_db_instance)
+    except sqlite3.DatabaseError:
+        logger.exception("Database initialization failed — database may be corrupted.")
+        _db_instance.close()
+        _db_instance = None
+        # Last-resort repair attempt (e.g. stale WAL from failed init)
+        repair_db(db_path)
+        _raise_corruption_error(db_path)
+
     return _db_instance
+
+
+def _raise_corruption_error(db_path: Path) -> None:
+    """Raise a user-friendly RuntimeError with backup restore guidance."""
+    from A.core.backup import list_backups
+
+    backups = list_backups("A-semantika")
+    if backups:
+        ts = backups[0]["timestamp"]
+        msg = (
+            f"semantika.db estas koruptita kaj ne povas esti riparita.\n"
+            f"Restarigu de sekurkopio: A sekurkopio restaŭrigi semantika {ts}\n"
+            f"\n"
+            f"semantika.db is corrupted and cannot be repaired.\n"
+            f"Restore from backup: A sekurkopio restaŭrigi semantika {ts}\n"
+            f"\n"
+            f"semantika.db est corrompue et ne peut pas être réparée.\n"
+            f"Restaurer depuis la sauvegarde : A sekurkopio restaŭrigi semantika {ts}\n"
+        )
+    else:
+        msg = (
+            f"semantika.db estas koruptita kaj ne povas esti riparita.\n"
+            f"Neniuj sekurkopioj trovitaj. Forigu la dosieron kaj rekomencu:\n"
+            f"  rm -f {db_path}*  # forigas .db, -wal, -shm\n"
+            f"\n"
+            f"semantika.db is corrupted and cannot be repaired.\n"
+            f"No backups found. Delete the file and start fresh:\n"
+            f"  rm -f {db_path}*  # removes .db, -wal, -shm\n"
+            f"\n"
+            f"semantika.db est corrompue et ne peut pas être réparée.\n"
+            f"Aucune sauvegarde trouvée. Supprimez le fichier et recommencez :\n"
+            f"  rm -f {db_path}*  # supprime .db, -wal, -shm\n"
+        )
+    raise RuntimeError(msg)
 
 
 def _seed_default_predicates(db: "SQLiteDB") -> bool:
