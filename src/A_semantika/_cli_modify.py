@@ -6,12 +6,14 @@ Supports both URI and literal triples.
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 from typing import Optional
 
 import typer
 
-from A import error, info, tr_multi
+from A import error, info, tr_multi, warning
 from A_semantika._cli_helpers import (
+    EXT_TO_LANG,
     pick_triple,
     resolve_deprecated,
     validate_type_flags,
@@ -218,12 +220,45 @@ def modifi(
             "Le nouvel objet est un littéral booléen",
         ),
     ),
+    str_dosiero: Optional[str] = typer.Option(
+        None, "--str-dosiero", "-D",
+        help=tr_multi(
+            "Legu dosieron kiel tekstan literal (anstataŭ --nova-objekto)",
+            "Read file as string literal (instead of --nova-objekto)",
+            "Lire le fichier comme un littéral textuel (au lieu de --nova-objekto)",
+        ),
+    ),
+    katex: Optional[str] = typer.Option(
+        None, "--katex", "-K",
+        help=tr_multi(
+            "KaTeX formulo (kun aŭ sen $...$ delimitiloj)",
+            "KaTeX formula (with or without $...$ delimiters)",
+            "Formule KaTeX (avec ou sans délimiteurs $...$)",
+        ),
+    ),
+    kodbloko: Optional[str] = typer.Option(
+        None, "--kodbloko",
+        hidden=True,
+        help=tr_multi(
+            "Malrekomendita: uzu --str-dosiero --kodlingvo <lingvo>",
+            "Deprecated: use --str-dosiero --kodlingvo <language>",
+            "Déprécié : utilisez --str-dosiero --kodlingvo <langue>",
+        ),
+    ),
+    kodlingvo: Optional[str] = typer.Option(
+        None, "--kodlingvo", "-L",
+        help=tr_multi(
+            "Programlingvo por kodbloko el --str-dosiero aŭ --str (ekz. python, qd)",
+            "Programming language for code from --str-dosiero or --str (e.g. python, qd)",
+            "Langage de programmation pour code depuis --str-dosiero ou --str (ex. python, qd)",
+        ),
+    ),
     lingvo: Optional[str] = typer.Option(
         None, "-l", "--lingvo",
         help=tr_multi(
-            "Lingva etikedo por nova objekto (nur kun --str)",
-            "Language tag for new object (only with --str)",
-            "Étiquette de langue pour le nouvel objet (seulement avec --str)",
+            "Lingva etikedo por nova objekto (nur kun --str aŭ --str-dosiero)",
+            "Language tag for new object (only with --str or --str-dosiero)",
+            "Étiquette de langue pour le nouvel objet (seulement avec --str ou --str-dosiero)",
         ),
     ),
     unuo: Optional[str] = typer.Option(
@@ -251,6 +286,11 @@ def modifi(
 
     Por ŝanĝi objekton al ne-URI literal, uzu --str, --int, --float, aŭ --bool.
     Defaŭlte nova objekto estas URI (nod-referenco).
+
+    Por uzi dosieron kiel tekstan literal, uzu --str-dosiero/-D.
+    Por KaTeX formulo, uzu --katex/-K.
+    Por kodbloko kun programlingvo, uzu --str-dosiero/-D kun --kodlingvo/-L,
+    aŭ --str -L por unulinia kodaĵeto.
     """
     # Resolve deprecated aliases
     new_subject = resolve_deprecated(nova_subjekto, new_subject,
@@ -260,13 +300,121 @@ def modifi(
     new_object = resolve_deprecated(nova_objekto, new_object,
                                     "new-object", "nova-objekto")
 
+    # --kodbloko is deprecated: redirect to --str-dosiero with --kodlingvo
+    if kodbloko is not None:
+        warning(tr_multi(
+            "--kodbloko estas malrekomendita, uzu --str-dosiero --kodlingvo <lingvo>",
+            "--kodbloko is deprecated, use --str-dosiero --kodlingvo <language>",
+            "--kodbloko est déprécié, utilisez --str-dosiero --kodlingvo <langue>",
+        ))
+        str_dosiero = kodbloko
+        kodbloko = None  # Fall through to str_dosiero logic
+
+    # ── Object value source: -K, -D, or --nova-objekto (mutually exclusive) ──
+    new_obj_sourced: str | None = None
+    katex_flag = False
+    kodlingvo_val: str | None = kodlingvo
+
+    # --katex and --str-dosiero are mutually exclusive
+    if katex is not None and str_dosiero is not None:
+        error(tr_multi(
+            "Ne eblas uzi samtempe --katex kaj --str-dosiero",
+            "Cannot use --katex and --str-dosiero",
+            "Impossible d'utiliser --katex et --str-dosiero",
+        ))
+        raise typer.Exit(1)
+
+    # --katex and --kodlingvo katex are mutually exclusive
+    if katex is not None and kodlingvo_val == "katex":
+        error(tr_multi(
+            "Ne eblas uzi samtempe --katex kaj --kodlingvo katex",
+            "Cannot use both --katex and --kodlingvo katex",
+            "Impossible d'utiliser --katex et --kodlingvo katex",
+        ))
+        raise typer.Exit(1)
+
+    # --katex and --nova-objekto are mutually exclusive
+    if katex is not None and new_object is not None:
+        error(tr_multi(
+            "Ne eblas uzi samtempe --katex kaj --nova-objekto",
+            "Cannot use --katex and --nova-objekto",
+            "Impossible d'utiliser --katex et --nova-objekto",
+        ))
+        raise typer.Exit(1)
+
+    # --str-dosiero and --nova-objekto are mutually exclusive
+    if str_dosiero is not None and new_object is not None:
+        error(tr_multi(
+            "Ne eblas uzi samtempe --str-dosiero kaj --nova-objekto",
+            "Cannot use --str-dosiero and --nova-objekto",
+            "Impossible d'utiliser --str-dosiero et --nova-objekto",
+        ))
+        raise typer.Exit(1)
+
+    if katex is not None:
+        # --katex: strip $...$ delimiters, store raw formula
+        formula = katex.strip()
+        if formula.startswith("$$") and formula.endswith("$$"):
+            formula = formula[2:-2].strip()
+        elif formula.startswith("$") and formula.endswith("$"):
+            formula = formula[1:-1].strip()
+        if not formula:
+            error(tr_multi(
+                "Malplena KaTeX formulo",
+                "Empty KaTeX formula",
+                "Formule KaTeX vide",
+            ))
+            raise typer.Exit(1)
+        new_obj_sourced = formula
+        katex_flag = True
+        # Do NOT set str_=True — katex is handled as its own type flag
+        # in validate_type_flags(). Setting both would cause a "cannot
+        # combine type flags" error.
+        kodlingvo_val = None  # kodlingvo is irrelevant for KaTeX
+    elif str_dosiero is not None:
+        # --str-dosiero/-D: read file as string literal (implies --str)
+        str_ = True
+        file_path = Path(str_dosiero)
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            error(tr_multi(
+                "Dosiero ne trovita: {f}",
+                "File not found: {f}",
+                "Fichier non trouvé : {f}",
+            ).format(f=str_dosiero))
+            raise typer.Exit(1) from None
+        except IsADirectoryError:
+            error(tr_multi(
+                "{f} estas dosierujo, ne dosiero",
+                "{f} is a directory, not a file",
+                "{f} est un dossier, pas un fichier",
+            ).format(f=str_dosiero))
+            raise typer.Exit(1) from None
+        except UnicodeDecodeError:
+            error(tr_multi(
+                "{f} ne estas valida UTF-8 dosiero",
+                "{f} is not a valid UTF-8 file",
+                "{f} n'est pas un fichier UTF-8 valide",
+            ).format(f=str_dosiero))
+            raise typer.Exit(1) from None
+        new_obj_sourced = content
+        # Auto-detect language from file extension if -L not explicitly given
+        if kodlingvo_val is None:
+            ext = file_path.suffix.lower()
+            kodlingvo_val = EXT_TO_LANG.get(ext)
+
     node_svc = get_node_service()
     pred_svc = get_predicate_service()
     triple_svc = get_triple_service()
 
     # Determine new object type from flags (default URI for backward compat)
     # In modifi mode, --unuo alone keeps the existing arc's type.
-    new_datatype, new_object_type = validate_type_flags(str_, int_, float_, bool_, lingvo, unuo, modifi_mode=True)
+    new_datatype, new_object_type = validate_type_flags(
+        str_, int_, float_, bool_, lingvo, unuo,
+        katex=katex_flag, kodlingvo=kodlingvo_val,
+        modifi_mode=True,
+    )
     old_object_unit: str | None = None
 
     # ── Interactive mode: partial args → show picker ───────────────
@@ -353,7 +501,11 @@ def modifi(
     # ── Resolve new values ────────────────────────────────────────
     new_subj = new_subject or subject
     new_pred = new_predicate or predicate
-    new_obj_raw = new_object if new_object is not None else old_object_value
+    new_obj_raw = (
+        new_obj_sourced if new_obj_sourced is not None
+        else new_object if new_object is not None
+        else old_object_value
+    )
 
     # Resolve new subject UUID
     new_subj_uuid = _resolve_subject_id(node_svc, new_subj, label="nova subjekto")

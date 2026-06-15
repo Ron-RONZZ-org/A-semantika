@@ -4,6 +4,8 @@ Extracted from test_edge_cases.py — TestTripleModifi + TestTripleModifiEdgeCas
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from typer.testing import CliRunner
 
 from A_semantika.cli import app
@@ -287,3 +289,245 @@ class TestModifiUnuo:
             "--int", "--jes",
         ])
         assert result2.exit_code == 0
+
+
+class TestModifiStrDosiero:
+    """Test modifi with --str-dosiero/-D."""
+
+    def test_modifi_str_dosiero(self, runner: CliRunner, tmp_path: Path):
+        """modifi using -D to read file as new object value."""
+        subj_uuid = "b1000000-0000-0000-0000-000000000001"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::DosSubj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:comment", "-e", "eo::komento", "--jes"])
+
+        runner.invoke(app, [
+            "aldoni", subj_uuid, "rdfs:comment", "old text",
+            "--str", "--jes",
+        ])
+
+        # Create a temp file
+        f = tmp_path / "test.txt"
+        f.write_text("new file content", encoding="utf-8")
+
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "rdfs:comment", "old text",
+            "-D", str(f),
+            "--jes",
+        ])
+        assert result.exit_code == 0, f"modifi -D failed: {result.stdout}"
+        assert "modifita" in result.stdout or "modified" in result.stdout
+
+        # Verify the new object value via serci
+        result = runner.invoke(app, ["serci", "new file content"])
+        assert result.exit_code == 0
+        assert "new file content" in result.stdout
+
+    def test_modifi_str_dosiero_with_kodlingvo(self, runner: CliRunner, tmp_path: Path):
+        """modifi using -D -L to set a code block with language."""
+        subj_uuid = "b2000000-0000-0000-0000-000000000002"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::KodSubj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:comment", "-e", "eo::komento", "--jes"])
+
+        runner.invoke(app, [
+            "aldoni", subj_uuid, "rdfs:comment", "old",
+            "--str", "--jes",
+        ])
+
+        f = tmp_path / "script.py"
+        f.write_text("print('hello')", encoding="utf-8")
+
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "rdfs:comment", "old",
+            "-D", str(f), "-L", "python",
+            "--jes",
+        ])
+        assert result.exit_code == 0, f"modifi -D -L failed: {result.stdout}"
+        assert "modifita" in result.stdout or "modified" in result.stdout
+
+    def test_modifi_str_dosiero_file_not_found(self, runner: CliRunner):
+        """modifi -D with nonexistent file shows error."""
+        subj_uuid = "b3000000-0000-0000-0000-000000000003"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::MissSubj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:comment", "-e", "eo::komento", "--jes"])
+
+        runner.invoke(app, [
+            "aldoni", subj_uuid, "rdfs:comment", "old",
+            "--str", "--jes",
+        ])
+
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "rdfs:comment", "old",
+            "-D", "/nonexistent/path.txt",
+            "--jes",
+        ])
+        assert result.exit_code == 1
+        assert "ne trovita" in result.stdout or "not found" in result.stdout
+
+    def test_modifi_str_dosiero_extension_auto_detect(self, runner: CliRunner, tmp_path: Path):
+        """modifi -D without -L auto-detects language from extension."""
+        subj_uuid = "b4000000-0000-0000-0000-000000000004"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::AutoSubj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:comment", "-e", "eo::komento", "--jes"])
+
+        runner.invoke(app, [
+            "aldoni", subj_uuid, "rdfs:comment", "old",
+            "--str", "--jes",
+        ])
+
+        f = tmp_path / "script.js"
+        f.write_text("console.log('hi')", encoding="utf-8")
+
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "rdfs:comment", "old",
+            "-D", str(f),
+            "--jes",
+        ])
+        assert result.exit_code == 0, f"modifi -D auto-detect failed: {result.stdout}"
+        assert "modifita" in result.stdout or "modified" in result.stdout
+
+
+class TestModifiKatex:
+    """Test modifi with --katex/-K."""
+
+    def test_modifi_katex(self, runner: CliRunner):
+        """modifi using -K to set a KaTeX formula."""
+        subj_uuid = "c1000000-0000-0000-0000-000000000001"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::KatexSubj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:comment", "-e", "eo::komento", "--jes"])
+
+        runner.invoke(app, [
+            "aldoni", subj_uuid, "rdfs:comment", "old",
+            "--str", "--jes",
+        ])
+
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "rdfs:comment", "old",
+            "-K", "E = mc^2",
+            "--jes",
+        ])
+        assert result.exit_code == 0, f"modifi -K failed: {result.stdout}"
+        assert "modifita" in result.stdout or "modified" in result.stdout
+
+    def test_modifi_katex_with_dollar_delimiters(self, runner: CliRunner):
+        """modifi -K strips $...$ delimiters."""
+        subj_uuid = "c2000000-0000-0000-0000-000000000002"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::KatexDolSubj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:comment", "-e", "eo::komento", "--jes"])
+
+        runner.invoke(app, [
+            "aldoni", subj_uuid, "rdfs:comment", "old",
+            "--str", "--jes",
+        ])
+
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "rdfs:comment", "old",
+            "-K", "$\\frac{a}{b}$",
+            "--jes",
+        ])
+        assert result.exit_code == 0, f"modifi -K $ failed: {result.stdout}"
+        assert "modifita" in result.stdout or "modified" in result.stdout
+
+    def test_modifi_katex_empty_formula(self, runner: CliRunner):
+        """modifi -K with empty formula shows error."""
+        subj_uuid = "c3000000-0000-0000-0000-000000000003"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::KatexEmpSubj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:comment", "-e", "eo::komento", "--jes"])
+
+        runner.invoke(app, [
+            "aldoni", subj_uuid, "rdfs:comment", "old",
+            "--str", "--jes",
+        ])
+
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "rdfs:comment", "old",
+            "-K", "$$",
+            "--jes",
+        ])
+        assert result.exit_code == 1
+        assert "Malplena" in result.stdout or "Empty" in result.stdout
+
+
+class TestModifiFlagsMutualExclusion:
+    """Test mutual exclusion of -K, -D, --nova-objekto."""
+
+    def test_modifi_katex_and_str_dosiero_mutual_exclusion(self, runner: CliRunner, tmp_path: Path):
+        """-K and -D cannot be used together."""
+        subj_uuid = "d1000000-0000-0000-0000-000000000001"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::MutSubj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:comment", "-e", "eo::komento", "--jes"])
+
+        runner.invoke(app, [
+            "aldoni", subj_uuid, "rdfs:comment", "old",
+            "--str", "--jes",
+        ])
+
+        f = tmp_path / "test.txt"
+        f.write_text("content", encoding="utf-8")
+
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "rdfs:comment", "old",
+            "-K", "E=mc^2", "-D", str(f),
+            "--jes",
+        ])
+        assert result.exit_code == 1
+        assert "Ne eblas" in result.stdout or "Cannot" in result.stdout
+
+    def test_modifi_katex_and_nova_objekto_mutual_exclusion(self, runner: CliRunner):
+        """-K and --nova-objekto cannot be used together."""
+        subj_uuid = "d2000000-0000-0000-0000-000000000002"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::MutSubj2", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:comment", "-e", "eo::komento", "--jes"])
+
+        runner.invoke(app, [
+            "aldoni", subj_uuid, "rdfs:comment", "old",
+            "--str", "--jes",
+        ])
+
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "rdfs:comment", "old",
+            "-K", "E=mc^2", "--nova-objekto", "newval",
+            "--jes",
+        ])
+        assert result.exit_code == 1
+        assert "Ne eblas" in result.stdout or "Cannot" in result.stdout
+
+    def test_modifi_str_dosiero_and_nova_objekto_mutual_exclusion(self, runner: CliRunner, tmp_path: Path):
+        """-D and --nova-objekto cannot be used together."""
+        subj_uuid = "d3000000-0000-0000-0000-000000000003"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::MutSubj3", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:comment", "-e", "eo::komento", "--jes"])
+
+        runner.invoke(app, [
+            "aldoni", subj_uuid, "rdfs:comment", "old",
+            "--str", "--jes",
+        ])
+
+        f = tmp_path / "test.txt"
+        f.write_text("content", encoding="utf-8")
+
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "rdfs:comment", "old",
+            "-D", str(f), "--nova-objekto", "newval",
+            "--jes",
+        ])
+        assert result.exit_code == 1
+        assert "Ne eblas" in result.stdout or "Cannot" in result.stdout
+
+    def test_modifi_katex_and_kodlingvo_katex_mutual_exclusion(self, runner: CliRunner):
+        """-K and --kodlingvo katex cannot be used together."""
+        subj_uuid = "d4000000-0000-0000-0000-000000000004"
+        runner.invoke(app, ["nodo", "aldoni", subj_uuid, "-e", "eo::MutSubj4", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:comment", "-e", "eo::komento", "--jes"])
+
+        runner.invoke(app, [
+            "aldoni", subj_uuid, "rdfs:comment", "old",
+            "--str", "--jes",
+        ])
+
+        result = runner.invoke(app, [
+            "modifi", subj_uuid, "rdfs:comment", "old",
+            "-K", "E=mc^2", "-L", "katex",
+            "--jes",
+        ])
+        assert result.exit_code == 1
+        assert "Ne eblas" in result.stdout or "Cannot" in result.stdout

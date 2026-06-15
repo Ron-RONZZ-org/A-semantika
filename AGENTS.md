@@ -275,6 +275,17 @@ A semantika nodo aldoni [UUID]
 A semantika modifi <subject> [<predicate> [<object>]]
   [--nova-subjekto / -ns]  [--nova-predikato / -np]  [--nova-objekto / -no]
   Deprecated: --new-subject / --new-predicate / --new-object (hidden aliases)
+  [-s / --str]                       # New object is a string literal
+  [-i / --int]                       # New object is an integer literal
+  [-f / --float]                     # New object is a float literal
+  [-b / --bool]                      # New object is a boolean literal
+  [-l / --lingvo TAG]                # Language tag for string literals
+  [-u / --unuo UUID]                 # Unit for numeric values
+  [-K / --katex FORMULO]             # KaTeX formula (with/without $...$)
+  [-D / --str-dosiero PATH]          # Read file as string literal (instead of --nova-objekto)
+  [-L / --kodlingvo LANG]            # Programming language (python, js, html, katex, etc.)
+                                     # Auto-detected from file extension if -D used without -L
+  [--kodbloko PATH]                  # Deprecated: use -D -L instead
   [-y / --jes]
   If predicate/object omitted → interactive picker via partial label search
 
