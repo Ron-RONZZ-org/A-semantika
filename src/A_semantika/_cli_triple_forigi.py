@@ -9,7 +9,7 @@ from typing import Optional
 import typer
 
 from A import error, info, tr_multi
-from A_semantika._cli_helpers import pick_triple, pick_triples
+from A_semantika._triple_picker import pick_triple, pick_triples
 from A_semantika._cli_modify_preview import _find_triple_by_spo
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import resolve_node_label, resolve_predicate_label

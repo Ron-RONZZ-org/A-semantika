@@ -35,8 +35,10 @@ src/A_semantika/
 ├── cli.py                 # Typer app with 6 subcommand groups (recenzi + provo)
 ├── service.py             # NodeService, PredicateService, PredicateGroupService, TripleService
 ├── _wikidata_helper.py    # Wikidata API adapter (validation, search, metadata fetch)
-├── _cli_helpers.py        # Shared CLI helpers: pick_triple, type flag validation, LANG_TO_MIME + EXT_TO_LANG (I#89)
-├── _cli_modify.py         # Root `modifi` command (Issue #8 R3 + Issue #10 EO)
+├── _cli_helpers.py        # Shared CLI helpers: type flag validation, LANG_TO_MIME + EXT_TO_LANG (I#89), deprecated re-exports
+├── _cli_modify.py         # Root `modifi` command (Issue #8 R3 + Issue #10 EO + Issue #97 unified partial match)
+├── _modify_helpers.py     # Modifi helper functions: resolve_subject_id, resolve_new_object_value, execute_modification (Issue #97)
+├── _triple_picker.py      # Triple pick/multi-pick + shared resolve_triple() (Issue #97)
 ├── _cli_nodo.py           # Nodo subcommand CLI (ls, vidi, serci)
 ├── _cli_nodo_aldoni.py    # Nodo aldoni: auto-ID (I#74) + file attachment flags (I#75)
 ├── _cli_nodo_crud.py      # Nodo CRUD subcommands: modifi (aldoni extracted)
@@ -291,7 +293,10 @@ A semantika modifi <subject> [<predicate> [<object>]]
                                      # Auto-detected from file extension if -D used without -L
   [--kodbloko PATH]                  # Deprecated: use -D -L instead
   [-y / --jes]
-  If predicate/object omitted → interactive picker via partial label search
+  All three fields support partial label matching (UUID prefix, FTS5
+  label, LIKE).  Use "" as wildcard for any field (e.g. `modifi S "" ""`).
+  Single result → auto-proceed.  Multiple results → interactive picker.
+  No match → error "Neniuj kongruaj arkoj."
 
 A semantika serci [--subjekto LABEL] [--predikato LABEL] [--objekto LABEL]
   Deprecated: --subject / --predicate / --object (hidden aliases)

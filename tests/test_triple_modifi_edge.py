@@ -53,7 +53,9 @@ class TestTripleModifiEdgeCases:
             "--jes",
         ])
         assert result.exit_code == 1
-        assert "ne trovita" in result.stdout or "not found" in result.stdout
+        # Unified partial-match resolution reports "no matching arcs"
+        # rather than "subject not found" (Issue #97).
+        assert "kongruaj" in result.stdout
 
     def test_modifi_string_literal_direct(self, runner: CliRunner):
         """modifi a string-literal triple in direct mode should work."""
@@ -158,7 +160,8 @@ class TestTripleModifiEdgeCases:
             "--jes",
         ])
         assert result.exit_code == 1
-        assert "ne trovita" in result.stdout or "not found" in result.stdout
+        # Unified partial-match reports "no matching arcs" (Issue #97).
+        assert "kongruaj" in result.stdout or "Neniuj" in result.stdout
 
 
 class TestConfirmTriple:
@@ -531,3 +534,57 @@ class TestModifiFlagsMutualExclusion:
         ])
         assert result.exit_code == 1
         assert "Ne eblas" in result.stdout or "Cannot" in result.stdout
+
+
+class TestModifiPartialMatch:
+    """Tests for unified partial-match modifi (Issue #97)."""
+
+    def test_modifi_partial_label_single_result(self, runner: CliRunner):
+        """Partial label match on subject + predicate: single result -> auto-proceed."""
+        subj = "a2000000-0000-0000-0000-000000000002"
+        obj = "a3000000-0000-0000-0000-000000000003"
+        new_obj = "a4000000-0000-0000-0000-000000000004"
+        runner.invoke(app, ["nodo", "aldoni", subj, "-e", "eo::PartialSubj", "--jes"])
+        runner.invoke(app, ["nodo", "aldoni", obj, "-e", "eo::PartialObj", "--jes"])
+        runner.invoke(app, ["nodo", "aldoni", new_obj, "-e", "eo::NewPartialObj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+
+        runner.invoke(app, ["aldoni", subj[:8], "rdf:type", obj[:8], "--jes"])
+
+        # Use partial label for subject (FTS5 matches "PartialSubj")
+        result = runner.invoke(app, [
+            "modifi", "Part", "rdf", obj[:8],
+            "--nova-objekto", new_obj[:8],
+            "--jes",
+        ])
+        assert result.exit_code == 0, f"modifi failed: {result.stdout}"
+        assert "modifita" in result.stdout or "modified" in result.stdout
+
+    def test_modifi_wildcard_predicate_and_object(self, runner: CliRunner):
+        """Empty string wildcard for predicate and object: \"\" \"\"."""
+        subj = "b1000000-0000-0000-0000-000000000001"
+        obj = "b2000000-0000-0000-0000-000000000002"
+        runner.invoke(app, ["nodo", "aldoni", subj, "-e", "eo::WildSubj", "--jes"])
+        runner.invoke(app, ["nodo", "aldoni", obj, "-e", "eo::WildObj", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdf:type", "-e", "eo::tipo", "--jes"])
+        runner.invoke(app, ["predikato", "aldoni", "rdfs:comment", "-e", "eo::komento", "--jes"])
+        runner.invoke(app, ["aldoni", subj[:8], "rdf:type", obj[:8], "--jes"])
+
+        # "" "" as predicate + object wildcard should resolve and auto-proceed
+        # since there's only one arc for this subject.
+        result = runner.invoke(app, [
+            "modifi", subj[:8], "", "",
+            "-np", "rdfs:comment",
+            "--jes",
+        ])
+        assert result.exit_code == 0, f"modifi failed: {result.stdout}"
+        assert "modifita" in result.stdout or "modified" in result.stdout
+
+    def test_modifi_no_match_error(self, runner: CliRunner):
+        """No matching arcs should produce 'Neniuj kongruaj arkoj' error."""
+        result = runner.invoke(app, [
+            "modifi", "NONEXISTENT_SUBJ_ZZZ", "rdf:type", "NONEXISTENT_OBJ_ZZZ",
+            "--jes",
+        ])
+        assert result.exit_code == 1
+        assert "kongruaj" in result.stdout or "Neniuj" in result.stdout

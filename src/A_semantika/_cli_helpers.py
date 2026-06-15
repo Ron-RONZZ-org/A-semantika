@@ -24,6 +24,8 @@ from A_semantika._preview import resolve_node_label, resolve_predicate_label
 from A_semantika._preview_triple import format_tipo
 from A_semantika._triple_search import search_triples_by_labels
 from A_semantika._triple_service import DuplicateTripleError, TripleService
+# Backward-compat re-exports (symbols now live in dedicated modules)
+from A_semantika._triple_picker import pick_triple, pick_triples  # noqa: F401
 from A_semantika.data.storage import KATEX_DATATYPE
 
 
@@ -245,134 +247,6 @@ def resolve_deprecated(new_val: object, old_val: object,
     return new_val
 
 
-def pick_triple(
-    triple_svc: TripleService,
-    node_svc: NodeService,
-    pred_svc: PredicateService,
-    subject: str | None = None,
-    predicate: str | None = None,
-    object: str | None = None,  # noqa: A002
-) -> dict | None:
-    """Show an interactive numbered picker for triples matching the given
-    criteria (partial labels are resolved).  Returns the selected triple
-    dict, or ``None`` if the user cancels or no matches exist.
-    """
-    results = search_triples_by_labels(
-        triple_svc=triple_svc,
-        node_svc=node_svc,
-        pred_svc=pred_svc,
-        subject=subject,
-        predicate=predicate,
-        object=object,
-        limit=100,
-    )
-    if not results:
-        error(tr_multi(
-            "Neniuj kongruaj arkoj.",
-            "No matching arcs found.",
-            "Aucun arc correspondant trouvé.",
-        ))
-        return None
-
-    result = select_candidate(
-        results,
-        columns=[
-            {"header": tr_multi("Subjekto", "Subject", "Sujet")},
-            {"header": tr_multi("Predikato", "Predicate", "Predicat")},
-            {"header": tr_multi("Objekto", "Object", "Objet")},
-            {"header": tr_multi("Tipo", "Type", "Type")},
-        ],
-        row_formatter=lambda t, i: [
-            resolve_node_label(node_svc, t["subject_uuid"]),
-            resolve_predicate_label(pred_svc, t["predicate_id"]),
-            (
-                resolve_node_label(node_svc, t["object_value"])
-                if t["object_type"] == "uri"
-                else t["object_value"]
-            ),
-            format_tipo(
-                t.get("object_type", "uri"),
-                t.get("object_datatype"),
-                t.get("object_lang"),
-            ),
-        ],
-        prompt_text=tr_multi(
-            "Elektu numeron de arko por forigi/modifi (aŭ Enter por nuligi)",
-            "Select arc number to delete/modify (or Enter to cancel)",
-            "Choisissez le numéro de l'arc à supprimer/modifier (ou Entrée pour annuler)",
-        ),
-    )
-    if result is None:
-        return None
-    return result[1]  # The selected triple dict
-
-
-def pick_triples(
-    triple_svc: TripleService,
-    node_svc: NodeService,
-    pred_svc: PredicateService,
-    subject: str | None = None,
-    predicate: str | None = None,
-    object: str | None = None,  # noqa: A002
-) -> list[dict] | None:
-    """Show an interactive multi-select picker for triples.
-
-    Same search semantics as :func:`pick_triple`, but the user may enter
-    space-separated numbers to select multiple arcs at once.
-
-    Returns:
-        List of selected triple dicts, or ``None`` if cancelled / no matches.
-    """
-    results = search_triples_by_labels(
-        triple_svc=triple_svc,
-        node_svc=node_svc,
-        pred_svc=pred_svc,
-        subject=subject,
-        predicate=predicate,
-        object=object,
-        limit=100,
-    )
-    if not results:
-        error(tr_multi(
-            "Neniuj kongruaj arkoj.",
-            "No matching arcs found.",
-            "Aucun arc correspondant trouvé.",
-        ))
-        return None
-
-    selections = select_candidates(
-        results,
-        columns=[
-            {"header": tr_multi("Subjekto", "Subject", "Sujet")},
-            {"header": tr_multi("Predikato", "Predicate", "Predicat")},
-            {"header": tr_multi("Objekto", "Object", "Objet")},
-            {"header": tr_multi("Tipo", "Type", "Type")},
-        ],
-        row_formatter=lambda t, i: [
-            resolve_node_label(node_svc, t["subject_uuid"]),
-            resolve_predicate_label(pred_svc, t["predicate_id"]),
-            (
-                resolve_node_label(node_svc, t["object_value"])
-                if t["object_type"] == "uri"
-                else t["object_value"]
-            ),
-            format_tipo(
-                t.get("object_type", "uri"),
-                t.get("object_datatype"),
-                t.get("object_lang"),
-            ),
-        ],
-        prompt_text=tr_multi(
-            "Elektu arko-numerojn por forigi (spacigitaj, aŭ Enter por nuligi)",
-            "Select arc numbers to delete (space-separated, or Enter to cancel)",
-            "Choisissez les numéros d'arcs à supprimer (séparés par des espaces, ou Entrée pour annuler)",
-        ),
-    )
-    if selections is None:
-        return None
-    return [item for _, item in selections]
-
-
 def count_type_flags(
     str_: bool, int_: bool, float_: bool, bool_: bool,
     katex: bool = False, kodbloko: bool = False,
@@ -498,94 +372,13 @@ def ensure_predicate(pred_svc: "PredicateService", predicate_id: str, label_eo: 
             raise
 
 
-# ── Modify preview helpers ──────────────────────────────────────────────
-
-
-def build_modify_preview(
-    node_svc,
-    pred_svc,
-    subject_uuid: str,
-    predicate: str,
-    object_value: str,
-    object_type: str,
-    object_lang: str | None,
-    new_subj_uuid: str,
-    new_pred: str,
-    new_obj_value: str,
-    new_obj_type: str,
-    new_obj_lang: str | None,
-) -> Table:
-    """Build a preview table for modifi showing old → new values.
-
-    .. deprecated::
-       Use :func:`A_semantika._cli_modify_preview.build_modify_preview` instead.
-
-    Handles both URI and literal object types.
-    """
-    from A_semantika._cli_modify_preview import build_modify_preview as _build
-    return _build(
-        node_svc, pred_svc,
-        subject_uuid, predicate, object_value, object_type, object_lang,
-        new_subj_uuid, new_pred, new_obj_value, new_obj_type, new_obj_lang,
-    )
-
-
-def _find_triple_by_spo(
-    triple_svc, node_svc, subject_uuid: str, predicate: str, object_raw: str,
-) -> dict | None:
-    """Find an existing triple by subject/predicate/object, trying URI then literal.
-
-    .. deprecated::
-       Use :func:`A_semantika._cli_modify_preview._find_triple_by_spo` instead.
-
-    """
-    from A_semantika._cli_modify_preview import _find_triple_by_spo as _find
-    return _find(triple_svc, node_svc, subject_uuid, predicate, object_raw)
-
-
-def find_triple_direct(
-    triple_svc, node_svc, subject_uuid: str, predicate: str, object: str,
-) -> tuple[dict | None, str, str | None]:
-    """Find an existing triple in direct mode (full SPO specified).
-
-    .. deprecated::
-       Use :func:`A_semantika._cli_modify_preview.find_triple_direct` instead.
-
-    """
-    from A_semantika._cli_modify_preview import find_triple_direct as _find
-    return _find(triple_svc, node_svc, subject_uuid, predicate, object)
-
-
-# ── Arc resolution helpers (Issue #35/R12) ─────────────────────────────
-
-def resolve_arc_targets(
-    node_svc: NodeService,
-    tipo: list[str] | None,
-    superklaso: list[str] | None,
-    ne: list[str] | None,
-    invers: list[str] | None,
-) -> tuple[list[tuple[str, str]], list[str]]:
-    """Resolve arc target node IDs from CLI shortcut flags.
-
-    .. deprecated::
-       Use :func:`A_semantika._cli_arc_helpers.resolve_arc_targets` instead.
-
-    """
-    from A_semantika._cli_arc_helpers import resolve_arc_targets as _resolve
-    return _resolve(node_svc, tipo, superklaso, ne, invers)
-
-
-def create_node_arcs(
-    triple_svc: TripleService,
-    node_svc: NodeService,
-    node_id_val: str,
-    arcs: list[dict],
-) -> None:
-    """Create arcs for a node, rolling back on failure.
-
-    .. deprecated::
-       Use :func:`A_semantika._cli_arc_helpers.create_node_arcs` instead.
-
-    """
-    from A_semantika._cli_arc_helpers import create_node_arcs as _create
-    return _create(triple_svc, node_svc, node_id_val, arcs)
+# ── Backward-compat re-exports (deprecated wrappers removed) ──────────
+from A_semantika._cli_arc_helpers import (  # noqa: F401
+    create_node_arcs,
+    resolve_arc_targets,
+)
+from A_semantika._cli_modify_preview import (  # noqa: F401
+    _find_triple_by_spo,
+    build_modify_preview,
+    find_triple_direct,
+)

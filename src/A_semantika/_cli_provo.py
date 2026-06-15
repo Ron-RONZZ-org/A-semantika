@@ -13,7 +13,7 @@ from typing import Optional
 import typer
 
 from A import error, info, tr_multi
-from A_semantika._cli_helpers import pick_triple
+from A_semantika._triple_picker import pick_triple
 from A_semantika._node_helpers import truncate_uuid
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
 from A_semantika._preview_provo import build_proof_confirm_table, build_proof_list_table

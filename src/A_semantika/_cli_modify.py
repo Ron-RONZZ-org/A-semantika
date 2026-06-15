@@ -5,24 +5,25 @@ Supports both URI and literal triples.
 """
 from __future__ import annotations
 
-import sqlite3
-from pathlib import Path
 from typing import Optional
 
 import typer
 
 from A import error, info, tr_multi, warning
 from A_semantika._cli_helpers import (
-    EXT_TO_LANG,
-    pick_triple,
     resolve_deprecated,
     validate_type_flags,
 )
-from A_semantika._cli_modify_preview import build_modify_preview, find_triple_direct
+from A_semantika._cli_modify_preview import build_modify_preview
+from A_semantika._modify_helpers import (
+    execute_modification,
+    format_new_object_display,
+    resolve_new_object_source,
+    resolve_new_object_value,
+    resolve_subject_id,
+)
 from A_semantika._node_helpers import truncate_uuid
-from A_semantika._node_service import AmbiguousUUIDError
-from A_semantika._predicate_service import AmbiguousPredicateError
-from A_semantika._preview import resolve_node_label, resolve_predicate_label
+from A_semantika._triple_picker import resolve_triple
 from A_semantika._unit_errors import UnitNotFoundError
 from A_semantika.service import (
     get_node_service,
@@ -30,84 +31,6 @@ from A_semantika.service import (
     get_triple_service,
     get_unit_service,
 )
-
-
-# ── Shared helpers ──────────────────────────────────────────────────────
-
-
-def _resolve_subject_id(
-    node_svc: "NodeService",
-    text: str,
-    label: str = "subjekto",
-) -> str:
-    """Resolve a subject text to a node UUID, or exit on error.
-
-    Args:
-        node_svc: NodeService instance.
-        text: Subject text (UUID prefix or label).
-        label: Context label for error messages (e.g. "nova subjekto").
-
-    Returns:
-        Resolved node UUID.
-
-    Raises:
-        ``typer.Exit(1)`` via ``error()`` if ambiguous or not found.
-    """
-    try:
-        node = node_svc.resolve_node_id_prefix(text)
-    except AmbiguousUUIDError as e:
-        error(tr_multi(
-            f"Ambigua {label}-prefikso: {{e}}",
-            f"Ambiguous {label} prefix: {{e}}",
-            f"Préfixe {label} ambigu : {{e}}",
-        ).format(e=str(e)))
-        raise typer.Exit(1) from e
-    if not node:
-        error(tr_multi(
-            f"{label.capitalize()} ne trovita: {{s}}",
-            f"{label.capitalize()} not found: {{s}}",
-            f"{label.capitalize()} non trouvé : {{s}}",
-        ).format(s=text))
-        raise typer.Exit(1)
-    return node["node_id"]
-
-
-def _resolve_new_object_value(
-    node_svc: "NodeService",
-    new_object_type: str,
-    new_obj_raw: str | None,
-    old_object_value: str,
-    lingvo: str | None,
-    str_: bool,
-) -> tuple[str, str | None]:
-    """Resolve the new object value for a modifi operation.
-
-    For URI types, resolves the text to a node UUID.
-    For literal types, returns the raw value as-is.
-
-    Args:
-        node_svc: NodeService instance.
-        new_object_type: Target object type ("uri" or "literal").
-        new_obj_raw: Raw new object value from CLI.
-        old_object_value: Current object value (fallback if new is None).
-        lingvo: Language tag (only for string literals).
-        str_: Whether the new object is a string literal.
-
-    Returns:
-        Tuple of (resolved_value, object_lang).
-    """
-    new_obj_value: str = new_obj_raw if new_obj_raw is not None else old_object_value
-    new_obj_lang: str | None = lingvo if str_ else None
-
-    if new_object_type == "uri":
-        new_obj_raw_clean = new_obj_raw if new_obj_raw is not None else old_object_value
-        obj_node = _resolve_subject_id(
-            node_svc, new_obj_raw_clean, label="nova objekto"
-        )
-        new_obj_value = obj_node
-
-    return new_obj_value, new_obj_lang
-
 
 # ── Main command ────────────────────────────────────────────────────────
 
@@ -126,18 +49,18 @@ def modifi(
         None,
         metavar="PREDIKATO",
         help=tr_multi(
-            "Nuna predikato ID aŭ parta nomo (malplena = elekti)",
-            "Current predicate ID or partial name (empty = pick)",
-            "ID du prédicat actuel ou nom partiel (vide = choisir)",
+            "Nuna predikato ID aŭ parta nomo (malplena = elekti; \\\"\\\" = wildcard)",
+            "Current predicate ID or partial name (empty = pick; \\\"\\\" = wildcard)",
+            "ID du prédicat actuel ou nom partiel (vide = choisir ; \\\"\\\" = wildcard)",
         ),
     ),
     object: Optional[str] = typer.Argument(  # noqa: A002
         None,
         metavar="OBJEKTO",
         help=tr_multi(
-            "Nuna objekta valoro (malplena = elekti)",
-            "Current object value (empty = pick)",
-            "Valeur actuelle de l'objet (vide = choisir)",
+            "Nuna objekta valoro (malplena = elekti; \\\"\\\" = wildcard)",
+            "Current object value (empty = pick; \\\"\\\" = wildcard)",
+            "Valeur actuelle de l'objet (vide = choisir ; \\\"\\\" = wildcard)",
         ),
     ),
     nova_subjekto: Optional[str] = typer.Option(
@@ -280,9 +203,10 @@ def modifi(
 ) -> None:
     """Modifi arkon (forigi + re-aldoni).
 
-    Identigu arkon per nunaj valoroj, specifu novajn valorojn per --new-* flagoj.
+    Identigu arkon per nunaj valoroj (subjekto, predikato, objekto —
+    ĉiuj subtenas partajn etikedojn).  Specifu novajn valorojn per --new-* flagoj.
     Se oni ne specifas predikaton aŭ objekton, aperas interaktiva listo
-    por elekti la arkon.
+    por elekti la arkon.  Uzu \\"\\" kiel wildcard por ajna kampo.
 
     Por ŝanĝi objekton al ne-URI literal, uzu --str, --int, --float, aŭ --bool.
     Defaŭlte nova objekto estas URI (nod-referenco).
@@ -308,101 +232,11 @@ def modifi(
             "--kodbloko est déprécié, utilisez --str-dosiero --kodlingvo <langue>",
         ))
         str_dosiero = kodbloko
-        kodbloko = None  # Fall through to str_dosiero logic
 
-    # ── Object value source: -K, -D, or --nova-objekto (mutually exclusive) ──
-    new_obj_sourced: str | None = None
-    katex_flag = False
-    kodlingvo_val: str | None = kodlingvo
-
-    # --katex and --str-dosiero are mutually exclusive
-    if katex is not None and str_dosiero is not None:
-        error(tr_multi(
-            "Ne eblas uzi samtempe --katex kaj --str-dosiero",
-            "Cannot use --katex and --str-dosiero",
-            "Impossible d'utiliser --katex et --str-dosiero",
-        ))
-        raise typer.Exit(1)
-
-    # --katex and --kodlingvo katex are mutually exclusive
-    if katex is not None and kodlingvo_val == "katex":
-        error(tr_multi(
-            "Ne eblas uzi samtempe --katex kaj --kodlingvo katex",
-            "Cannot use both --katex and --kodlingvo katex",
-            "Impossible d'utiliser --katex et --kodlingvo katex",
-        ))
-        raise typer.Exit(1)
-
-    # --katex and --nova-objekto are mutually exclusive
-    if katex is not None and new_object is not None:
-        error(tr_multi(
-            "Ne eblas uzi samtempe --katex kaj --nova-objekto",
-            "Cannot use --katex and --nova-objekto",
-            "Impossible d'utiliser --katex et --nova-objekto",
-        ))
-        raise typer.Exit(1)
-
-    # --str-dosiero and --nova-objekto are mutually exclusive
-    if str_dosiero is not None and new_object is not None:
-        error(tr_multi(
-            "Ne eblas uzi samtempe --str-dosiero kaj --nova-objekto",
-            "Cannot use --str-dosiero and --nova-objekto",
-            "Impossible d'utiliser --str-dosiero et --nova-objekto",
-        ))
-        raise typer.Exit(1)
-
-    if katex is not None:
-        # --katex: strip $...$ delimiters, store raw formula
-        formula = katex.strip()
-        if formula.startswith("$$") and formula.endswith("$$"):
-            formula = formula[2:-2].strip()
-        elif formula.startswith("$") and formula.endswith("$"):
-            formula = formula[1:-1].strip()
-        if not formula:
-            error(tr_multi(
-                "Malplena KaTeX formulo",
-                "Empty KaTeX formula",
-                "Formule KaTeX vide",
-            ))
-            raise typer.Exit(1)
-        new_obj_sourced = formula
-        katex_flag = True
-        # Do NOT set str_=True — katex is handled as its own type flag
-        # in validate_type_flags(). Setting both would cause a "cannot
-        # combine type flags" error.
-        kodlingvo_val = None  # kodlingvo is irrelevant for KaTeX
-    elif str_dosiero is not None:
-        # --str-dosiero/-D: read file as string literal (implies --str)
-        str_ = True
-        file_path = Path(str_dosiero)
-        try:
-            content = file_path.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            error(tr_multi(
-                "Dosiero ne trovita: {f}",
-                "File not found: {f}",
-                "Fichier non trouvé : {f}",
-            ).format(f=str_dosiero))
-            raise typer.Exit(1) from None
-        except IsADirectoryError:
-            error(tr_multi(
-                "{f} estas dosierujo, ne dosiero",
-                "{f} is a directory, not a file",
-                "{f} est un dossier, pas un fichier",
-            ).format(f=str_dosiero))
-            raise typer.Exit(1) from None
-        except UnicodeDecodeError:
-            error(tr_multi(
-                "{f} ne estas valida UTF-8 dosiero",
-                "{f} is not a valid UTF-8 file",
-                "{f} n'est pas un fichier UTF-8 valide",
-            ).format(f=str_dosiero))
-            raise typer.Exit(1) from None
-        new_obj_sourced = content
-        # Auto-detect language from file extension if -L not explicitly given
-        if kodlingvo_val is None:
-            ext = file_path.suffix.lower()
-            kodlingvo_val = EXT_TO_LANG.get(ext)
+    # ── Resolve new object source: -K, -D, --nova-objekto ──────────
+    new_obj_sourced, katex_flag, kodlingvo_val, str_ = resolve_new_object_source(
+        katex, str_dosiero, new_object, kodlingvo, str_,
+    )
 
     node_svc = get_node_service()
     pred_svc = get_predicate_service()
@@ -417,70 +251,25 @@ def modifi(
     )
     old_object_unit: str | None = None
 
-    # ── Interactive mode: partial args → show picker ───────────────
-    if predicate is None or object is None:
-        triple = pick_triple(
-            triple_svc, node_svc, pred_svc,
-            subject=subject, predicate=predicate, object=object,
-        )
-        if triple is None:
-            raise typer.Exit(1)
-        # Use picked triple as "old" values
-        subject = triple["subject_uuid"]
-        predicate = triple["predicate_id"]
-        object = triple["object_value"]  # noqa: A002
-        object_type = triple.get("object_type", "uri")
-        object_lang = triple.get("object_lang")
+    # ── Unified partial-match resolution (Issue #97) ──────────────
+    # Use resolve_triple() for all paths — it does partial label matching
+    # on all three fields, supports "" as wildcard, shows picker for 2+.
+    triple = resolve_triple(
+        node_svc, pred_svc, triple_svc,
+        subject=subject, predicate=predicate, object=object,
+    )
+    if triple is None:
+        raise typer.Exit(1)
 
-        # Resolve old subject
-        subject_uuid = _resolve_subject_id(node_svc, subject)
-
-        # Keep old values for no-op check
-        old_object_type = object_type
-        old_object_value = object
-        old_object_lang = object_lang
-        old_object_unit = triple.get("object_unit")
-        old_object_datatype = triple.get("object_datatype")
-    else:
-        # ── Direct mode: full triplet provided ────────────────────
-        subject_uuid = _resolve_subject_id(node_svc, subject)
-
-        # Resolve predicate ID prefix (like aldoni does, not like
-        # the interactive picker which already returns resolved IDs).
-        try:
-            pred = pred_svc.resolve_predicate_id_prefix(predicate)
-        except AmbiguousPredicateError as e:
-            error(tr_multi(
-                "Ambigua predikato-prefikso: {e}",
-                "Ambiguous predicate prefix: {e}",
-                "Préfixe prédicat ambigu : {e}",
-            ).format(e=str(e)))
-            raise typer.Exit(1) from e
-        if not pred:
-            error(tr_multi(
-                "Predikato ne trovita: {p}",
-                "Predicate not found: {p}",
-                "Prédicat non trouvé : {p}",
-            ).format(p=predicate))
-            raise typer.Exit(1)
-        predicate = pred["predicate_id"]  # Use resolved full ID
-
-        # Try to find existing triple (URI or literal)
-        existing, old_object_type, old_object_lang = find_triple_direct(
-            triple_svc, node_svc, subject_uuid, predicate, object,
-        )
-        if not existing:
-            error(tr_multi(
-                "Arko ne trovita.",
-                "Arc not found.",
-                "Arc non trouvé.",
-            ))
-            raise typer.Exit(1)
-
-        old_object_value = existing["object_value"]
-        old_object_lang = old_object_lang or existing.get("object_lang")
-        old_object_unit = existing.get("object_unit")
-        old_object_datatype = existing.get("object_datatype")
+    # Extract old values from resolved/picked triple
+    subject_uuid = triple["subject_uuid"]
+    predicate = triple["predicate_id"]
+    object = triple["object_value"]  # noqa: A002
+    old_object_type = triple.get("object_type", "uri")
+    old_object_lang = triple.get("object_lang")
+    old_object_value = triple["object_value"]
+    old_object_unit = triple.get("object_unit")
+    old_object_datatype = triple.get("object_datatype")
 
     # ── Handle __KEEP__ sentinel from validate_type_flags ─────────
     # When --unuo is given without a type flag, modifi_mode returns
@@ -499,7 +288,10 @@ def modifi(
         new_object_type = "literal"
 
     # ── Resolve new values ────────────────────────────────────────
-    new_subj = new_subject or subject
+    # Use resolved UUIDs from the triple dict (not raw CLI args)
+    # for the "no change" fallback. Issue #97 unified flow means
+    # subject/predicate/object are always resolved values at this point.
+    new_subj = new_subject or subject_uuid
     new_pred = new_predicate or predicate
     new_obj_raw = (
         new_obj_sourced if new_obj_sourced is not None
@@ -508,10 +300,10 @@ def modifi(
     )
 
     # Resolve new subject UUID
-    new_subj_uuid = _resolve_subject_id(node_svc, new_subj, label="nova subjekto")
+    new_subj_uuid = resolve_subject_id(node_svc, new_subj, label="nova subjekto")
 
     # Resolve new object (URI → node lookup, literal → raw value)
-    new_obj_value, new_obj_lang = _resolve_new_object_value(
+    new_obj_value, new_obj_lang = resolve_new_object_value(
         node_svc, new_object_type, new_obj_raw,
         old_object_value, lingvo, str_,
     )
@@ -578,56 +370,15 @@ def modifi(
         return
 
     # ── Execute: delete old + insert new ──────────────────────────
-    # Validate the new predicate FK reference (the only value not
-    # already validated by resolve_node_id_prefix() above).
-    # Subject and object are already verified to exist — no need to
-    # re-query the DB for those.
-    pred_check = triple_svc.db.execute_one(
-        "SELECT predicate_id FROM predicates WHERE predicate_id = ?", (new_pred,)
+    execute_modification(
+        triple_svc,
+        subject_uuid, predicate, old_object_value, old_object_type,
+        new_subj_uuid, new_pred, new_object_type, new_obj_value,
+        new_obj_lang, new_datatype, effective_unuo,
     )
-    if not pred_check:
-        error(tr_multi(
-            "Nova predikato ne trovita: {p}",
-            "New predicate not found: {p}",
-            "Nouveau prédicat non trouvé : {p}",
-        ).format(p=new_pred))
-        raise typer.Exit(1)
-
-    from A_semantika.data.storage import now
-
-    timestamp = now()
-    try:
-        with triple_svc.db.transaction() as conn:
-            conn.execute(
-                "DELETE FROM triples WHERE subject_uuid=? AND predicate_id=? "
-                "AND object_value=? AND object_type=?",
-                (subject_uuid, predicate, old_object_value, old_object_type),
-            )
-            conn.execute(
-                """INSERT INTO triples (subject_uuid, predicate_id, object_type,
-                                        object_value, object_lang, object_datatype,
-                                        object_unit, kreita_je)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (new_subj_uuid, new_pred, new_object_type, new_obj_value,
-                 new_obj_lang, new_datatype, effective_unuo, timestamp),
-            )
-    except sqlite3.IntegrityError:
-        error(tr_multi(
-            "Ne eblas modifi: la nova arko jam ekzistas (sama subjekto, predikato, objekto, kaj tipo).",
-            "Cannot modify: the new arc already exists (same subject, predicate, object, and type).",
-            "Impossible de modifier : le nouvel arc existe déjà (même sujet, prédicat, objet et type).",
-        ))
-        raise typer.Exit(1)
 
     # ── Report success ────────────────────────────────────────────
-    # Display: URI → truncated, code block → compact MIME+chars,
-    # other literals → truncated (same pattern as aldoni)
-    if new_object_type == "uri":
-        new_obj_display = truncate_uuid(new_obj_value)
-    elif new_datatype and (new_datatype.startswith("text/") or new_datatype.startswith("application/")):
-        new_obj_display = f"{new_datatype}, {len(new_obj_value)} chars"
-    else:
-        new_obj_display = new_obj_value[:80] + "..." if len(new_obj_value) > 80 else new_obj_value
+    new_obj_display = format_new_object_display(new_object_type, new_obj_value, new_datatype)
     info(tr_multi(
         "Arko modifita: {s} --{p}--> {o}",
         "Arc modified: {s} --{p}--> {o}",
