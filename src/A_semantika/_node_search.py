@@ -153,11 +153,17 @@ class NodeSearchMixin:
             # deleted without a matching 'delete' command). Rebuild from
             # current content table and retry.
             logger.warning("FTS index inconsistent — rebuilding and retrying search.")
-            self.db.execute(
-                f"INSERT INTO {self._fts_config.fts_table}"
-                f"({self._fts_config.fts_table}) VALUES('rebuild')"
-            )
-            results = self.db.execute(fts_sql, (fts_query, limit))
+            try:
+                self.db.execute(
+                    f"INSERT INTO {self._fts_config.fts_table}"
+                    f"({self._fts_config.fts_table}) VALUES('rebuild')"
+                )
+                results = self.db.execute(fts_sql, (fts_query, limit))
+            except sqlite3.DatabaseError:
+                # FTS rebuild itself failed — database may be corrupted.
+                # Fall through to the LIKE fallback below.
+                logger.error("FTS rebuild failed — database may be corrupted.")
+                results = []
         if results:
             return results
 

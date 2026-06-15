@@ -225,13 +225,13 @@ def _raise_corruption_error(db_path: Path) -> None:
         ts = backups[0]["timestamp"]
         msg = (
             f"semantika.db estas koruptita kaj ne povas esti riparita.\n"
-            f"Restarigu de sekurkopio: A sekurkopio restaŭrigi semantika {ts}\n"
+            f"Restarigu de sekurkopio: A sekurkopio restaurigi semantika {ts}\n"
             f"\n"
             f"semantika.db is corrupted and cannot be repaired.\n"
-            f"Restore from backup: A sekurkopio restaŭrigi semantika {ts}\n"
+            f"Restore from backup: A sekurkopio restaurigi semantika {ts}\n"
             f"\n"
             f"semantika.db est corrompue et ne peut pas être réparée.\n"
-            f"Restaurer depuis la sauvegarde : A sekurkopio restaŭrigi semantika {ts}\n"
+            f"Restaurer depuis la sauvegarde : A sekurkopio restaurigi semantika {ts}\n"
         )
     else:
         msg = (

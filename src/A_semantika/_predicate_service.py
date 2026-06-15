@@ -535,10 +535,14 @@ class PredicateService(CRUDService):
                 results = self.db.execute(fts_sql, (fts_query, limit))
             except sqlite3.DatabaseError:
                 logger.warning("Predicates FTS index inconsistent — rebuilding and retrying search.")
-                self.db.execute(
-                    "INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')"
-                )
-                results = self.db.execute(fts_sql, (fts_query, limit))
+                try:
+                    self.db.execute(
+                        "INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')"
+                    )
+                    results = self.db.execute(fts_sql, (fts_query, limit))
+                except sqlite3.DatabaseError:
+                    logger.error("Predicates FTS rebuild failed — database may be corrupted.")
+                    results = []
             if results:
                 return results
 
