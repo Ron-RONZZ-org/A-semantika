@@ -53,6 +53,10 @@ def format_tipo(
         return tr_multi("katex (formulo)", "katex (formula)", "katex (formule)")
 
     if object_datatype:
+        # Handle markdown proofs with a dedicated label
+        if object_datatype == "text/markdown":
+            return tr_multi("pruvo (markdown)", "proof (markdown)", "preuve (markdown)")
+
         if object_datatype.startswith("text/") or object_datatype.startswith("application/"):
             lang_display = object_datatype.split("/")[-1]
             lang_display = lang_display.replace("x-", "", 1) if lang_display.startswith("x-") else lang_display

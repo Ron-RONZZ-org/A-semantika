@@ -24,7 +24,7 @@ from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
 from A_semantika._preview_triple import format_tipo
 from A_semantika._triple_search import search_triples_any_field, search_triples_by_labels
-from A_semantika.service import get_node_service, get_predicate_service, get_triple_service
+from A_semantika.service import get_node_service, get_predicate_service, get_triple_service, get_provo_service
 
 
 # ── Commands ──────────────────────────────────────────────────────────
@@ -132,6 +132,7 @@ def serci(
     node_svc = get_node_service()
     pred_svc = get_predicate_service()
     triple_svc = get_triple_service()
+    provo_svc = get_provo_service()
 
     # If a positional search_term is given without explicit flags,
     # search across all three fields (subject, predicate, object) with
@@ -180,6 +181,21 @@ def serci(
         info(tr_multi("Neniuj arkoj trovitaj.", "No arcs found.", "Aucun arc trouvé."))
         return
 
+    # ── Annotate results with proof info ──────────────────────────
+    # Collect unique arc keys and batch-query proofs for all of them.
+    arcs_for_proofs = [
+        (r["subject_uuid"], r["predicate_id"], r["object_value"])
+        for r in results
+    ]
+    proof_map = provo_svc.get_proofs_for_arcs_batch(arcs_for_proofs)
+    for r in results:
+        key = (r["subject_uuid"], r["predicate_id"], r["object_value"])
+        stmt_nodes = proof_map.get(key, [])
+        if stmt_nodes:
+            r["proof_stmt_ids"] = stmt_nodes
+        else:
+            r["proof_stmt_ids"] = []
+
     table = Table(show_header=True, box=BOX_SIMPLE, header_style="bold")
     table.add_column(tr_multi("Subjekto", "Subject", "Sujet"), no_wrap=True)
     table.add_column(tr_multi("Predikato", "Predicate", "Predicat"), no_wrap=True)
@@ -195,6 +211,16 @@ def serci(
     for r in results:
         s_label = resolve_node_label(node_svc, r["subject_uuid"])
         p_label = resolve_predicate_label(pred_svc, r["predicate_id"])
+        # Append proof indicators to the predicate label
+        proof_stmt_ids = r.get("proof_stmt_ids", [])
+        if proof_stmt_ids:
+            if len(proof_stmt_ids) == 1:
+                p_label += f" (:pruvo {truncate_uuid(proof_stmt_ids[0])})"
+            elif len(proof_stmt_ids) <= 3:
+                parts = [truncate_uuid(n) for n in proof_stmt_ids]
+                p_label += f" (:pruvoj {', '.join(parts)})"
+            else:
+                p_label += f" (:pruvoj x{len(proof_stmt_ids)})"
         if r["object_type"] == "uri":
             o_label = resolve_node_label(node_svc, r["object_value"])
             o_display = f"{o_label} ({truncate_uuid(r['object_value'], all_object_uuids)})"
