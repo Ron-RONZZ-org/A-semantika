@@ -182,9 +182,10 @@ def _get_data_dir() -> Path:
 def get_db() -> "SQLiteDB":
     """Return the singleton SQLiteDB instance (WAL mode, FK enforced).
 
-    Runs health check and auto-repair before connecting to detect and
-    recover from database corruption early.  If repair fails, raises
-    ``RuntimeError`` with guidance on restoring from backup.
+    Uses :func:`A.data.base.open_healthy_db` for health check, auto-repair,
+    and backup before connecting.  If the database is corrupted and cannot
+    be repaired, raises ``RuntimeError`` with guidance on restoring from
+    backup.
 
     Initializes schema on first call.
     """
@@ -192,19 +193,17 @@ def get_db() -> "SQLiteDB":
     if _db_instance is not None:
         return _db_instance
 
-    from A.data.base import SQLiteDB, health_check, repair_db
+    from A.data.base import open_healthy_db
 
     db_path = _get_data_dir() / "semantika.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Health check BEFORE connecting so we can repair WAL/SHM
-    # before SQLite opens the database and possibly crashes.
-    if not health_check(db_path):
-        logger.warning("Database health check failed — attempting repair.")
-        if not repair_db(db_path):
-            _raise_corruption_error(db_path)
-
-    _db_instance = SQLiteDB(db_path)
+    try:
+        _db_instance = open_healthy_db(db_path)
+    except RuntimeError:
+        # open_healthy_db raises RuntimeError when health check + repair
+        # both fail.  Wrap with module-specific guidance.
+        _raise_corruption_error(db_path)
 
     try:
         init_db(_db_instance)
@@ -212,8 +211,6 @@ def get_db() -> "SQLiteDB":
         logger.exception("Database initialization failed — database may be corrupted.")
         _db_instance.close()
         _db_instance = None
-        # Last-resort repair attempt (e.g. stale WAL from failed init)
-        repair_db(db_path)
         _raise_corruption_error(db_path)
 
     return _db_instance
