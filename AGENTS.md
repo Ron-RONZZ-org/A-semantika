@@ -32,7 +32,7 @@ All source code must import from `A`, never duplicate utilities.
 ```
 src/A_semantika/
 ├── __init__.py            # exports: app
-├── cli.py                 # Typer app with 5 subcommand groups (recenzi added in Issue #71)
+├── cli.py                 # Typer app with 6 subcommand groups (recenzi + provo)
 ├── service.py             # NodeService, PredicateService, PredicateGroupService, TripleService
 ├── _wikidata_helper.py    # Wikidata API adapter (validation, search, metadata fetch)
 ├── _cli_helpers.py        # Shared CLI helpers: pick_triple, type flag validation, LANG_TO_MIME + EXT_TO_LANG (I#89)
@@ -47,6 +47,7 @@ src/A_semantika/
 ├── _cli_query.py          # Root query commands: serci, vidi, eksporti (Issue #10 EO)
 ├── _cli_rubujo.py         # Rubujo (trash) subcommand group: ls, restaurigi, malplenigi, forigi
 ├── _cli_triples.py        # Root triple CLI: aldoni (-i, -D, -K, -L), forigi; file extension auto-detect (I#89)
+├── _cli_provo.py          # Provo (proof) subcommand group: aldoni, vidi, forigi
 ├── _file_helpers.py       # File management: copy/move/download/mime (I#75)
 ├── _node_helpers.py       # Shared helpers: label/difin extraction, FTS5 keywords, normalize_label_to_id
 ├── _node_merge_mixin.py   # NodeMergeMixin: merge_nodes() (Issue #64)
@@ -66,6 +67,8 @@ src/A_semantika/
 ├── _preview_triple.py     # Triple preview + confirm (extracted from _preview.py)
 ├── _preview_node.py       # Node preview + confirm (extracted from _preview.py)
 ├── _preview_predicate.py  # Predicate preview + confirm (extracted from _preview.py)
+├── _preview_provo.py      # Proof preview tables: confirm table, list table
+├── _provo_service.py      # ProvoService — RDF reification for attaching proofs to arcs
 └── data/
     ├── __init__.py        # Package marker
     ├── storage.py         # Schema DDL, get_db(), init_db(), get_service() singletons
@@ -105,6 +108,7 @@ tests/
 ├── test_triple_search.py            # Triple search unit tests
 ├── test_triples.py                  # TripleService unit tests
 ├── test_turtle_export_edge.py       # Edge: custom datatype export
+├── test_provo.py                    # ProvoService + provo CLI tests
 └── test_wikidata_helper.py          # Wikidata helper unit tests
 ```
 

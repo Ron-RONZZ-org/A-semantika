@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from A_semantika._node_service import NodeService
     from A_semantika._predicate_group_service import PredicateGroupService
     from A_semantika._predicate_service import PredicateService
+    from A_semantika._provo_service import ProvoService
     from A_semantika._triple_service import TripleService
     from A_semantika._unit_service import UnitService
 
@@ -20,6 +21,7 @@ _predicate_service: PredicateService | None = None
 _predicate_group_service: PredicateGroupService | None = None
 _triple_service: TripleService | None = None
 _unit_service: UnitService | None = None
+_provo_service: ProvoService | None = None
 
 
 def get_node_service() -> "NodeService":
@@ -81,11 +83,28 @@ def get_unit_service() -> "UnitService":
     return _unit_service
 
 
+def get_provo_service() -> "ProvoService":
+    """Return the singleton ProvoService."""
+    global _provo_service
+    if _provo_service is None:
+        from A_semantika._provo_service import ProvoService
+        from A_semantika.data.storage import get_db
+
+        _provo_service = ProvoService(
+            db=get_db(),
+            triple_svc=get_triple_service(),
+            node_svc=get_node_service(),
+            pred_svc=get_predicate_service(),
+        )
+    return _provo_service
+
+
 def reset_services() -> None:
     """Reset all service singletons (used in tests)."""
-    global _node_service, _predicate_service, _predicate_group_service, _triple_service, _unit_service
+    global _node_service, _predicate_service, _predicate_group_service, _triple_service, _unit_service, _provo_service
     _node_service = None
     _predicate_service = None
     _predicate_group_service = None
     _triple_service = None
     _unit_service = None
+    _provo_service = None

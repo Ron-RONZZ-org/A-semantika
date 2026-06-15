@@ -13,7 +13,7 @@ from A_semantika._cli_helpers import pick_triple, pick_triples
 from A_semantika._cli_modify_preview import _find_triple_by_spo
 from A_semantika._node_service import AmbiguousUUIDError
 from A_semantika._preview import resolve_node_label, resolve_predicate_label
-from A_semantika.service import get_node_service, get_predicate_service, get_triple_service
+from A_semantika.service import get_node_service, get_predicate_service, get_provo_service, get_triple_service
 
 
 def forigi(
@@ -101,9 +101,16 @@ def forigi(
                 info(tr_multi("Nuligita.", "Cancelled.", "Annule."))
                 raise typer.Exit(0)
 
-        # Batch delete
+        # Batch delete (cascade proof deletion)
+        provo_svc = get_provo_service()
         deleted_count = 0
         for t in triples:
+            # Cascade: remove any reified proofs for this arc
+            provo_svc.cascade_delete_proofs(
+                subject_uuid=t["subject_uuid"],
+                predicate_id=t["predicate_id"],
+                object_value=t["object_value"],
+            )
             deleted = triple_svc.remove(
                 subject_uuid=t["subject_uuid"],
                 predicate_id=t["predicate_id"],
@@ -185,6 +192,14 @@ def forigi(
         ):
             info(tr_multi("Nuligita.", "Cancelled.", "Annule."))
             raise typer.Exit(0)
+
+    # Cascade: remove any reified proofs for this arc
+    provo_svc = get_provo_service()
+    provo_svc.cascade_delete_proofs(
+        subject_uuid=subject_uuid,
+        predicate_id=predicate,
+        object_value=obj_value,
+    )
 
     deleted = triple_svc.remove(
         subject_uuid=subject_uuid,

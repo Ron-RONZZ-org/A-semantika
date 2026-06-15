@@ -159,6 +159,11 @@ DEFAULT_PREDICATES: list[dict[str, str]] = [
     {"predicate_id": ":symbol",                "source": "manual", "etikedoj": '{"eo": "simbolo"}'},
     {"predicate_id": ":alternativeSymbol",     "source": "manual", "etikedoj": '{"eo": "alternativa simbolo"}'},
     {"predicate_id": ":unitPrefix",            "source": "manual", "etikedoj": '{"eo": "unu-prefikso"}'},
+    # RDF reification predicates (Issue: provo)
+    {"predicate_id": "rdf:subject",            "source": "rdf",    "etikedoj": '{"eo": "subjekto"}'},
+    {"predicate_id": "rdf:predicate",          "source": "rdf",    "etikedoj": '{"eo": "predikato"}'},
+    {"predicate_id": "rdf:object",             "source": "rdf",    "etikedoj": '{\"eo\": \"objekto\"}'},
+    {"predicate_id": ":hasProof",              "source": "manual", "etikedoj": '{"eo": "havas pruvon"}'},
 ]
 
 
@@ -321,6 +326,13 @@ def init_db(db: "SQLiteDB | None" = None) -> None:
 
     # Seed unit type nodes (Issue #77)
     _seed_default_unit_types(db)
+
+    # Seed rdf:Statement node for reification proofs (provo)
+    db.execute(
+        "INSERT OR IGNORE INTO nodes (node_id, etikedoj, label_text, difinoj, difin_text, kreita_je, modifita_je) "
+        "VALUES ('rdf:Statement', '{\"eo\": \"Aserto\", \"en\": \"Statement\"}', 'Aserto Statement', '{}', '', ?, ?)",
+        (now(), now()),
+    )
 
     # Recenzi (interactive review) tables (Issue #71)
     for statement in RECENZI_SCHEMA_SQL.strip().split(";"):
