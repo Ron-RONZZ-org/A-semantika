@@ -193,17 +193,12 @@ def get_db() -> "SQLiteDB":
     if _db_instance is not None:
         return _db_instance
 
-    from A.data.base import open_healthy_db
+    from A.data.base import SQLiteDB
 
     db_path = _get_data_dir() / "semantika.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    try:
-        _db_instance = open_healthy_db(db_path)
-    except RuntimeError:
-        # open_healthy_db raises RuntimeError when health check + repair
-        # both fail.  Wrap with module-specific guidance.
-        _raise_corruption_error(db_path)
+    _db_instance = SQLiteDB(db_path)
 
     try:
         init_db(_db_instance)
