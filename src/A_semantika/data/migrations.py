@@ -391,6 +391,37 @@ def migrate_predicates_fts(db: "SQLiteDB") -> None:
         )
 
 
+def migrate_recenzi_totalo(db: "SQLiteDB") -> None:
+    """Add ``totalo`` column to ``recenzo_sesio`` if missing.
+
+    The ``recenzo_sesio`` table was originally created without the
+    ``totalo`` column; it was later added to the schema DDL. Existing
+    databases created before this change still lack the column, causing
+    ``UPDATE recenzo_sesio SET totalo = ?`` in ``update_session_score()``
+    to fail with ``OperationalError: no such column: totalo``.
+
+    Safe to call repeatedly (checks column existence first).
+    """
+    try:
+        columns = {
+            row["name"]
+            for row in db.execute("PRAGMA table_info(recenzo_sesio)")
+        }
+    except (sqlite3.OperationalError, sqlite3.DatabaseError):
+        # Table may not exist yet (recenzi never used) — safe to skip
+        return
+
+    if "totalo" in columns:
+        return  # Already has the column
+
+    try:
+        db.execute(
+            "ALTER TABLE recenzo_sesio ADD COLUMN totalo INTEGER NOT NULL DEFAULT 0"
+        )
+    except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+        _warning(f"Could not add totalo column to recenzo_sesio: {e}")
+
+
 def rebuild_nodes_fts(db: "SQLiteDB") -> None:
     """Rebuild the ``nodes_fts`` FTS5 index from current content.
 

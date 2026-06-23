@@ -1361,6 +1361,21 @@ labels in preview. 469 total (460 existing + 9 new).
 - ✓ `recenzi vidi` — detail view with per-question labels, marks, answers
 - ✓ `recenzi forigi` — delete with `-y` flag and cancellation
 
+### Issue #W23: Missing `totalo` column in `recenzo_sesio` (June 2026)
+
+**Scope:** Schema migration for existing databases — `recenzo_sesio` table created before the `totalo` column was added to the DDL lacks the column.
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| F1 | High | `data/migrations.py` | Added `migrate_recenzi_totalo()` — checks for `totalo` column via `PRAGMA table_info` and runs `ALTER TABLE ... ADD COLUMN` if missing. Wrapped in `try/except` for idempotency. |
+| F2 | Low | `data/storage.py` | Calls `migrate_recenzi_totalo()` in `init_db()` after recenzi schema is applied. |
+
+**Root cause:** `CREATE TABLE IF NOT EXISTS` skips existing tables entirely. The `totalo` column was added to the schema DDL but no migration was provided for databases created before the change.
+
+**Tests:** All 772 existing tests pass (1 pre-existing failure in `test_triple_search.py` unrelated).
+
+---
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82
