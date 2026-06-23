@@ -201,7 +201,7 @@ class PredicateService(CRUDService):
             ")"
         )
 
-    def _remove_from_fts(self, predicate_id: str) -> None:
+    def _remove_from_fts(self, predicate_id: str) -> bool:
         """Remove a predicate from FTS index using FTS5 'delete' command.
 
         .. caution::
@@ -211,25 +211,51 @@ class PredicateService(CRUDService):
            ``rowid`` from the content table. Use
            :meth:`_remove_fts_by_rowid` after deletion if the row has
            already been removed.
+
+        Returns:
+            True if the row was successfully removed from the index.
+            False if the row was not found or the index was rebuilt
+            (caller should skip subsequent ``_index_fts``).
         """
         row = self.db.execute_one(
             "SELECT rowid FROM predicates WHERE predicate_id = ?",
             (predicate_id,),
         )
         if not row or row.get("rowid") is None:
-            return
-        self._remove_fts_by_rowid(predicate_id, row["rowid"])
+            return False
+        return self._remove_fts_by_rowid(predicate_id, row["rowid"])
 
-    def _remove_fts_by_rowid(self, predicate_id: str, rowid: int) -> None:
+    def _rebuild_fts(self) -> None:
+        """Rebuild the predicates FTS index from the content table.
+
+        Uses the FTS5 ``rebuild`` command which re-reads all content
+        from the external content table (``content=predicates``) and
+        reconstructs the inverted index. This is the only reliable way
+        to rebuild an external-content FTS5 index.
+        """
+        try:
+            self.db.execute(
+                "INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')"
+            )
+        except sqlite3.DatabaseError:
+            # If the FTS table is too corrupted for the 'rebuild' command
+            # to work (e.g. missing or broken shadow tables), fall back
+            # to dropping and recreating the virtual table.
+            self.db.execute("DROP TABLE IF EXISTS predicates_fts")
+            self._create_fts_vt()
+
+    def _remove_fts_by_rowid(self, predicate_id: str, rowid: int) -> bool:
         """Remove a rowid from the predicates FTS index.
 
         Unlike :meth:`_remove_from_fts`, this method works **after** the
         content-table row has been deleted — it only needs the saved
-        rowid.  If the ``'delete'`` command fails, a warning is logged
-        rather than triggering an automatic rebuild: a rebuild at this
-        point would scan the current content table (which no longer
-        contains the deleted predicate) and produce a correct index
-        anyway.
+        rowid.
+
+        Returns:
+            True if the row was successfully removed from the index.
+            False if the 'delete' failed and a full rebuild was
+            performed instead (caller should skip the subsequent
+            ``_index_fts`` call to avoid duplicating the row).
         """
         try:
             self.db.execute(
@@ -237,13 +263,15 @@ class PredicateService(CRUDService):
                 " VALUES('delete', ?)",
                 (rowid,),
             )
+            return True
         except sqlite3.DatabaseError as exc:
             logger.warning(
                 "FTS 'delete' failed for %s (rowid=%s): %s. "
-                "FTS index may be stale — a search query will "
-                "trigger a rebuild automatically.",
+                "Rebuilding FTS index from content table.",
                 predicate_id, rowid, exc,
             )
+            self._rebuild_fts()
+            return False
 
     def _index_fts(self, predicate_id: str) -> None:
         """Index a single predicate in FTS5."""
@@ -388,13 +416,16 @@ class PredicateService(CRUDService):
         
         sql = f"UPDATE predicates SET {', '.join(set_parts)} WHERE predicate_id = ?"
 
-        # Wrap UPDATE + FTS re-index in a single transaction to prevent
-        # data/FTS inconsistency if either operation fails.
         with self.db.transaction():
             self.db.execute(sql, params)
             # Re-index FTS (remove old, insert new)
-            self._remove_from_fts(predicate_id)
-            self._index_fts(predicate_id)
+            removed = self._remove_from_fts(predicate_id)
+            if removed:
+                # Only insert new if the old entry was cleanly removed.
+                # If the delete failed (DatabaseError), _remove_from_fts
+                # already rebuilt the entire index from the content table,
+                # which includes the updated row.
+                self._index_fts(predicate_id)
 
         return self.get_by_predicate_id(predicate_id)
 
@@ -482,8 +513,9 @@ class PredicateService(CRUDService):
 
             # 4. Re-index FTS
             if self._fts_config:
-                self._remove_from_fts(old_id)
-                self._index_fts(new_id)
+                removed = self._remove_from_fts(old_id)
+                if removed:
+                    self._index_fts(new_id)
 
         return self.get_by_predicate_id(new_id)
 

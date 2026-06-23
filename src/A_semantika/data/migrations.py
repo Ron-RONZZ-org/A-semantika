@@ -380,15 +380,13 @@ def migrate_predicates_fts(db: "SQLiteDB") -> None:
         ")"
     )
 
-    # Rebuild FTS index (using standard INSERT, not FTS5 rebuild command)
-    count = db.execute_one("SELECT COUNT(*) AS cnt FROM predicates_fts")
-    if count and count["cnt"] == 0:
-        db.execute(
-            "INSERT INTO predicates_fts"
-            " (rowid, predicate_id, etikedoj, priskriboj, aliases)"
-            " SELECT rowid, predicate_id, etikedoj, priskriboj, aliases"
-            " FROM predicates"
-        )
+    # Rebuild FTS index using the FTS5 'rebuild' command.
+    # For external content tables (content=predicates), COUNT(*) returns
+    # the content table's row count, not the FTS index count — checking
+    # it would falsely skip the rebuild.  Always rebuild after DROP+CREATE.
+    db.execute(
+        "INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')"
+    )
 
 
 def migrate_recenzi_totalo(db: "SQLiteDB") -> None:
