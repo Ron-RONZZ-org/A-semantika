@@ -389,35 +389,44 @@ def migrate_predicates_fts(db: "SQLiteDB") -> None:
     )
 
 
-def migrate_recenzi_totalo(db: "SQLiteDB") -> None:
-    """Add ``totalo`` column to ``recenzo_sesio`` if missing.
+_RECENZO_SESIO_COLUMNS: list[tuple[str, str]] = [
+    ("totalo", "INTEGER NOT NULL DEFAULT 0"),
+    ("korekta", "INTEGER NOT NULL DEFAULT 0"),
+]
 
-    The ``recenzo_sesio`` table was originally created without the
-    ``totalo`` column; it was later added to the schema DDL. Existing
-    databases created before this change still lack the column, causing
-    ``UPDATE recenzo_sesio SET totalo = ?`` in ``update_session_score()``
-    to fail with ``OperationalError: no such column: totalo``.
+
+def migrate_recenzi_schema(db: "SQLiteDB") -> None:
+    """Add missing columns to ``recenzo_sesio`` for existing databases.
+
+    The table was originally created with only ``uuid``, ``modo``,
+    ``dato_de``, ``dato_gis``, ``finita``, ``kreita_je``.  Later
+    schema versions added ``totalo`` and ``korekta``.  Existing
+    databases created before these additions lack the columns,
+    causing ``UPDATE recenzo_sesio SET ...`` in
+    ``update_session_score()`` to fail with
+    ``OperationalError: no such column: ...``.
 
     Safe to call repeatedly (checks column existence first).
     """
     try:
-        columns = {
+        existing = {
             row["name"]
             for row in db.execute("PRAGMA table_info(recenzo_sesio)")
         }
     except (sqlite3.OperationalError, sqlite3.DatabaseError):
-        # Table may not exist yet (recenzi never used) — safe to skip
-        return
+        return  # Table may not exist yet — safe to skip
 
-    if "totalo" in columns:
-        return  # Already has the column
-
-    try:
-        db.execute(
-            "ALTER TABLE recenzo_sesio ADD COLUMN totalo INTEGER NOT NULL DEFAULT 0"
-        )
-    except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
-        _warning(f"Could not add totalo column to recenzo_sesio: {e}")
+    for col_name, col_type in _RECENZO_SESIO_COLUMNS:
+        if col_name in existing:
+            continue
+        try:
+            db.execute(
+                f"ALTER TABLE recenzo_sesio ADD COLUMN {col_name} {col_type}"
+            )
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+            _warning(
+                f"Could not add {col_name} column to recenzo_sesio: {e}"
+            )
 
 
 def rebuild_nodes_fts(db: "SQLiteDB") -> None:

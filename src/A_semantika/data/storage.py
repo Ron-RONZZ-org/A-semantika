@@ -18,7 +18,7 @@ from A_semantika.data.migrations import (
     migrate_predicate_group_members_unique,
     migrate_predicates_fts,
     migrate_predicates_uuid_to_predicate_id,
-    migrate_recenzi_totalo,
+    migrate_recenzi_schema,
     rebuild_nodes_fts,
 )
 from A_semantika.data.recenzi_storage import RECENZI_SCHEMA_SQL
@@ -400,8 +400,8 @@ def init_db(db: "SQLiteDB | None" = None) -> None:
         if stmt:
             db.execute(stmt)
 
-    # Add totalo column to recenzo_sesio for existing databases
-    migrate_recenzi_totalo(db)
+    # Add missing columns to recenzo_sesio for existing databases
+    migrate_recenzi_schema(db)
 
     # Rebuild nodes FTS index to fix stale entries from the pre-fix
     # update()/update_node_id() order-of-operations bug.
