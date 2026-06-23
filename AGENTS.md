@@ -1361,6 +1361,38 @@ labels in preview. 469 total (460 existing + 9 new).
 - ✓ `recenzi vidi` — detail view with per-question labels, marks, answers
 - ✓ `recenzi forigi` — delete with `-y` flag and cancellation
 
+### Issue #FTX: FTS5 external content index not populated (June 2026)
+
+**Scope:** FTS5 predicates search returning empty results + "FTS 'delete' failed: database disk image is malformed" errors.
+
+**Root cause:** A-semantika uses FTS5 **external content tables** (`content=predicates`). The common pattern `INSERT INTO predicates_fts(...) SELECT ... FROM predicates` silently produces tables with correct `COUNT(*)` but **empty inverted indexes** (FTS data blocks with zero bytes). Two places used this broken pattern:
+
+1. `migrate_predicates_fts()` checked `COUNT(*)` after DROP+CREATE to decide whether to rebuild — but for external content tables, `COUNT(*)` returns the content table row count (24), not the FTS index count (0). Rebuild was skipped entirely.
+2. `init_db()` seed-time FTS rebuild used the same INSERT SELECT pattern.
+
+**Fix:** Replaced INSERT SELECT with the canonical FTS5 `rebuild` command in all three locations:
+
+| Fix | File | Change |
+|-----|------|--------|
+| F1 | `_predicate_service.py` | Added `_rebuild_fts()` using `INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')`. `_remove_from_fts` returns `bool` — on delete failure, rebuilds index and skips subsequent `_index_fts`. |
+| F2 | `data/migrations.py:367-391` | `migrate_predicates_fts()`: replaced INSERT SELECT + COUNT guard with `rebuild` command. |
+| F3 | `data/storage.py:384-389` | `init_db()` seed rebuild: same fix. |
+
+### Issue #W23: Missing columns in `recenzo_sesio` (June 2026)
+
+**Scope:** Schema migration for existing databases — `recenzo_sesio` table created before the `totalo` and `korekta` columns were added to the DDL.
+
+| Fix | Severity | File | Description |
+|-----|----------|------|-------------|
+| F1 | High | `data/migrations.py` | Added `migrate_recenzi_schema()` — checks for all columns from the canonical schema via `PRAGMA table_info` and runs `ALTER TABLE ... ADD COLUMN` for each missing one. Wrapped in `try/except` for idempotency. |
+| F2 | Low | `data/storage.py` | Calls `migrate_recenzi_schema()` in `init_db()` after recenzi schema is applied. |
+
+**Root cause:** `CREATE TABLE IF NOT EXISTS` skips existing tables entirely. The `totalo` and `korekta` columns were added to the schema DDL over time but no migration was provided for databases created before the changes.
+
+**Tests:** All 772 existing tests pass (1 pre-existing failure in `test_triple_search.py` unrelated).
+
+---
+
 ### Upstream Dependencies
 - A-core wikidata extraction: https://github.com/Ron-RONZZ-org/A-core/issues/9
 - A-core get_property_details: https://github.com/Ron-RONZZ-org/A-core/issues/82

@@ -18,6 +18,7 @@ from A_semantika.data.migrations import (
     migrate_predicate_group_members_unique,
     migrate_predicates_fts,
     migrate_predicates_uuid_to_predicate_id,
+    migrate_recenzi_schema,
     rebuild_nodes_fts,
 )
 from A_semantika.data.recenzi_storage import RECENZI_SCHEMA_SQL
@@ -370,17 +371,12 @@ def init_db(db: "SQLiteDB | None" = None) -> None:
     migrate_predicates_fts(db)
     # Seed built-in RDF/OWL predicates (must be AFTER migrations)
     seeded = _seed_default_predicates(db)
-    # Only rebuild FTS index if new predicates were actually inserted.
-    # Predicates inserted by PredicateService.create are already indexed;
-    # seeded predicates are inserted via raw SQL and need explicit indexing.
-    # Skipping the rebuild when no new rows were added avoids unnecessary
-    # work on every init_db() call (e.g. read-only CLI callbacks).
+    # Rebuild FTS index if new predicates were inserted.
+    # Uses the FTS5 'rebuild' command (external content tables need this
+    # over INSERT SELECT to properly populate the inverted index).
     if seeded:
         db.execute(
-            "INSERT INTO predicates_fts"
-            " (rowid, predicate_id, etikedoj, priskriboj, aliases)"
-            " SELECT rowid, predicate_id, etikedoj, priskriboj, aliases"
-            " FROM predicates"
+            "INSERT INTO predicates_fts(predicates_fts) VALUES('rebuild')"
         )
 
     # Seed unit type nodes (Issue #77)
@@ -398,6 +394,9 @@ def init_db(db: "SQLiteDB | None" = None) -> None:
         stmt = statement.strip()
         if stmt:
             db.execute(stmt)
+
+    # Add missing columns to recenzo_sesio for existing databases
+    migrate_recenzi_schema(db)
 
     # Rebuild nodes FTS index to fix stale entries from the pre-fix
     # update()/update_node_id() order-of-operations bug.
