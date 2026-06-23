@@ -389,35 +389,96 @@ def migrate_predicates_fts(db: "SQLiteDB") -> None:
     )
 
 
+# Canonical columns for recenzo_sesio that may be absent in old databases.
 _RECENZO_SESIO_COLUMNS: list[tuple[str, str]] = [
-    ("totalo", "INTEGER NOT NULL DEFAULT 0"),
-    ("korekta", "INTEGER NOT NULL DEFAULT 0"),
+    ("dato_de",   "TEXT"),
+    ("dato_gis",  "TEXT"),
+    ("totalo",    "INTEGER NOT NULL DEFAULT 0"),
+    ("korekta",   "INTEGER NOT NULL DEFAULT 0"),
+    ("finita",    "INTEGER NOT NULL DEFAULT 0"),
 ]
+
+# A-vorto column names that cause NOT NULL constraint failures when
+# A-semantika's create_session inserts without them.
+_AVORTO_RECENZIO_COLUMNS = frozenset({"entute", "gustaj", "malgustaj"})
 
 
 def migrate_recenzi_schema(db: "SQLiteDB") -> None:
-    """Add missing columns to ``recenzo_sesio`` for existing databases.
+    """Migrate ``recenzo_sesio`` to the canonical A-semantika schema.
 
-    The table was originally created with only ``uuid``, ``modo``,
-    ``dato_de``, ``dato_gis``, ``finita``, ``kreita_je``.  Later
-    schema versions added ``totalo`` and ``korekta``.  Existing
-    databases created before these additions lack the columns,
-    causing ``UPDATE recenzo_sesio SET ...`` in
-    ``update_session_score()`` to fail with
-    ``OperationalError: no such column: ...``.
+    Two types of legacy schemas are handled:
 
-    Safe to call repeatedly (checks column existence first).
+    1. **Early A-semantika**: created with base columns only, missing
+       ``totalo``, ``korekta``, ``finita`` etc. → add missing columns.
+
+    2. **A-vorto schema** (injected ``entute``, ``gustaj``, ``malgustaj``
+       with ``NOT NULL`` but no ``DEFAULT``): A-semantika's
+       ``create_session`` does not provide these columns, so the INSERT
+       fails with a NOT NULL constraint violation.  Since these tables
+       have incompatible semantics, the table is rebuilt with the
+       canonical schema.
+
+    Safe to call repeatedly.
     """
     try:
-        existing = {
+        columns = {
             row["name"]
             for row in db.execute("PRAGMA table_info(recenzo_sesio)")
         }
+        # Also check each column's null/default info for A-vorto detection
+        full_info = list(db.execute("PRAGMA table_info(recenzo_sesio)"))
     except (sqlite3.OperationalError, sqlite3.DatabaseError):
         return  # Table may not exist yet — safe to skip
 
+    # ── Detect A-vorto schema ───────────────────────────────────────────
+    has_avorto_notnull = any(
+        r["name"] in _AVORTO_RECENZIO_COLUMNS and r["notnull"] == 1
+        for r in full_info
+    )
+    if has_avorto_notnull:
+        _warning(
+            "recenzo_sesio has A-vorto columns (entute/gustaj/malgustaj) "
+            "with NOT NULL but no DEFAULT. Rebuilding recenzi tables with "
+            "canonical A-semantika schema."
+        )
+        # Drop both tables (recenzo_rezulto FK references recenzo_sesio)
+        db.execute("DROP TABLE IF EXISTS recenzo_rezulto")
+        db.execute("DROP TABLE IF EXISTS recenzo_sesio")
+
+        # Recreate recenzo_sesio with canonical schema
+        db.execute(
+            "CREATE TABLE recenzo_sesio ("
+            "  uuid       TEXT PRIMARY KEY,"
+            "  modo       TEXT NOT NULL,"
+            "  dato_de    TEXT,"
+            "  dato_gis   TEXT,"
+            "  totalo     INTEGER NOT NULL DEFAULT 0,"
+            "  korekta    INTEGER NOT NULL DEFAULT 0,"
+            "  finita     INTEGER NOT NULL DEFAULT 0,"
+            "  kreita_je  TEXT NOT NULL"
+            ")"
+        )
+        # Recreate recenzo_rezulto with canonical schema
+        db.execute(
+            "CREATE TABLE recenzo_rezulto ("
+            "  uuid           TEXT PRIMARY KEY,"
+            "  sesio_uuid     TEXT NOT NULL REFERENCES recenzo_sesio(uuid),"
+            "  subject_uuid   TEXT NOT NULL,"
+            "  predicate_id   TEXT NOT NULL,"
+            "  object_value   TEXT NOT NULL,"
+            "  object_type    TEXT NOT NULL DEFAULT 'uri',"
+            "  korekta        INTEGER NOT NULL DEFAULT 0,"
+            "  respondo       TEXT,"
+            "  pozicio        INTEGER NOT NULL DEFAULT 0,"
+            "  kreita_je      TEXT NOT NULL"
+            ")"
+        )
+        _warning("recenzi tables rebuilt with canonical A-semantika schema.")
+        return
+
+    # ── Add individual missing columns (early A-semantika schemas) ────
     for col_name, col_type in _RECENZO_SESIO_COLUMNS:
-        if col_name in existing:
+        if col_name in columns:
             continue
         try:
             db.execute(
